@@ -1,0 +1,10 @@
+{
+  "description": "A comprehensive commerce platform connecting buyers, sellers, and couriers with seamless discovery, purchase, fulfillment, and trust management.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

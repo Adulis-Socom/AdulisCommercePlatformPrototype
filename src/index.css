@@ -1,0 +1,337 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,300;1,9..144,400;1,9..144,500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap');
+
+@import 'tailwindcss';
+
+@theme inline {
+  --color-brand:             #A04720;
+  --color-brand-light:       #D97B45;
+  --color-brand-muted:       #F0DDD1;
+  --color-brand-dark:        #943F1A;
+
+  --color-background:        #FAF8F5;
+  --color-surface:           #FFFFFF;
+  --color-surface-raised:    #F5F2ED;
+  --color-surface-overlay:   rgba(26, 21, 18, 0.48);
+
+  --color-text-primary:      #1A1512;
+  --color-text-secondary:    #5C4F45;
+  --color-text-muted:        #746860;
+  --color-text-inverse:      #FAF8F5;
+
+  --color-border:            #E8E0D8;
+  --color-border-strong:     #C8BDB5;
+
+  --color-success:           #2D7A4F;
+  --color-success-bg:        #EAF5EE;
+  --color-warning:           #936313;
+  --color-warning-bg:        #FDF3E1;
+  --color-danger:            #C2372D;
+  --color-danger-bg:         #FDECEA;
+  --color-info:              #2D5CC2;
+  --color-info-bg:           #EBF0FC;
+
+  --color-courier:           #2D7A7A;
+  --color-courier-muted:     #EAF5F5;
+
+  /* Operator console — darker, more serious */
+  --color-operator-bg:       #111418;
+  --color-operator-surface:  #1C2028;
+  --color-operator-raised:   #252B35;
+  --color-operator-border:   #2E3540;
+  --color-operator-text:     #E8EAF0;
+  --color-operator-muted:    #7A8499;
+  --color-operator-accent:   #E8874A;
+
+  --font-display:            'Fraunces', Georgia, serif;
+  --font-body:               'Outfit', system-ui, sans-serif;
+  --font-mono:               'DM Mono', 'Courier New', monospace;
+
+  --radius-sm:               4px;
+  --radius-md:               8px;
+  --radius-lg:               12px;
+  --radius-xl:               16px;
+  --radius-2xl:              24px;
+  --radius-full:             9999px;
+
+  --shadow-xs:               0 1px 2px rgba(26, 21, 18, 0.06);
+  --shadow-sm:               0 1px 4px rgba(26, 21, 18, 0.08), 0 1px 2px rgba(26, 21, 18, 0.04);
+  --shadow-md:               0 4px 12px rgba(26, 21, 18, 0.10), 0 2px 4px rgba(26, 21, 18, 0.06);
+  --shadow-lg:               0 8px 24px rgba(26, 21, 18, 0.12), 0 4px 8px rgba(26, 21, 18, 0.06);
+  --shadow-xl:               0 16px 48px rgba(26, 21, 18, 0.14), 0 8px 16px rgba(26, 21, 18, 0.08);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  line-height: 1.5;
+  margin: 0;
+}
+
+button,
+[role='button'],
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+[role='button'],
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, [role='button'], a, input, select, textarea):focus-visible {
+  outline: 3px solid var(--color-info);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Keep the prototype navigator compact at tablet widths so the product
+   surfaces receive the space they are being audited at. */
+@media (max-width: 1200px) and (min-width: 641px) {
+  .app-sidebar {
+    width: 52px !important;
+  }
+
+  .app-sidebar > div:first-child > div,
+  .app-sidebar > div:last-child,
+  .app-section-nav button > span:last-child {
+    display: none;
+  }
+
+  .app-sidebar > div:first-child {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .seller-console-sidebar {
+    width: 52px !important;
+  }
+
+  .seller-console-sidebar-copy,
+  .seller-console-sidebar nav button > .flex-1,
+  .seller-console-sidebar nav button > span:last-child:not(:first-child) {
+    display: none;
+  }
+
+  .seller-console-sidebar nav button {
+    min-height: 44px;
+    justify-content: center;
+    padding-inline: 0 !important;
+  }
+
+  .seller-console-sidebar nav button > span:first-child {
+    width: auto !important;
+  }
+}
+
+/* Operator is intentionally desktop-oriented. Narrow hosts scroll the
+   desktop canvas rather than changing its information architecture. */
+.operator-viewport {
+  overflow-x: auto;
+}
+
+.operator-console {
+  min-width: 1180px;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100% !important;
+    height: 52px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .app-sidebar > div:first-child,
+  .app-sidebar > div:last-child {
+    display: none;
+  }
+
+  .app-section-nav {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px;
+    scrollbar-width: none;
+  }
+
+  .app-section-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-section-nav button {
+    width: 44px !important;
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .app-section-nav button > span:last-child {
+    display: none;
+  }
+
+  .app-main {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .phone-stage,
+  .website-phone-stage,
+  .storefront-stage {
+    padding: 8px !important;
+  }
+
+  .phone-stage > p,
+  .storefront-stage p:first-child {
+    max-width: calc(100vw - 32px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .phone-frame,
+  .website-phone-frame,
+  .storefront-phone {
+    width: min(390px, calc(100vw - 16px)) !important;
+    max-width: 100%;
+    border-radius: var(--radius-xl) !important;
+  }
+
+  .website-phone-frame {
+    position: relative;
+    min-height: calc(100dvh - 116px) !important;
+  }
+
+  .storefront-phone,
+  .phone-frame {
+    height: calc(100dvh - 104px) !important;
+    min-height: 640px;
+  }
+
+  .website-toolbar {
+    gap: 8px;
+    padding-inline: 12px;
+  }
+
+  .website-toolbar > span {
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .storefront-toolbar {
+    max-width: 100vw;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-inline: 12px !important;
+  }
+
+  .storefront-identity {
+    min-width: 0;
+  }
+
+  .storefront-identity > div:last-child {
+    min-width: 0;
+  }
+
+  .storefront-identity h1,
+  .storefront-identity p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .storefront-open-adulis {
+    width: 44px;
+    padding-inline: 0 !important;
+    justify-content: center;
+  }
+
+  .storefront-open-adulis > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .flow-guide {
+    right: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
+  }
+
+  .phone-frame button,
+  .website-phone-frame button,
+  .storefront-phone button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .phone-frame input,
+  .phone-frame select,
+  .phone-frame textarea,
+  .website-phone-frame input,
+  .website-phone-frame select,
+  .website-phone-frame textarea,
+  .storefront-phone input {
+    font-size: 16px !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+.font-display { font-family: var(--font-display); }
+.font-body    { font-family: var(--font-body); }
+.font-mono    { font-family: var(--font-mono); }
