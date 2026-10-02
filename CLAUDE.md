@@ -8,7 +8,18 @@ Functional prototype of the Adulis commerce platform (buyers, sellers, couriers,
 
 - The Figma-generated visual design is the approved baseline. Preserve existing rendering unless a work order explicitly asks for a visual change.
 - `AGENTS.md` is the Figma Make scaffold note. Its "dev server is already running on `$PORT`" only applies inside Figma Make; locally, start it yourself.
-- Product rules the prototype demonstrates (keep them intact when editing flows): payment status comes only from the provider/backend, never the Seller; no government-ID check for Seller admission; no live GPS (location only at pickup/delivery checkpoints); QR handoff (Seller shows Pickup QR → Courier scans; Courier shows Delivery QR → Buyer or delegate scans; OTP is the fallback); one Seller Order per seller cart. The full rule set is in the "Canonical Objects" data in `src/sections/PrototypeGuide.tsx`.
+- Authoritative product/prototype invariants are in `docs/ADULIS_CANONICAL_RULES.md`. Existing `PrototypeGuide.tsx`, screen copy and current implementation are not authoritative when they conflict with approved documentation.
+
+## Before major prototype changes
+
+Read these first. They hold approved decisions. Sections marked pending have none yet: treat them as unknown rather than filling gaps from the current code.
+
+- `docs/ADULIS_PROTOTYPE_SPEC.md`: approved master prototype specification.
+- `docs/ADULIS_CANONICAL_RULES.md`: authoritative prototype invariants.
+- `docs/DEMO_DATA.md`: the single canonical demo dataset for every surface.
+- `docs/CORRECTION_WORK_ORDERS.md`: approved work orders, in execution order.
+
+If these documents disagree with each other or with the code, follow the "Document authority and precedence" section in `docs/ADULIS_CANONICAL_RULES.md`.
 
 ## Commands
 
@@ -16,7 +27,7 @@ pnpm on Node 22 (versions pinned in `.mise.toml`).
 
 - `pnpm install`
 - `pnpm dev` — Vite on `$PORT` or 8443 (`strictPort`). Binds `0.0.0.0` unless `FIGMA_DEV_SERVER_HOST` is set (use `127.0.0.1` for local work). `pnpm run preview` uses the same host/port settings.
-- `pnpm exec tsc --noEmit -p tsconfig.json` — type-check; there is no script for it. TypeScript is 5.9.x, so `"ignoreDeprecations": "6.0"` in tsconfig fails with TS5103.
+- `pnpm exec tsc --noEmit -p tsconfig.json` — type-check; there is no script for it. The CLI runs TypeScript 5.9.x while VS Code bundles 6.x, so `tsconfig.json` must satisfy both. Don't add `baseUrl` (deprecated in 6.x) or `"ignoreDeprecations": "6.0"` (rejected by 5.9 with TS5103).
 - `pnpm run build` → `dist/` (gitignored); add `--outDir <dir>` to build elsewhere.
 - No linter or test runner exists.
 - **Never run `pnpm run format` (or `.figma/make/format`).** oxfmt has no config and its defaults (double quotes, reflowed lines, LF) match neither the code style nor the CRLF checkout, so it rewrites every file. `oxfmt --check` already fails on all files for that reason.
@@ -30,7 +41,7 @@ pnpm on Node 22 (versions pinned in `.mise.toml`).
 **Surfaces are self-contained state machines.** Each surface is a large default-export component with many file-local subcomponents and its own `useState` screen machine, e.g. the `Screen` union in `MobileBuyer.tsx`, or `PageKey` plus a desktop/390px view toggle in `CompanyWebsite.tsx`. Surfaces share no state. Continuity between them is only narrative, via matching hard-coded names and IDs.
 
 **Demo data is hard-coded per surface.** It lives in module constants (`ORDERS`/`PRODUCTS` in SellerConsole, `PRODUCTS`/`POSTS`/`REVIEWS` in SellerStorefront, `DELIVERY` in MobileCourier, `WORK_ITEMS` in OperatorConsole, `PRODUCT`/`PHOTOS` in MobileBuyer) and, mostly, in JSX string literals; money is usually a pre-formatted string ("ETB 2,994").
-- The canonical story: buyer Maya Tesfaye, seller Addis Atelier, Habesha Kemis ETB 2,800 + Courier Delivery ETB 180 + 0.5% Adulis surcharge ETB 14 = ETB 2,994 on Seller Order ADU-24091; courier Daniel K.; claim CLM-2041; moderation case MOD-1208 on Shoppable Post SHP-018.
+- The story the current code tells (not yet the approved dataset): buyer Maya Tesfaye, seller Addis Atelier, Habesha Kemis ETB 2,800 + Courier Delivery ETB 180 + 0.5% Adulis surcharge ETB 14 = ETB 2,994 on Seller Order ADU-24091; courier Daniel K.; claim CLM-2041; moderation case MOD-1208 on Shoppable Post SHP-018.
 - Each surface re-declares these entities, and the copies already conflict (IDs, statuses, buyers, totals). Search all of `src/` for an entity before changing it.
 
 **UI layers**
