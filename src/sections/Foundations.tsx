@@ -4,6 +4,7 @@
 ═══════════════════════════════════════════════ */
 
 import { useState } from 'react'
+import { ORDERS, PRODUCTS, REFERENCE_SAMPLES, SELLERS, SURFACE_DEFAULTS, formatClock12, formatEtb, orderStateAt, orderTotals, stateTime } from '../demo-data'
 
 export default function Foundations() {
   return (
@@ -280,6 +281,12 @@ function ColorTokens() {
    TYPOGRAPHY SCALE
 ═══════════════════════════════════════════════ */
 
+// Samples that name demo records read them from the canonical module (WO-001): the default Seller, Product and Order at
+// the 10:25 snapshot, and the reference sample Products.
+const SAMPLE_ORDER = SURFACE_DEFAULTS.order
+const SAMPLE_TOTAL = formatEtb(orderTotals(SAMPLE_ORDER).total)
+const BODY_PRODUCT = PRODUCTS[REFERENCE_SAMPLES.bodyProduct]
+
 const TYPE_SCALE = [
   {
     label: 'Display',
@@ -300,7 +307,7 @@ const TYPE_SCALE = [
     fontWeight: 600,
     lineHeight: 1.1,
     letterSpacing: '-0.015em',
-    sample: 'Addis Atelier',
+    sample: SELLERS[SURFACE_DEFAULTS.seller].name,
     usage: 'Page-level headings, Storefront name, major Console sections.',
   },
   {
@@ -311,7 +318,7 @@ const TYPE_SCALE = [
     fontWeight: 600,
     lineHeight: 1.2,
     letterSpacing: '-0.01em',
-    sample: 'Linen Overshirt',
+    sample: PRODUCTS[SURFACE_DEFAULTS.product].name,
     usage: 'Product names, section headings, card titles in Console.',
   },
   {
@@ -322,7 +329,7 @@ const TYPE_SCALE = [
     fontWeight: 600,
     lineHeight: 1.3,
     letterSpacing: '-0.005em',
-    sample: 'Order ADU-24091',
+    sample: `Order ${SAMPLE_ORDER}`,
     usage: 'Sub-section headings, group labels, sidebar section titles.',
   },
   {
@@ -333,7 +340,7 @@ const TYPE_SCALE = [
     fontWeight: 600,
     lineHeight: 1.4,
     letterSpacing: '0',
-    sample: 'Hydrating Face Cream',
+    sample: PRODUCTS[REFERENCE_SAMPLES.titleProduct].name,
     usage: 'Card titles, list item primary text, modal headings.',
   },
   {
@@ -355,7 +362,7 @@ const TYPE_SCALE = [
     fontWeight: 400,
     lineHeight: 1.6,
     letterSpacing: '0',
-    sample: 'Wide-Leg Trousers — comfortable, structured linen blend with a relaxed silhouette and tapered hem. Available in Natural, Slate, and Charcoal.',
+    sample: `${BODY_PRODUCT.name} — ${BODY_PRODUCT.description}`,
     usage: 'Default body copy, product descriptions, order detail text.',
   },
   {
@@ -366,7 +373,7 @@ const TYPE_SCALE = [
     fontWeight: 400,
     lineHeight: 1.55,
     letterSpacing: '0',
-    sample: 'Pickup confirmed — 2:14 PM · Courier is delivering your order',
+    sample: `Pickup confirmed — ${formatClock12(stateTime(SAMPLE_ORDER, 'Pickup Verified')!)} · Courier is delivering your order`,
     usage: 'Secondary copy, timestamps, compact list metadata.',
   },
   {
@@ -377,7 +384,7 @@ const TYPE_SCALE = [
     fontWeight: 600,
     lineHeight: 1.4,
     letterSpacing: '0.01em',
-    sample: 'Courier Delivery · ETB 180',
+    sample: `${ORDERS[SAMPLE_ORDER].fulfilment} · ${formatEtb(orderTotals(SAMPLE_ORDER).delivery)}`,
     usage: 'Form labels, badge text, navigation items, action labels.',
   },
   {
@@ -399,7 +406,7 @@ const TYPE_SCALE = [
     fontWeight: 500,
     lineHeight: 1.4,
     letterSpacing: '0.08em',
-    sample: 'ADU-24091 · PAID · ETB 2,642.25',
+    sample: `${SAMPLE_ORDER} · ${orderStateAt(SAMPLE_ORDER)!.toUpperCase()} · ${SAMPLE_TOTAL}`,
     usage: 'Order references, status badges, data labels, tokens, timestamps in console.',
   },
   {
@@ -410,7 +417,7 @@ const TYPE_SCALE = [
     fontWeight: 600,
     lineHeight: 1.2,
     letterSpacing: '-0.01em',
-    sample: 'ETB 2,642.25',
+    sample: SAMPLE_TOTAL,
     usage: 'Price emphasis on product pages, checkout totals, order summaries.',
   },
 ]
@@ -429,7 +436,7 @@ function TypographyScale() {
         {[
           { name: 'Fraunces', role: 'Display / Headings', tag: 'display', sample: 'Discover.', note: 'Optical-size variable serif. Warm, distinctive, premium.' },
           { name: 'Outfit', role: 'Body / UI', tag: 'body', sample: 'Adulis', note: 'Geometric sans. Clean, friendly, highly legible at small sizes.' },
-          { name: 'DM Mono', role: 'Data / Labels', tag: 'mono', sample: 'ADU-24091', note: 'Tabular mono. Orders, prices, statuses, references.' },
+          { name: 'DM Mono', role: 'Data / Labels', tag: 'mono', sample: SAMPLE_ORDER, note: 'Tabular mono. Orders, prices, statuses, references.' },
         ].map(f => (
           <div
             key={f.name}

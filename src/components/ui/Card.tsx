@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
 import { StatusBadge, TrustBadge, AvailabilityBadge, type TrustLevel } from './Badge'
+import { formatAmount } from '../../demo-data'
 
 /* ═══════════════════════════════════════════════
    COMMERCE CARDS — All Adulis card types
@@ -64,11 +65,12 @@ function StarRating({ rating, count }: { rating: number; count?: number }) {
 }
 
 /* ── Price display ── */
+// A number is an amount in birr, shown in the canonical ETB format whatever the browser locale.
 function Price({ amount, currency = 'ETB', size = 'md' }: { amount: number | string; currency?: string; size?: 'sm' | 'md' | 'lg' }) {
   const sizes = { sm: 13, md: 17, lg: 22 }
   return (
     <span style={{ fontFamily: 'var(--font-display)', fontSize: sizes[size], fontWeight: 600, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>
-      {currency} {typeof amount === 'number' ? amount.toLocaleString() : amount}
+      {currency} {typeof amount === 'number' ? formatAmount(Math.round(amount * 100)) : amount}
     </span>
   )
 }
@@ -206,7 +208,7 @@ export function SellerCard({ seller, onOpen }: { seller: SellerCardData; onOpen?
         {seller.bio && <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: '0 0 8px', lineHeight: 1.4 }}>{seller.bio}</p>}
         <div style={{ display: 'flex', gap: 12 }}>
           {seller.productCount !== undefined && (
-            <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}><strong style={{ color: 'var(--color-text-primary)' }}>{seller.productCount}</strong> products</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}><strong style={{ color: 'var(--color-text-primary)' }}>{seller.productCount}</strong> product{seller.productCount === 1 ? '' : 's'}</div>
           )}
           {seller.rating && <StarRating rating={seller.rating} />}
         </div>
@@ -275,7 +277,7 @@ export function CourierCard({ courier, onSelect, selected = false }: {
             <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--color-surface-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🚴</div>
             <div>
               <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>{courier.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{courier.deliveries} deliveries</div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{courier.deliveries} {courier.deliveries === 1 ? 'delivery' : 'deliveries'}</div>
             </div>
           </div>
           <StatusBadge status={courier.status} size="sm" showDot />

@@ -1,5 +1,12 @@
 import { useState } from 'react'
 import { AdulisLogo } from '../App'
+import { BUYERS, COURIERS, DEMO_CARTS, ORDERS, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName } from '../demo-data'
+
+// Demo personas and record names are read from the canonical module (WO-001).
+const BUYER_NAME = BUYERS[SURFACE_DEFAULTS.buyer].name
+const SELLER_NAME = SELLERS[SURFACE_DEFAULTS.seller].name
+const COURIER_NAME = COURIERS[SURFACE_DEFAULTS.courier].name
+const [CART_SELLER, SECOND_CART_SELLER] = DEMO_CARTS.map(order => SELLERS[ORDERS[order].seller].name)
 
 /* ═══════════════════════════════════════════════
    00 — PROTOTYPE GUIDE
@@ -289,7 +296,7 @@ const ACTORS = [
   {
     name: 'Buyer',
     emoji: '🛍️',
-    demo: 'Maya Tesfaye',
+    demo: BUYER_NAME,
     description: 'Discovers products through Shoppable Posts and the For You Page. Adds to cart, checks out via gateway payment, receives deliveries, reviews, and raises claims. The primary consumer of the Adulis mobile experience.',
     surfaces: ['Mobile — Buyer'],
     permissions: ['Browse', 'Cart & Checkout', 'Order management', 'Review', 'Claim', 'Chat'],
@@ -297,7 +304,7 @@ const ACTORS = [
   {
     name: 'Seller Owner',
     emoji: '🏷️',
-    demo: 'Addis Atelier / Nura Glow / Volt House',
+    demo: buyerVisibleSellers().map(id => SELLERS[id].name).join(' / '),
     description: 'Creates and manages product posts and shoppable content. Administers orders, fulfilment, couriers, insights, and store settings via Seller Console. Handles urgent operations via the Seller Companion mobile app.',
     surfaces: ['Seller Console', 'Mobile — Seller Companion', 'Seller Storefront'],
     permissions: ['Full console access', 'Product publishing', 'Order management', 'Courier pool', 'Insights', 'Settings'],
@@ -305,7 +312,7 @@ const ACTORS = [
   {
     name: 'Seller Team Member',
     emoji: '👤',
-    demo: 'Staff at Addis Atelier',
+    demo: `Staff at ${SELLER_NAME}`,
     description: 'Operates within the seller context under defined role permissions. May handle orders, inbox, content or operations depending on assigned permissions. Uses individual credentials — no shared passwords.',
     surfaces: ['Seller Console', 'Mobile — Seller Companion'],
     permissions: ['Role-scoped access', 'Individual credentials'],
@@ -313,7 +320,7 @@ const ACTORS = [
   {
     name: 'Courier',
     emoji: '🚴',
-    demo: 'Daniel K.',
+    demo: COURIER_NAME,
     description: 'An approved operational actor who delivers orders on behalf of sellers. Accepts delivery offers, scans seller pickup QR, displays delivery QR to buyer, and collects one-checkpoint location evidence. May be in multiple seller pools.',
     surfaces: ['Mobile — Courier'],
     permissions: ['Delivery offers', 'Pickup verification', 'Delivery verification', 'History'],
@@ -329,7 +336,7 @@ const ACTORS = [
   {
     name: 'Delegated Recipient',
     emoji: '🤝',
-    demo: 'Authorized by Maya Tesfaye',
+    demo: `Authorized by ${BUYER_NAME}`,
     description: 'A person authorized by the buyer to receive a specific order. Can scan the courier delivery QR to verify handoff. Does not gain order ownership, refund rights, claim ownership, review rights, or payment information.',
     surfaces: ['Mobile — Buyer (limited)'],
     permissions: ['Receive delivery on behalf of buyer'],
@@ -736,7 +743,7 @@ const DEMO_FLOWS = [
   {
     id: 'B',
     label: 'Social Entry',
-    path: 'External social link → Addis Atelier Storefront → Product → Open in Adulis → Native Product Detail',
+    path: `External social link → ${SELLER_NAME} Storefront → Product → Open in Adulis → Native Product Detail`,
     screens: 5,
     color: '#2D7A4F',
   },
@@ -750,7 +757,7 @@ const DEMO_FLOWS = [
   {
     id: 'D',
     label: 'Multi-Seller Cart',
-    path: 'Add Product from Addis Atelier + Product from Nura Glow → Two seller carts → Checkout coordinator → Separate seller orders',
+    path: `Add Product from ${CART_SELLER} + Product from ${SECOND_CART_SELLER} → Two seller carts → Checkout coordinator → Separate seller orders`,
     screens: 6,
     color: '#B87C20',
   },
@@ -764,14 +771,14 @@ const DEMO_FLOWS = [
   {
     id: 'F',
     label: 'Courier Pool',
-    path: 'Seller Console → Store → Couriers → Application → Daniel K. → Approve → Set Compensation',
+    path: `Seller Console → Store → Couriers → Application → ${COURIER_NAME} → Approve → Set Compensation`,
     screens: 6,
     color: '#1A1512',
   },
   {
     id: 'G',
     label: 'Fulfilment',
-    path: 'Paid Order → Seller Companion → Prepare → Assign Daniel → Mark Ready → Seller displays Pickup QR → Courier scans → Pickup Verified → checkpoint location → Courier delivers → Courier displays Delivery QR → Buyer scans → Delivery Verified → checkpoint → Completed',
+    path: `Paid Order → Seller Companion → Prepare → Assign ${firstName(COURIER_NAME)} → Mark Ready → Seller displays Pickup QR → Courier scans → Pickup Verified → checkpoint location → Courier delivers → Courier displays Delivery QR → Buyer scans → Delivery Verified → checkpoint → Completed`,
     screens: 14,
     color: '#2D7A4F',
     critical: true,
@@ -867,7 +874,7 @@ function DemoFlowsList() {
 const ROLE_ENTRIES = [
   {
     role: 'Buyer',
-    persona: 'Maya Tesfaye',
+    persona: BUYER_NAME,
     description: 'Browse For You, search, cart, checkout, orders, handoff, reviews, and claims.',
     section: '05-buyer' as const,
     icon: '🛍️',
@@ -877,7 +884,7 @@ const ROLE_ENTRIES = [
   },
   {
     role: 'Seller',
-    persona: 'Addis Atelier',
+    persona: SELLER_NAME,
     description: 'Seller Companion mobile — alerts, orders, inbox, and quick operations.',
     section: '06-seller-companion' as const,
     icon: '🔔',
@@ -887,7 +894,7 @@ const ROLE_ENTRIES = [
   },
   {
     role: 'Courier',
-    persona: 'Daniel K.',
+    persona: COURIER_NAME,
     description: 'Delivery assignments, pickup QR scanner, delivery QR display.',
     section: '07-courier' as const,
     icon: '🚴',
@@ -897,7 +904,7 @@ const ROLE_ENTRIES = [
   },
   {
     role: 'Seller Console',
-    persona: 'Addis Atelier — Full Admin',
+    persona: `${SELLER_NAME} — Full Admin`,
     description: 'Products, content, orders, inbox, insights, store, automation, and settings.',
     section: '08-seller-console' as const,
     icon: '⚙️',

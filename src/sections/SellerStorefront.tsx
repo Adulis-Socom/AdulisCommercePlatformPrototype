@@ -1,219 +1,103 @@
 import { useState } from 'react'
 import { AdulisLogo } from '../App'
+import { useStory } from '../StoryClock'
+import {
+  BUYERS, MARKET, ORDERS, PRODUCTS, REVIEWS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
+  describeFulfilment, formatClockShort, formatEtb, formatMonthShortYear, formatMonthYear, fulfilmentOptionsAt, initials,
+  isPubliclyEligibleAt, onAdulisSince, productQualityAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt,
+  sellerServiceAt, shortName, trustAt, trustLabel,
+  type Availability, type ProductId, type ShoppablePostId,
+} from '../demo-data'
 
 /* ─────────────────────────────────────
-   DATA
+   DATA — read from the canonical demo data (src/demo-data) at the story moment
 ───────────────────────────────────── */
-const SELLER = {
-  name: 'Addis Atelier',
-  handle: '@addisatelier',
-  category: 'Fashion',
-  bio: 'Handcrafted Ethiopian fashion, made to order in Addis Ababa. Every piece carries the craft of a master tailor.',
-  trustLevel: 'Established',
-  location: 'Bole, Addis Ababa',
-  fulfilment: 'Courier delivery within Addis Ababa · 1–3 business days',
-  productCount: 42,
-  postCount: 18,
-  avgRating: 4.9,
-  reviewCount: 214,
-  social: { instagram: 'addisatelier', tiktok: 'addisatelier' },
-}
-
-interface Product {
-  id: string
-  name: string
-  price: string
-  priceNum: number
-  availability: 'in-stock' | 'low-stock' | 'out-of-stock'
-  rating: number
-  reviewCount: number
-  imgBg: string
-  imgLabel: string
-  description: string
-  category: string
-  variants: { label: string; options: string[] }[]
-  attributes: { label: string; value: string }[]
-  hasDemo: boolean
-}
-
-const PRODUCTS: Product[] = [
-  {
-    id: 'p1',
-    name: 'Habesha Kemis — Classic White',
-    price: 'ETB 2,800',
-    priceNum: 2800,
-    availability: 'in-stock',
-    rating: 4.9,
-    reviewCount: 87,
-    imgBg: 'linear-gradient(135deg, #F5EBE0 0%, #E8D5BE 100%)',
-    imgLabel: 'HK',
-    description: 'A traditional Habesha Kemis in premium white Ethiopian cotton with hand-embroidered Tibeb borders at the collar, hem, and cuffs. Made to order in Addis Ababa.',
-    category: 'Traditional Wear',
-    variants: [
-      { label: 'Size', options: ['XS', 'S', 'M', 'L', 'XL', 'Custom'] },
-      { label: 'Border colour', options: ['Gold', 'Black', 'Silver', 'Red'] },
-    ],
-    attributes: [
-      { label: 'Material', value: '100% Ethiopian cotton' },
-      { label: 'Made in', value: 'Addis Ababa, Ethiopia' },
-      { label: 'Lead time', value: '5–7 business days' },
-      { label: 'Care', value: 'Hand wash cold, lay flat to dry' },
-    ],
-    hasDemo: true,
-  },
-  {
-    id: 'p2',
-    name: 'Tibeb Scarf — Gold Weave',
-    price: 'ETB 650',
-    priceNum: 650,
-    availability: 'in-stock',
-    rating: 4.8,
-    reviewCount: 56,
-    imgBg: 'linear-gradient(135deg, #F7E8C8 0%, #E8CC88 100%)',
-    imgLabel: 'TS',
-    description: 'A lightweight handwoven scarf featuring traditional Tibeb geometric patterns in gold and natural cotton. Versatile enough for everyday wear or formal occasions.',
-    category: 'Accessories',
-    variants: [
-      { label: 'Length', options: ['Standard (180cm)', 'Long (220cm)'] },
-      { label: 'Colour', options: ['Gold', 'Silver', 'Red & Gold', 'Black & Gold'] },
-    ],
-    attributes: [
-      { label: 'Material', value: 'Handwoven cotton blend' },
-      { label: 'Dimensions', value: '50cm × 180cm (standard)' },
-      { label: 'Made in', value: 'Addis Ababa, Ethiopia' },
-    ],
-    hasDemo: false,
-  },
-  {
-    id: 'p3',
-    name: 'Ethiopian Cotton Dress',
-    price: 'ETB 1,900',
-    priceNum: 1900,
-    availability: 'low-stock',
-    rating: 4.7,
-    reviewCount: 41,
-    imgBg: 'linear-gradient(135deg, #E8F0E8 0%, #C8DCC8 100%)',
-    imgLabel: 'EC',
-    description: 'A contemporary silhouette using traditional Ethiopian cotton fabric. Structured A-line cut with hand-stitched collar detail. Limited stock of this design.',
-    category: 'Dresses',
-    variants: [
-      { label: 'Size', options: ['XS', 'S', 'M', 'L', 'XL'] },
-    ],
-    attributes: [
-      { label: 'Material', value: 'Ethiopian cotton (natural dye)' },
-      { label: 'Stock', value: '3 remaining' },
-      { label: 'Made in', value: 'Addis Ababa, Ethiopia' },
-    ],
-    hasDemo: false,
-  },
-  {
-    id: 'p4',
-    name: 'Netela Wrap',
-    price: 'ETB 480',
-    priceNum: 480,
-    availability: 'in-stock',
-    rating: 5.0,
-    reviewCount: 30,
-    imgBg: 'linear-gradient(135deg, #F0EDE8 0%, #E0D8CC 100%)',
-    imgLabel: 'NW',
-    description: 'A lightweight Ethiopian Netela — a traditional shawl worn draped over the shoulder at ceremonies and everyday occasions. Pure cotton, naturally processed.',
-    category: 'Accessories',
-    variants: [
-      { label: 'Width', options: ['Narrow (70cm)', 'Standard (90cm)'] },
-    ],
-    attributes: [
-      { label: 'Material', value: 'Pure Ethiopian cotton' },
-      { label: 'Made in', value: 'Addis Ababa, Ethiopia' },
-    ],
-    hasDemo: false,
-  },
-  {
-    id: 'p5',
-    name: 'Gabi Blanket — Heritage Stripe',
-    price: 'ETB 1,200',
-    priceNum: 1200,
-    availability: 'in-stock',
-    rating: 4.8,
-    reviewCount: 22,
-    imgBg: 'linear-gradient(135deg, #EAE0F0 0%, #C8B8DC 100%)',
-    imgLabel: 'GB',
-    description: 'A thick handwoven Gabi blanket in the traditional heritage stripe pattern. Used throughout Ethiopian households for warmth and ceremony.',
-    category: 'Home & Living',
-    variants: [
-      { label: 'Size', options: ['Single', 'Double', 'Large Double'] },
-      { label: 'Pattern', options: ['Heritage Stripe', 'Solid Natural', 'Blue Stripe'] },
-    ],
-    attributes: [
-      { label: 'Material', value: 'Handwoven cotton' },
-      { label: 'Care', value: 'Dry clean or gentle hand wash' },
-    ],
-    hasDemo: false,
-  },
-  {
-    id: 'p6',
-    name: 'Habesha Ankle Boots',
-    price: 'ETB 3,200',
-    priceNum: 3200,
-    availability: 'out-of-stock',
-    rating: 4.6,
-    reviewCount: 18,
-    imgBg: 'linear-gradient(135deg, #E8E0D8 0%, #C8BEB4 100%)',
-    imgLabel: 'AB',
-    description: 'Hand-stitched Ethiopian leather ankle boots with traditional decorative embossing. Made by a master cobbler in the Merkato district.',
-    category: 'Footwear',
-    variants: [
-      { label: 'Size', options: ['36', '37', '38', '39', '40', '41', '42'] },
-    ],
-    attributes: [
-      { label: 'Material', value: 'Full-grain Ethiopian leather' },
-      { label: 'Made in', value: 'Addis Ababa, Ethiopia' },
-    ],
-    hasDemo: false,
-  },
+// Placeholder tile backgrounds, assigned by position. They depict no Product or post.
+const TILE_BACKGROUNDS = [
+  'linear-gradient(135deg, #F5EBE0 0%, #E8D5BE 100%)',
+  'linear-gradient(135deg, #F7E8C8 0%, #E8CC88 100%)',
+  'linear-gradient(135deg, #E8F0E8 0%, #C8DCC8 100%)',
+  'linear-gradient(135deg, #F0EDE8 0%, #E0D8CC 100%)',
+  'linear-gradient(135deg, #EAE0F0 0%, #C8B8DC 100%)',
+  'linear-gradient(135deg, #E8E0D8 0%, #C8BEB4 100%)',
+]
+const POST_BACKGROUNDS = [
+  'linear-gradient(135deg, #C2622D 0%, #943F1A 100%)',
+  'linear-gradient(135deg, #4A7C59 0%, #2D5940 100%)',
+  'linear-gradient(135deg, #7A5C3A 0%, #4A3420 100%)',
 ]
 
+interface Product {
+  id: ProductId
+  name: string
+  price: string
+  availability: Availability
+  quality: { average: number; ratings: number } | null | undefined
+  imgBg: string
+  imgLabel: string
+  description?: string
+  variants: { label: string; options: readonly string[] }[]
+  attributes: { label: string; value: string }[]
+}
+
 interface ShoppablePost {
-  id: string
+  id: ShoppablePostId
   imgBg: string
   caption: string
-  taggedProducts: string[] // product IDs
+  taggedProducts: ProductId[]
   hasHotspot: boolean
   zeroProduct: boolean
 }
 
-const POSTS: ShoppablePost[] = [
-  {
-    id: 'sp1',
-    imgBg: 'linear-gradient(135deg, #C2622D 0%, #943F1A 100%)',
-    caption: 'Spring styling at the Addis Ababa Botanical Garden 🌿 New collection, every piece made to order.',
-    taggedProducts: ['p1', 'p2'],
-    hasHotspot: true,
-    zeroProduct: false,
-  },
-  {
-    id: 'sp2',
-    imgBg: 'linear-gradient(135deg, #4A7C59 0%, #2D5940 100%)',
-    caption: 'The Netela Project — a three-week documentation of how one piece of Ethiopian cotton travels from loom to wearer.',
-    taggedProducts: [],
-    hasHotspot: false,
-    zeroProduct: true,
-  },
-  {
-    id: 'sp3',
-    imgBg: 'linear-gradient(135deg, #7A5C3A 0%, #4A3420 100%)',
-    caption: 'Heritage textures. The Gabi blanket in every Ethiopian home has a story. Here\'s ours. 🤎',
-    taggedProducts: ['p5'],
-    hasHotspot: true,
-    zeroProduct: false,
-  },
-]
+interface Review {
+  buyer: string
+  products: { id: ProductId; name: string; rating: number }[]
+  ss: number
+  date: string
+  text: string
+}
 
-const REVIEWS = [
-  { buyer: 'Maya T.', product: 'Habesha Kemis', pq: 5, ss: 5, date: 'Sep 2026', text: 'Absolutely stunning quality. The embroidery is even more beautiful in person. Arrived exactly as described — custom size was perfect.' },
-  { buyer: 'Tigist A.', product: 'Tibeb Scarf', pq: 5, ss: 4, date: 'Aug 2026', text: 'Beautiful scarf, the gold weave is gorgeous. Seller communication was excellent. Delivery took a day longer than expected but no complaints.' },
-  { buyer: 'Hana G.', product: 'Ethiopian Cotton Dress', pq: 4, ss: 5, date: 'Aug 2026', text: 'Great dress. The fabric quality is high. Seller was super responsive when I asked about sizing.' },
-  { buyer: 'Selamawit B.', product: 'Netela Wrap', pq: 5, ss: 5, date: 'Jul 2026', text: 'Perfect Netela. Exactly what I was looking for for our family ceremony. The courier was on time and the QR handoff was seamless.' },
-]
+// The Storefront's Seller, Products, published posts and Reviews at the current story moment.
+function useStorefront() {
+  const story = useStory()
+  const at = story.moment
+  const sellerId = story.seller ?? SURFACE_DEFAULTS.seller
+  const seller = SELLERS[sellerId]
+  const products: Product[] = sellerProductsAt(sellerId, at).map((id, index) => {
+    const p = PRODUCTS[id]
+    return {
+      id, name: p.name, price: formatEtb(p.price), availability: p.availability, quality: productQualityAt(id, at),
+      imgBg: TILE_BACKGROUNDS[index % TILE_BACKGROUNDS.length], imgLabel: initials(p.name), description: p.description,
+      // DEMO_DATA gives attributes without labels, and some variant groups without a name.
+      variants: p.variants.map(group => ({ label: group.name ?? '—', options: group.options })),
+      attributes: p.attributes.map(value => ({ label: '—', value })),
+    }
+  })
+  const posts: ShoppablePost[] = sellerPostsAt(sellerId, at).filter(id => isPubliclyEligibleAt(id, at)).map((id, index) => {
+    const post = SHOPPABLE_POSTS[id]
+    return { id, imgBg: POST_BACKGROUNDS[index % POST_BACKGROUNDS.length], caption: post.caption, taggedProducts: [...post.tags], hasHotspot: post.hotspots > 0, zeroProduct: post.tags.length === 0 }
+  })
+  const reviews: Review[] = reviewsAt({ seller: sellerId }, at).map(id => {
+    const review = REVIEWS[id]
+    const written = review.written
+    return {
+      buyer: shortName(BUYERS[ORDERS[review.order].buyer].name),
+      products: review.productQuality.map(q => ({ id: q.product, name: PRODUCTS[q.product].name, rating: q.rating })),
+      ss: review.sellerService,
+      date: formatMonthShortYear(typeof written === 'string' ? written : written.at),
+      text: review.text,
+    }
+  })
+  return {
+    story, sellerId, seller, products, posts, reviews,
+    trust: trustLabel(trustAt(sellerId, at)),
+    service: sellerServiceAt(sellerId, at),
+    completed: sellerCompletedOrdersAt(sellerId, at),
+    fulfilment: describeFulfilment(fulfilmentOptionsAt(sellerId, at)),
+    location: `${seller.area}, ${MARKET.city}`,
+    since: formatMonthYear(onAdulisSince(sellerId)),
+  }
+}
 
 /* ─────────────────────────────────────
    ROUTING TYPES
@@ -222,16 +106,19 @@ type TabKey = 'shop' | 'posts' | 'reviews' | 'about'
 type EntryMode = 'bio-link' | 'product-link' | 'shoppable-link'
 type Screen =
   | { type: 'storefront'; tab: TabKey }
-  | { type: 'product-detail'; productId: string }
-  | { type: 'post-detail'; postId: string }
+  | { type: 'product-detail'; productId: ProductId }
+  | { type: 'post-detail'; postId: ShoppablePostId }
   | { type: 'search' }
 
 /* ─────────────────────────────────────
    MAIN COMPONENT
 ───────────────────────────────────── */
 export default function SellerStorefront({ demoTarget }: { demoTarget?: string }) {
+  const { story, seller, products, posts } = useStorefront()
+  const linkedProduct = story.focus?.product ?? SURFACE_DEFAULTS.product
+  const linkedPost = story.focus?.post ?? SURFACE_DEFAULTS.post
   const initialEntry: EntryMode = demoTarget === 'product' ? 'product-link' : demoTarget === 'shoppable' ? 'shoppable-link' : 'bio-link'
-  const initialScreen: Screen = demoTarget === 'product' ? { type: 'product-detail', productId: 'p1' } : demoTarget === 'shoppable' ? { type: 'post-detail', postId: 'sp1' } : { type: 'storefront', tab: 'shop' }
+  const initialScreen: Screen = demoTarget === 'product' ? { type: 'product-detail', productId: linkedProduct } : demoTarget === 'shoppable' ? { type: 'post-detail', postId: linkedPost } : { type: 'storefront', tab: 'shop' }
   const [entryMode, setEntryMode] = useState<EntryMode>(initialEntry)
   const [screen, setScreen] = useState<Screen>(initialScreen)
   const [openInAdulisOverlay, setOpenInAdulisOverlay] = useState(false)
@@ -249,8 +136,8 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
     setEntryMode(mode)
     setOpenInAdulisOverlay(false)
     if (mode === 'bio-link') setScreen({ type: 'storefront', tab: 'shop' })
-    if (mode === 'product-link') setScreen({ type: 'product-detail', productId: 'p1' })
-    if (mode === 'shoppable-link') setScreen({ type: 'post-detail', postId: 'sp1' })
+    if (mode === 'product-link') setScreen({ type: 'product-detail', productId: linkedProduct })
+    if (mode === 'shoppable-link') setScreen({ type: 'post-detail', postId: linkedPost })
   }
 
   return (
@@ -284,11 +171,11 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
       <div className="storefront-stage" style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '32px 24px', background: 'var(--color-background)' }}>
         <div>
           <p style={{ textAlign: 'center', fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 12 }}>
-            Addis Atelier Storefront · 390px
+            {seller.name} Storefront · 390px
           </p>
           <div className="storefront-phone" style={{ width: 390, height: 844, borderRadius: 44, boxShadow: 'var(--shadow-xl), 0 0 0 1px var(--color-border-strong)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
             {/* status bar */}
-            <StatusBar />
+            <StatusBar clock={formatClockShort(story.moment.at)} />
 
             {/* content */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -302,14 +189,14 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
               )}
               {screen.type === 'product-detail' && (
                 <ProductDetailView
-                  product={PRODUCTS.find(p => p.id === screen.productId)!}
+                  product={products.find(p => p.id === screen.productId) ?? products[0]}
                   onBack={goBack}
                   onOpenAdulisApp={() => setOpenInAdulisOverlay(true)}
                 />
               )}
               {screen.type === 'post-detail' && (
                 <PostDetailView
-                  post={POSTS.find(p => p.id === screen.postId)!}
+                  post={posts.find(p => p.id === screen.postId) ?? posts[0]}
                   onBack={goBack}
                   navigate={navigate}
                   onOpenAdulisApp={() => setOpenInAdulisOverlay(true)}
@@ -334,10 +221,10 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
 /* ─────────────────────────────────────
    STATUS BAR
 ───────────────────────────────────── */
-function StatusBar() {
+function StatusBar({ clock }: { clock: string }) {
   return (
     <div style={{ height: 44, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0, background: 'var(--color-surface)' }}>
-      <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)' }}>9:41</span>
+      <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)' }}>{clock}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         <svg width="16" height="11" viewBox="0 0 16 11" fill="none"><rect x="0" y="7" width="3" height="4" rx="0.8" fill="var(--color-text-primary)"/><rect x="4.5" y="5" width="3" height="6" rx="0.8" fill="var(--color-text-primary)"/><rect x="9" y="2.5" width="3" height="8.5" rx="0.8" fill="var(--color-text-primary)"/><rect x="13.5" y="0" width="3" height="11" rx="0.8" fill="var(--color-text-primary)" opacity="0.3"/></svg>
         <svg width="15" height="11" viewBox="0 0 15 11" fill="none"><path d="M7.5 9a1 1 0 100-2 1 1 0 000 2z" fill="var(--color-text-primary)"/><path d="M4.3 6.2a4.5 4.5 0 016.4 0" stroke="var(--color-text-primary)" strokeWidth="1.4" strokeLinecap="round"/><path d="M1.6 3.8a8.2 8.2 0 0111.8 0" stroke="var(--color-text-primary)" strokeWidth="1.4" strokeLinecap="round" opacity="0.4"/></svg>
@@ -387,20 +274,21 @@ function StorefrontView({ tab, setTab, navigate, onOpenAdulisApp }: {
 
 function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void; onOpenAdulisApp: () => void }) {
   const [shareShown, setShareShown] = useState(false)
+  const { seller, trust, products, posts, service } = useStorefront()
   return (
     <div style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)', padding: '14px 18px 12px', flexShrink: 0 }}>
       {/* top row: identity + actions */}
       <div className="storefront-identity-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
         <div className="storefront-identity" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <div style={{ width: 54, height: 54, borderRadius: 16, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, color: 'var(--color-brand)', flexShrink: 0 }}>
-            AA
+            {initials(seller.name)}
           </div>
           <div>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16, color: 'var(--color-text-primary)', margin: 0, lineHeight: 1.2 }}>Addis Atelier</h1>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16, color: 'var(--color-text-primary)', margin: 0, lineHeight: 1.2 }}>{seller.name}</h1>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
-              <TrustBadge level="Established" />
+              <TrustBadge level={trust} />
             </div>
-            <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '2px 0 0' }}>@addisatelier · Fashion</p>
+            <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '2px 0 0' }}>{seller.handle} · {seller.category}</p>
           </div>
         </div>
 
@@ -426,21 +314,22 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
       </div>
 
       {/* share tooltip */}
+      {/* Storefront share links use the handle only (no Storefront domain is approved). */}
       {shareShown && (
-        <ShareSheet onClose={() => setShareShown(false)} url="adulis.com/store/addisatelier" />
+        <ShareSheet onClose={() => setShareShown(false)} url={seller.handle} />
       )}
 
       {/* bio */}
       <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '10px 0 0', lineHeight: 1.55 }}>
-        {SELLER.bio}
+        {seller.bio ?? '—'}
       </p>
 
       {/* stats */}
       <div style={{ display: 'flex', gap: 20, marginTop: 10 }}>
         {[
-          { value: '42', label: 'Products' },
-          { value: '18', label: 'Posts' },
-          { value: '4.9 ★', label: `${SELLER.reviewCount} reviews` },
+          { value: String(products.length), label: 'Products' },
+          { value: String(posts.length), label: 'Posts' },
+          { value: service ? `${service.average} ★` : '—', label: service ? `${service.ratings} review${service.ratings === 1 ? '' : 's'}` : '— reviews' },
         ].map(s => (
           <div key={s.label} style={{ textAlign: 'center' }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{s.value}</p>
@@ -456,9 +345,10 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
    SHOP TAB
 ───────────────────────────────────── */
 function ShopTab({ navigate }: { navigate: (s: Screen) => void }) {
+  const { products } = useStorefront()
   return (
     <div style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      {PRODUCTS.map(p => (
+      {products.map(p => (
         <button
           key={p.id}
           onClick={() => navigate({ type: 'product-detail', productId: p.id })}
@@ -467,7 +357,7 @@ function ShopTab({ navigate }: { navigate: (s: Screen) => void }) {
           {/* image */}
           <div style={{ height: 130, background: p.imgBg, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{p.imgLabel}</span>
-            {p.availability === 'out-of-stock' && (
+            {p.availability === 'Out of Stock' && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', background: 'white', padding: '3px 8px', borderRadius: 999 }}>Out of Stock</span>
               </div>
@@ -479,7 +369,7 @@ function ShopTab({ navigate }: { navigate: (s: Screen) => void }) {
             <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-brand)', margin: '0 0 5px' }}>{p.price}</p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <AvailBadge avail={p.availability} />
-              <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>★ {p.rating}</span>
+              <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>★ {qualityText(p.quality)}</span>
             </div>
           </div>
         </button>
@@ -492,9 +382,10 @@ function ShopTab({ navigate }: { navigate: (s: Screen) => void }) {
    POSTS TAB
 ───────────────────────────────────── */
 function PostsTab({ navigate }: { navigate: (s: Screen) => void }) {
+  const { posts } = useStorefront()
   return (
     <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {POSTS.map(post => (
+      {posts.map(post => (
         <button
           key={post.id}
           onClick={() => navigate({ type: 'post-detail', postId: post.id })}
@@ -509,7 +400,7 @@ function PostsTab({ navigate }: { navigate: (s: Screen) => void }) {
                 </span>
               ) : (
                 <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', background: 'var(--color-brand)', color: '#fff', padding: '3px 8px', borderRadius: 999, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
-                  {post.taggedProducts.length} products tagged
+                  {post.taggedProducts.length} product{post.taggedProducts.length === 1 ? '' : 's'} tagged
                 </span>
               )}
             </div>
@@ -534,8 +425,9 @@ function PostsTab({ navigate }: { navigate: (s: Screen) => void }) {
    REVIEWS TAB
 ───────────────────────────────────── */
 function ReviewsTab() {
-  const avgPQ = (REVIEWS.reduce((a, r) => a + r.pq, 0) / REVIEWS.length).toFixed(1)
-  const avgSS = (REVIEWS.reduce((a, r) => a + r.ss, 0) / REVIEWS.length).toFixed(1)
+  // The summary shows the approved aggregates, never an average of the visible reviews. DEMO_DATA defines Seller
+  // Service for each Seller and Product Quality for each Product only, so the Seller-level Product Quality is undefined.
+  const { reviews, service } = useStorefront()
 
   return (
     <div style={{ padding: '16px 16px 24px' }}>
@@ -543,21 +435,20 @@ function ReviewsTab() {
       <div style={{ background: 'var(--color-surface-raised)', borderRadius: 14, padding: 14, marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid var(--color-border)' }}>
         <div style={{ textAlign: 'center', padding: '8px 0', borderRight: '1px solid var(--color-border)' }}>
           <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 4px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)' }}>Product Quality</p>
-          <p style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px', fontFamily: 'var(--font-display)' }}>{avgPQ}</p>
-          <StarRow rating={parseFloat(avgPQ)} />
+          <p style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px', fontFamily: 'var(--font-display)' }}>—</p>
         </div>
         <div style={{ textAlign: 'center', padding: '8px 0' }}>
           <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 4px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)' }}>Seller Service</p>
-          <p style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px', fontFamily: 'var(--font-display)' }}>{avgSS}</p>
-          <StarRow rating={parseFloat(avgSS)} />
+          <p style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px', fontFamily: 'var(--font-display)' }}>{service ? service.average : '—'}</p>
+          {service && <StarRow rating={service.average} />}
         </div>
       </div>
       <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 14px', fontFamily: 'var(--font-mono)' }}>
-        {SELLER.reviewCount} verified buyer reviews
+        {service ? service.ratings : '—'} verified buyer reviews
       </p>
 
-      {REVIEWS.map((r, i) => (
-        <div key={i} style={{ paddingBottom: 16, marginBottom: 16, borderBottom: i < REVIEWS.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
+      {reviews.map((r, i) => (
+        <div key={i} style={{ paddingBottom: 16, marginBottom: 16, borderBottom: i < reviews.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--color-brand)' }}>
@@ -565,7 +456,7 @@ function ReviewsTab() {
               </div>
               <div>
                 <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{r.buyer}</p>
-                <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>{r.product}</p>
+                <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>{r.products.map(p => p.name).join(' · ')}</p>
               </div>
             </div>
             <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>{r.date}</span>
@@ -574,7 +465,7 @@ function ReviewsTab() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
             <div style={{ background: 'var(--color-surface-raised)', borderRadius: 8, padding: '5px 8px' }}>
               <p style={{ fontSize: 9, color: 'var(--color-text-muted)', margin: '0 0 2px', fontWeight: 600, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Product Quality</p>
-              <div style={{ display: 'flex', gap: 2 }}>{Array.from({ length: 5 }).map((_, j) => <span key={j} style={{ fontSize: 10, color: j < r.pq ? '#E8874A' : 'var(--color-border-strong)' }}>★</span>)}</div>
+              <div style={{ display: 'flex', gap: 2 }}>{Array.from({ length: 5 }).map((_, j) => <span key={j} style={{ fontSize: 10, color: j < r.products[0].rating ? '#E8874A' : 'var(--color-border-strong)' }}>★</span>)}</div>
             </div>
             <div style={{ background: 'var(--color-surface-raised)', borderRadius: 8, padding: '5px 8px' }}>
               <p style={{ fontSize: 9, color: 'var(--color-text-muted)', margin: '0 0 2px', fontWeight: 600, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Seller Service</p>
@@ -592,23 +483,25 @@ function ReviewsTab() {
    ABOUT TAB
 ───────────────────────────────────── */
 function AboutTab({ onOpenAdulisApp }: { onOpenAdulisApp: () => void }) {
+  const { seller, trust, service, completed, fulfilment, location, since } = useStorefront()
   return (
     <div style={{ padding: '16px 16px 32px' }}>
       {/* Trust card */}
       <div style={{ background: 'var(--color-success-bg)', borderRadius: 14, padding: 14, marginBottom: 14, border: '1px solid #c8e6d4' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1L2 4v5c0 4 3 6.5 6 7.5 3-1 6-3.5 6-7.5V4L8 1z" fill="var(--color-success)"/></svg>
-          <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-success)' }}>Established Seller</span>
+          <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-success)' }}>{trust} Seller</span>
         </div>
         <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '0 0 10px', lineHeight: 1.55 }}>
           Trust level earned through consistent fulfilment, verified buyer reviews, and a clean claims record. Updated by Adulis based on seller performance.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {/* DEMO_DATA defines no Seller-level Product Quality and no claim rate. */}
           {[
-            { label: 'Avg Product Quality', value: '4.9 ★' },
-            { label: 'Avg Seller Service', value: '4.8 ★' },
-            { label: 'Orders Fulfilled', value: '200+' },
-            { label: 'Claim Rate', value: '< 1%' },
+            { label: 'Avg Product Quality', value: '—' },
+            { label: 'Avg Seller Service', value: service ? `${service.average} ★` : '—' },
+            { label: 'Orders Fulfilled', value: completed === undefined ? '—' : String(completed) },
+            { label: 'Claim Rate', value: '—' },
           ].map(s => (
             <div key={s.label} style={{ background: 'rgba(255,255,255,0.65)', borderRadius: 8, padding: '7px 9px' }}>
               <p style={{ fontSize: 9, color: 'var(--color-text-muted)', margin: '0 0 2px', fontWeight: 600, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>{s.label}</p>
@@ -620,10 +513,10 @@ function AboutTab({ onOpenAdulisApp }: { onOpenAdulisApp: () => void }) {
 
       {/* Info rows */}
       {[
-        { label: 'Category', value: SELLER.category },
-        { label: 'Location', value: SELLER.location },
-        { label: 'Fulfilment', value: SELLER.fulfilment },
-        { label: 'Member since', value: 'January 2026' },
+        { label: 'Category', value: seller.category },
+        { label: 'Location', value: location },
+        { label: 'Fulfilment', value: fulfilment },
+        { label: 'Member since', value: since },
       ].map(row => (
         <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--color-border)', gap: 12 }}>
           <span style={{ fontSize: 12, color: 'var(--color-text-muted)', flexShrink: 0 }}>{row.label}</span>
@@ -634,7 +527,7 @@ function AboutTab({ onOpenAdulisApp }: { onOpenAdulisApp: () => void }) {
       {/* Social */}
       <div style={{ marginTop: 16, marginBottom: 16 }}>
         <p style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)', margin: '0 0 8px' }}>Social</p>
-        {[{ icon: '📸', label: 'Instagram', handle: '@addisatelier' }, { icon: '🎵', label: 'TikTok', handle: '@addisatelier' }].map(s => (
+        {(seller.socialAccounts ?? []).map(label => ({ icon: label === 'Instagram' ? '📸' : '🎵', label, handle: seller.handle })).map(s => (
           <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--color-border)' }}>
             <span style={{ fontSize: 16 }}>{s.icon}</span>
             <div>
@@ -666,16 +559,17 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
   onOpenAdulisApp: () => void
 }) {
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({})
-  const [demoShown, setDemoShown] = useState(false)
   const [shareShown, setShareShown] = useState(false)
-  const productReviews = REVIEWS.filter(review => product.name.includes(review.product))
+  const { seller, trust, reviews, fulfilment } = useStorefront()
+  // Reviews are matched to this Product by identifier.
+  const productReviews = reviews.filter(review => review.products.some(p => p.id === product.id))
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)', flexShrink: 0 }}>
         <button onClick={onBack} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary)', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600 }}>
-          <IcoBack /> Addis Atelier
+          <IcoBack /> {seller.name}
         </button>
         <div style={{ flex: 1 }} />
         <CircleBtn label="Share" onClick={() => setShareShown(true)}>
@@ -694,43 +588,15 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
           </div>
         </div>
 
-        {/* Watch Product Demo — click to load */}
-        {product.hasDemo && !demoShown && (
-          <button
-            onClick={() => setDemoShown(true)}
-            style={{ width: '100%', background: 'var(--color-surface-raised)', border: 'none', borderBottom: '1px solid var(--color-border)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
-          >
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: 16 }}>▶️</span>
-            </div>
-            <div style={{ textAlign: 'left' }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>Watch Product Demo</p>
-              <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>Tap to load · 2 min</p>
-            </div>
-          </button>
-        )}
-        {demoShown && (
-          <div style={{ background: '#111', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--color-border)' }}>
-            <div style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.1)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: 16, color: '#fff' }}>⏸</span>
-            </div>
-            <div>
-              <p style={{ fontSize: 12, fontWeight: 700, color: '#fff', margin: 0 }}>Product Demo Playing</p>
-              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', margin: 0 }}>1:24 remaining</p>
-            </div>
-          </div>
-        )}
-
-        {/* main info */}
+        {/* main info — DEMO_DATA records no product demo videos and no Product categories, so neither is shown. */}
         <div style={{ padding: '16px 16px 0' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: 11, color: 'var(--color-brand)', margin: '0 0 2px', fontFamily: 'var(--font-mono)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{product.category}</p>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 6px', lineHeight: 1.2 }}>{product.name}</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <p style={{ fontSize: 20, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-brand)', margin: 0 }}>{product.price}</p>
-                <StarRow rating={product.rating} small />
-                <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>({product.reviewCount})</span>
+                {product.quality && <StarRow rating={product.quality.average} small />}
+                <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>({product.quality ? product.quality.ratings : qualityText(product.quality)})</span>
               </div>
             </div>
             <AvailBadge avail={product.availability} />
@@ -738,12 +604,12 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
 
           {/* Seller trust row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, padding: '10px 12px', background: 'var(--color-surface-raised)', borderRadius: 10 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--color-brand)' }}>AA</div>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--color-brand)' }}>{initials(seller.name)}</div>
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>Addis Atelier</p>
-              <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>@addisatelier</p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{seller.name}</p>
+              <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>{seller.handle}</p>
             </div>
-            <TrustBadge level="Established" small />
+            <TrustBadge level={trust} small />
           </div>
         </div>
 
@@ -773,14 +639,14 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
         {/* description */}
         <div style={{ padding: '14px 16px 0' }}>
           <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', margin: '0 0 6px' }}>Description</p>
-          <p style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>{product.description}</p>
+          <p style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>{product.description ?? '—'}</p>
         </div>
 
         {/* attributes */}
         <div style={{ padding: '14px 16px 0' }}>
           <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', margin: '0 0 8px' }}>Details</p>
           {product.attributes.map(a => (
-            <div key={a.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--color-border)' }}>
+            <div key={a.value} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--color-border)' }}>
               <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{a.label}</span>
               <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right', maxWidth: '60%' }}>{a.value}</span>
             </div>
@@ -791,7 +657,7 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
         <div style={{ padding: '14px 16px 0' }}>
           <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', margin: '0 0 8px' }}>Fulfilment</p>
           <div style={{ background: 'var(--color-surface-raised)', borderRadius: 10, padding: '10px 12px' }}>
-            <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>🚴 {SELLER.fulfilment}</p>
+            <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>🚴 {fulfilment}</p>
             <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>QR-verified pickup and delivery · Adulis Handoff system</p>
           </div>
         </div>
@@ -801,7 +667,7 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', margin: 0 }}>Reviews</p>
             <div style={{ display: 'flex', gap: 10 }}>
-              <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>PQ: <strong>★ {product.rating}</strong></span>
+              <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>PQ: <strong>★ {qualityText(product.quality)}</strong></span>
             </div>
           </div>
           {productReviews.slice(0, 2).map((r, i) => (
@@ -826,7 +692,7 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
 
       {/* sticky bottom CTA */}
       <div style={{ padding: '12px 16px', background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', flexShrink: 0 }}>
-        {product.availability === 'out-of-stock' ? (
+        {product.availability === 'Out of Stock' ? (
           <button disabled style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-border)', color: 'var(--color-text-muted)', border: 'none', fontWeight: 700, fontSize: 15 }}>
             Out of Stock
           </button>
@@ -843,7 +709,8 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
           No checkout on the web storefront · Orders placed in the Adulis app
         </p>
       </div>
-      {shareShown && <ShareSheet onClose={() => setShareShown(false)} url={`adulis.com/store/addisatelier/products/${product.id}`} />}
+      {/* DEMO_DATA approves no share link for a Product: the sheet omits the link row. */}
+      {shareShown && <ShareSheet onClose={() => setShareShown(false)} />}
     </div>
   )
 }
@@ -857,9 +724,11 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
   navigate: (s: Screen) => void
   onOpenAdulisApp: () => void
 }) {
-  const [hotspotActive, setHotspotActive] = useState<string | null>(null)
+  const [hotspotActive, setHotspotActive] = useState<ProductId | null>(null)
   const [shareShown, setShareShown] = useState(false)
-  const taggedProducts = PRODUCTS.filter(p => post.taggedProducts.includes(p.id))
+  const { seller, trust, products } = useStorefront()
+  const taggedProducts = products.filter(p => post.taggedProducts.includes(p.id))
+  const hotspotProduct = products.find(p => p.id === hotspotActive)
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -905,15 +774,15 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
               onClick={() => navigate({ type: 'product-detail', productId: hotspotActive })}
               style={{ position: 'absolute', top: '28%', right: '5%', background: 'rgba(255,255,255,0.97)', borderRadius: 12, padding: '10px 12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, boxShadow: 'var(--shadow-md)', width: 160 }}
             >
-              <div style={{ width: 36, height: 36, borderRadius: 8, background: PRODUCTS.find(p => p.id === hotspotActive)?.imgBg || 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{PRODUCTS.find(p => p.id === hotspotActive)?.imgLabel}</span>
+              <div style={{ width: 36, height: 36, borderRadius: 8, background: hotspotProduct?.imgBg || 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{hotspotProduct?.imgLabel}</span>
               </div>
               <div style={{ textAlign: 'left', flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {PRODUCTS.find(p => p.id === hotspotActive)?.name}
+                  {hotspotProduct?.name}
                 </p>
                 <p style={{ fontSize: 10, color: 'var(--color-brand)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
-                  {PRODUCTS.find(p => p.id === hotspotActive)?.price}
+                  {hotspotProduct?.price}
                 </p>
               </div>
             </button>
@@ -922,12 +791,12 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
 
         {/* seller row */}
         <div style={{ padding: '12px 16px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--color-brand)', flexShrink: 0 }}>AA</div>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--color-brand)', flexShrink: 0 }}>{initials(seller.name)}</div>
           <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>Addis Atelier</p>
-            <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>@addisatelier</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{seller.name}</p>
+            <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>{seller.handle}</p>
           </div>
-          <TrustBadge level="Established" small />
+          <TrustBadge level={trust} small />
         </div>
 
         {/* caption */}
@@ -985,7 +854,8 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
           Open in Adulis
         </button>
       </div>
-      {shareShown && <ShareSheet onClose={() => setShareShown(false)} url={`adulis.com/store/addisatelier/posts/${post.id}`} />}
+      {/* DEMO_DATA approves no share link for a Shoppable Post: the sheet omits the link row. */}
+      {shareShown && <ShareSheet onClose={() => setShareShown(false)} />}
     </div>
   )
 }
@@ -995,8 +865,11 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
 ───────────────────────────────────── */
 function SearchView({ onBack, navigate }: { onBack: () => void; navigate: (s: Screen) => void }) {
   const [query, setQuery] = useState('')
+  const { seller, products } = useStorefront()
+  // The same name and category search as before; DEMO_DATA gives Products no category, so names alone match.
+  const categories: string[] = []
   const results = query.length >= 2
-    ? PRODUCTS.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.category.toLowerCase().includes(query.toLowerCase()))
+    ? products.filter(p => p.name.toLowerCase().includes(query.toLowerCase()))
     : []
 
   return (
@@ -1013,17 +886,17 @@ function SearchView({ onBack, navigate }: { onBack: () => void; navigate: (s: Sc
             aria-label="Search this storefront"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search Addis Atelier…"
+            placeholder={`Search ${seller.name}…`}
             style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: 'var(--color-text-primary)', flex: 1 }}
           />
         </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {query.length === 0 && (
+        {query.length === 0 && categories.length > 0 && (
           <div style={{ padding: '20px 16px' }}>
             <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', margin: '0 0 10px' }}>Categories</p>
-            {['Traditional Wear', 'Accessories', 'Dresses', 'Home & Living', 'Footwear'].map(c => (
+            {categories.map(c => (
               <button
                 key={c}
                 onClick={() => setQuery(c)}
@@ -1127,13 +1000,14 @@ function OpenInAdulisSheet({ onClose }: { onClose: () => void }) {
 /* ─────────────────────────────────────
    SHARE SHEET
 ───────────────────────────────────── */
-function ShareSheet({ onClose, url }: { onClose: () => void; url: string }) {
+function ShareSheet({ onClose, url }: { onClose: () => void; url?: string }) {
   const [copied, setCopied] = useState(false)
+  const { seller } = useStorefront()
   return (
     <div role="dialog" aria-modal="true" aria-label="Share storefront" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, background: 'rgba(26,21,18,0.4)', zIndex: 40, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
       <div style={{ background: 'var(--color-surface)', borderRadius: '24px 24px 0 0', padding: '20px 18px 36px' }}>
         <div style={{ width: 36, height: 4, background: 'var(--color-border-strong)', borderRadius: 999, margin: '0 auto 18px' }} />
-        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 14px' }}>Share Addis Atelier</p>
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 14px' }}>Share {seller.name}</p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {[{ icon: '💬', label: 'Message' }, { icon: '📸', label: 'Instagram' }, { icon: '🎵', label: 'TikTok' }, { icon: '📋', label: 'Copy Link' }].map(s => (
             <button
@@ -1146,9 +1020,11 @@ function ShareSheet({ onClose, url }: { onClose: () => void; url: string }) {
             </button>
           ))}
         </div>
-        <div style={{ background: 'var(--color-surface-raised)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <span style={{ fontSize: 12, color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{url}</span>
-        </div>
+        {url && (
+          <div style={{ background: 'var(--color-surface-raised)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span style={{ fontSize: 12, color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{url}</span>
+          </div>
+        )}
         <button onClick={onClose} style={{ width: '100%', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 12, padding: '12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
           Close
         </button>
@@ -1171,18 +1047,23 @@ function TrustBadge({ level, small }: { level: string; small?: boolean }) {
   )
 }
 
-function AvailBadge({ avail }: { avail: Product['availability'] }) {
-  const map = {
-    'in-stock':    { label: 'In Stock',    bg: 'var(--color-success-bg)',  color: 'var(--color-success)' },
-    'low-stock':   { label: 'Low Stock',   bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)' },
-    'out-of-stock':{ label: 'Out of Stock',bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)' },
+function AvailBadge({ avail }: { avail: Availability }) {
+  const map: Record<Availability, { bg: string; color: string }> = {
+    'Available':    { bg: 'var(--color-success-bg)',  color: 'var(--color-success)' },
+    'Low Stock':    { bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)' },
+    'Out of Stock': { bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)' },
   }
   const s = map[avail]
   return (
     <span style={{ fontSize: 9, fontWeight: 700, background: s.bg, color: s.color, padding: '2px 6px', borderRadius: 999, whiteSpace: 'nowrap' }}>
-      {s.label}
+      {avail}
     </span>
   )
+}
+
+/** A Product Quality average; 'No ratings yet' when DEMO_DATA says so, '—' when it records none. */
+function qualityText(quality: Product['quality']) {
+  return quality ? String(quality.average) : quality === null ? 'No ratings yet' : '—'
 }
 
 function StarRow({ rating, small }: { rating: number; small?: boolean }) {

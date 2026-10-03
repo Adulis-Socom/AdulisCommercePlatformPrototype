@@ -6,6 +6,15 @@ import {
   IconActivity, IconGlobe, IconSearch, IconOrders, IconCheck,
 } from './ShellHelpers'
 import { AdulisLogo } from '../App'
+import { useStory } from '../StoryClock'
+import {
+  AUDIT_LOG, BUYERS, CLAIMS, CLAIM_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DECISIONS, HANDOFF_REVIEWS, MARKET, MODERATION_CASES, ORDERS,
+  ORDER_IDS, OPERATORS, PRODUCTS, SELLERS, SELLER_IDS, SHOPPABLE_POSTS, SHOPPABLE_POST_IDS, STAFF, SUPPORT_CASES, TRUST_APPEALS, VERIFICATION_CASES,
+  claimStateAt, claimSubmitted, formatAge, formatClock, formatDate, formatDayMonth, formatEtb, formatMonthShortYear, happenedBefore,
+  isForYouEligibleAt, isPubliclyEligibleAt, lineOptions, messagesAt, minutesBetween, orderStateAt, orderTotals, paidAt, paymentReference,
+  restrictionAt, shortName, stateTime, trustAt, trustLabel,
+  type ClaimId, type HandoffReviewId, type ModerationId, type Moment, type SupportId, type Timestamp, type TrustAppealId, type VerificationId,
+} from '../demo-data'
 
 type NavKey =
   | 'overview'
@@ -24,13 +33,13 @@ const NAV_STRUCTURE: { group?: string; items: NavItem[] }[] = [
   {
     group: 'WORK QUEUES',
     items: [
-      { key: 'work-queue', label: 'Unified Work Queue', icon: <IconActivity size={14} />, badge: 31 },
-      { key: 'wq-support', label: 'Support', icon: <IconOrders size={14} />, badge: 12 },
-      { key: 'wq-moderation', label: 'Moderation', icon: <IconFlag size={14} />, badge: 5 },
-      { key: 'wq-claims', label: 'Claims', icon: <IconClipboard size={14} />, badge: 8 },
-      { key: 'wq-verification', label: 'Verification / Recovery', icon: <IconKey size={14} />, badge: 3 },
-      { key: 'wq-trust-appeals', label: 'Trust Appeals', icon: <IconShield size={14} />, badge: 2 },
-      { key: 'wq-handoff', label: 'Manual Handoff', icon: <IconCheck size={14} />, badge: 1 },
+      { key: 'work-queue', label: 'Unified Work Queue', icon: <IconActivity size={14} /> },
+      { key: 'wq-support', label: 'Support', icon: <IconOrders size={14} /> },
+      { key: 'wq-moderation', label: 'Moderation', icon: <IconFlag size={14} /> },
+      { key: 'wq-claims', label: 'Claims', icon: <IconClipboard size={14} /> },
+      { key: 'wq-verification', label: 'Verification / Recovery', icon: <IconKey size={14} /> },
+      { key: 'wq-trust-appeals', label: 'Trust Appeals', icon: <IconShield size={14} /> },
+      { key: 'wq-handoff', label: 'Manual Handoff', icon: <IconCheck size={14} /> },
     ],
   },
   {
@@ -46,7 +55,7 @@ const NAV_STRUCTURE: { group?: string; items: NavItem[] }[] = [
     items: [
       { key: 'gov-config', label: 'Configuration', icon: <IconGlobe size={14} /> },
       { key: 'gov-access', label: 'Operator Access', icon: <IconKey size={14} /> },
-      { key: 'gov-approvals', label: 'Founder Decisions', icon: <IconCheck size={14} />, badge: 4 },
+      { key: 'gov-approvals', label: 'Founder Decisions', icon: <IconCheck size={14} /> },
       { key: 'gov-audit', label: 'Audit', icon: <IconClipboard size={14} /> },
       { key: 'gov-health', label: 'System Health', icon: <IconActivity size={14} /> },
     ],
@@ -62,21 +71,82 @@ const TEXT = 'var(--color-operator-text)'
 const MUTED = 'var(--color-operator-muted)'
 const ACCENT = 'var(--color-operator-accent)'
 
-const WORK_ITEMS = [
-  { priority: 'P0', queue: 'Claims', caseRef: 'CLM-2041', subject: 'Item not as described · ADU-24086', market: 'ET-ADD', age: '22h', assigned: 'Unassigned', state: 'Evidence Review' },
-  { priority: 'P0', queue: 'Manual Handoff', caseRef: 'HND-0184', subject: 'Delivery evidence conflict · ADU-24083', market: 'ET-ADD', age: '1h', assigned: 'Sara O.', state: 'Manual Review' },
-  { priority: 'P1', queue: 'Support', caseRef: 'SUP-4812', subject: 'Order status assistance · ADU-24091', market: 'ET-ADD', age: '14h', assigned: 'Unassigned', state: 'Open' },
-  { priority: 'P1', queue: 'Verification / Recovery', caseRef: 'VFY-0831', subject: 'Seller account recovery · @nura-glow', market: 'ET-ADD', age: '3h', assigned: 'Mikael T.', state: 'Identity Check' },
-  { priority: 'P1', queue: 'Moderation', caseRef: 'MOD-1208', subject: 'Reported Shoppable Post · SHP-018', market: 'ET-ADD', age: '6h', assigned: 'Unassigned', state: 'Policy Review' },
-  { priority: 'P2', queue: 'Trust Appeals', caseRef: 'TRU-0092', subject: 'Seller Trust appeal · @buna-lane', market: 'ET-ADD', age: '8h', assigned: 'Ruth K.', state: 'Appeal Review' },
-  { priority: 'P2', queue: 'Support', caseRef: 'SUP-4801', subject: 'Account notification issue · ACC-4821', market: 'ET-ADD', age: '9h', assigned: 'You', state: 'Investigating' },
-]
+const keys = <T extends string>(record: Readonly<Record<T, unknown>>) => Object.keys(record) as T[]
+
+interface WorkItem {
+  priority: string
+  queue: Exclude<QueueFilter, 'All'>
+  caseRef: string
+  subject: string
+  market: string
+  age: string
+  /** Whole minutes the case has been open, for the age filter. */
+  minutes: number
+  assigned: string
+  state: string
+}
+
+/**
+ * The open Operator work at the story moment (DEMO_DATA › Operator queues at 10:25, and the cases' later events), in
+ * DEMO_DATA's queue order. DEMO_DATA gives the cases no priority.
+ */
+function workItems(at: Moment): WorkItem[] {
+  const item = (queue: WorkItem['queue'], caseRef: string, subject: string, opened: Timestamp, assigned: string, state: string): WorkItem =>
+    ({ priority: '—', queue, caseRef, subject, market: MARKET.id, age: formatAge(opened, at.at), minutes: minutesBetween(opened, at.at), assigned, state })
+  const open = (opened: Timestamp, closed?: Timestamp) => happenedBefore(opened, at) && !(closed && happenedBefore(closed, at))
+  const items: WorkItem[] = []
+  for (const id of CLAIM_IDS) {
+    const state = claimStateAt(id, at)
+    const reviewer = CLAIMS[id].history.find(entry => entry.state === 'Under Review' && happenedBefore(entry.at, at))?.by
+    if (state && state !== 'Resolved') items.push(item('Claims', id, `${CLAIMS[id].issue} · ${CLAIMS[id].order}`, claimSubmitted(id), reviewer ? OPERATORS[reviewer].role : 'Unassigned', state))
+  }
+  for (const id of keys(MODERATION_CASES)) {
+    const m = MODERATION_CASES[id]
+    if (open(m.reported, m.action.at)) items.push(item('Moderation', id, `Reported Shoppable Post · ${m.post}`, m.reported, 'Unassigned', 'Open'))
+  }
+  for (const id of keys(SUPPORT_CASES)) {
+    const s = SUPPORT_CASES[id]
+    if (open(s.raised, s.resolved.at)) items.push(item('Support', id, `Seller support request · ${s.order}`, s.raised, 'Unassigned', 'Open'))
+  }
+  for (const id of keys(VERIFICATION_CASES)) {
+    const v = VERIFICATION_CASES[id]
+    if (open(v.submitted)) items.push(item('Verification / Recovery', id, `${v.kind} · ${shortName(BUYERS[v.buyer].name)}`, v.submitted, 'Unassigned', 'Open'))
+  }
+  for (const id of keys(TRUST_APPEALS)) {
+    const t = TRUST_APPEALS[id]
+    if (open(t.submitted)) items.push(item('Trust Appeals', id, `Seller Trust appeal · ${SELLERS[t.seller].handle}`, t.submitted, 'Unassigned', 'Open'))
+  }
+  for (const id of keys(HANDOFF_REVIEWS)) {
+    const h = HANDOFF_REVIEWS[id]
+    if (open(h.escalated.at)) items.push(item('Manual Handoff', id, `Failed final handoff · ${h.order}`, h.escalated.at, 'Unassigned', 'Open'))
+  }
+  return items
+}
+
+/** 'Today · HH:MM' on the story day, otherwise the day and month with the time. */
+function whenLabel(time: Timestamp, at: Moment) {
+  return `${time.slice(0, 10) === at.at.slice(0, 10) ? 'Today' : formatDayMonth(time)} · ${formatClock(time)}`
+}
+
+/** Founder decisions proposed and awaiting the other Founder's approval at the story moment. */
+function pendingDecisions(at: Moment) {
+  return keys(DECISIONS).filter(id => happenedBefore(DECISIONS[id].proposed, at) && !happenedBefore(DECISIONS[id].approved, at))
+}
 
 export default function OperatorConsole({ demoTarget }: { demoTarget?: string }) {
   const initialNav = (demoTarget && ALL_NAV_ITEMS.some(item => item.key === demoTarget) ? demoTarget : 'overview') as NavKey
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [soloState, setSoloState] = useState<SoloState>('inactive')
+  // The story moment of the guided-flow step (the 10:25 snapshot otherwise). Queue badges count its open work.
+  const { moment: at } = useStory()
+  const work = workItems(at)
+  const queueCount = (queue: QueueFilter) => work.filter(item => queue === 'All' || item.queue === queue).length
+  const badges: Partial<Record<NavKey, number>> = {
+    'work-queue': queueCount('All'), 'wq-support': queueCount('Support'), 'wq-moderation': queueCount('Moderation'), 'wq-claims': queueCount('Claims'),
+    'wq-verification': queueCount('Verification / Recovery'), 'wq-trust-appeals': queueCount('Trust Appeals'), 'wq-handoff': queueCount('Manual Handoff'),
+    'gov-approvals': pendingDecisions(at).length,
+  }
 
   return (
     <div className="operator-console flex" style={{ height: '100%', background: BG }}>
@@ -87,7 +157,7 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
           <button onClick={() => setSidebarOpen(open => !open)} aria-label={sidebarOpen ? 'Collapse Operator navigation' : 'Expand Operator navigation'} className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded" style={{ color: MUTED }}><CollapseIcon open={sidebarOpen} /></button>
         </div>
         <nav className="flex flex-1 flex-col overflow-y-auto py-2">
-          {NAV_STRUCTURE.map((group, index) => <div key={group.group ?? index}>{group.group && sidebarOpen && <SidebarGroupLabel label={group.group} dark />}{!group.group && index > 0 && <SidebarSeparator dark />}{group.items.map(item => <SidebarItem key={item.key} label={sidebarOpen ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => setActiveNav(item.key)} dark badge={item.badge} />)}</div>)}
+          {NAV_STRUCTURE.map((group, index) => <div key={group.group ?? index}>{group.group && sidebarOpen && <SidebarGroupLabel label={group.group} dark />}{!group.group && index > 0 && <SidebarSeparator dark />}{group.items.map(item => <SidebarItem key={item.key} label={sidebarOpen ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => setActiveNav(item.key)} dark badge={badges[item.key]} />)}</div>)}
         </nav>
         {sidebarOpen && (soloState === 'active'
           ? <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}><p className="text-xs font-semibold" style={{ color: 'var(--color-danger)' }}>EXCEPTIONAL SOLO COVERAGE</p><p className="mt-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>Audited · Expires in 42m</p></div>
@@ -97,14 +167,14 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
       <div className="flex flex-1 flex-col overflow-hidden">
         <ConsoleTopBar dark />
         <div className="flex-1 overflow-y-auto">
-          {activeNav === 'overview' && <OverviewPanel onQueue={() => setActiveNav('work-queue')} />}
-          {isQueueNav(activeNav) && <WorkQueuePanel key={activeNav} initialQueue={queueForNav(activeNav)} />}
-          {activeNav === 'search-global' && <SearchPanel mode="global" />}
-          {activeNav === 'search-sellers' && <SearchPanel mode="seller" />}
-          {activeNav === 'search-accounts' && <SearchPanel mode="account" />}
+          {activeNav === 'overview' && <OverviewPanel at={at} work={work} onQueue={() => setActiveNav('work-queue')} />}
+          {isQueueNav(activeNav) && <WorkQueuePanel key={activeNav} at={at} work={work} initialQueue={queueForNav(activeNav)} />}
+          {activeNav === 'search-global' && <SearchPanel at={at} mode="global" />}
+          {activeNav === 'search-sellers' && <SearchPanel at={at} mode="seller" />}
+          {activeNav === 'search-accounts' && <SearchPanel at={at} mode="account" />}
           {activeNav === 'gov-config' && <ConfigurationPanel />}
           {activeNav === 'gov-access' && <OperatorAccessPanel soloState={soloState} setSoloState={setSoloState} />}
-          {activeNav === 'gov-approvals' && <FounderDecisionsPanel />}
+          {activeNav === 'gov-approvals' && <FounderDecisionsPanel at={at} />}
           {activeNav === 'gov-audit' && <AuditPanel />}
           {activeNav === 'gov-health' && <SystemHealthPanel />}
         </div>
@@ -113,32 +183,38 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
   )
 }
 
-function OverviewPanel({ onQueue }: { onQueue: () => void }) {
+function OverviewPanel({ at, work, onQueue }: { at: Moment; work: WorkItem[]; onQueue: () => void }) {
+  // The operational brief from the open work at the story moment. DEMO_DATA defines no SLA, risk ratings, security
+  // alerts or provider incidents.
+  const inQueue = (queue: WorkItem['queue']) => work.filter(item => item.queue === queue)
+  const oldestOf = (items: WorkItem[]) => items.slice().sort((a, b) => b.minutes - a.minutes)[0]
+  const oldest = (items: WorkItem[]) => (items.length ? `Oldest ${oldestOf(items).age}` : '—')
+  const pending = pendingDecisions(at).length
   const signals = [
-    { label: 'Urgent Claims', value: '8', detail: '2 nearing SLA', tone: 'danger' },
-    { label: 'Oldest Work', value: '22h', detail: 'CLM-2041', tone: 'danger' },
-    { label: 'Moderation backlog', value: '5', detail: 'Oldest 6h', tone: 'warning' },
-    { label: 'Recovery / Verification', value: '3', detail: '1 elevated risk', tone: 'warning' },
-    { label: 'Manual Handoff', value: '1', detail: 'Evidence conflict', tone: 'danger' },
-    { label: 'Trust Appeals', value: '2', detail: 'Oldest 8h', tone: 'warning' },
-    { label: 'Pending Approvals', value: '4', detail: '2 consequential', tone: 'warning' },
-    { label: 'Security alerts', value: '2', detail: '1 active session risk', tone: 'danger' },
+    { label: 'Urgent Claims', value: String(inQueue('Claims').length), detail: oldest(inQueue('Claims')), tone: 'danger' },
+    { label: 'Oldest Work', value: work.length ? oldestOf(work).age : '—', detail: work.length ? oldestOf(work).caseRef : '—', tone: 'danger' },
+    { label: 'Moderation backlog', value: String(inQueue('Moderation').length), detail: oldest(inQueue('Moderation')), tone: 'warning' },
+    { label: 'Recovery / Verification', value: String(inQueue('Verification / Recovery').length), detail: oldest(inQueue('Verification / Recovery')), tone: 'warning' },
+    { label: 'Manual Handoff', value: String(inQueue('Manual Handoff').length), detail: oldest(inQueue('Manual Handoff')), tone: 'danger' },
+    { label: 'Trust Appeals', value: String(inQueue('Trust Appeals').length), detail: oldest(inQueue('Trust Appeals')), tone: 'warning' },
+    { label: 'Pending Approvals', value: String(pending), detail: '—', tone: 'warning' },
+    { label: 'Security alerts', value: '—', detail: '—', tone: 'danger' },
   ]
-  const health = [
-    ['Claims', '8', '22h', 'Critical'], ['Support', '12', '14h', 'Warning'], ['Moderation', '5', '6h', 'Stable'],
-    ['Verification / Recovery', '3', '3h', 'Stable'], ['Trust Appeals', '2', '8h', 'Warning'], ['Manual Handoff', '1', '1h', 'Stable'],
-  ]
+  const health = (['Claims', 'Support', 'Moderation', 'Verification / Recovery', 'Trust Appeals', 'Manual Handoff'] as const).map(queue => {
+    const items = inQueue(queue)
+    return [queue, String(items.length), items.length ? oldestOf(items).age : '—', '—']
+  })
   return (
     <div className="mx-auto max-w-7xl p-8">
-      <OperatorHeader title="Core Operations" description="Action-oriented operational risk and queue state · 30 Sep 2026 · 09:41 UTC+3" trailing={<OperatorButton onClick={onQueue}>Open Unified Queue</OperatorButton>} />
+      <OperatorHeader title="Core Operations" description={`Action-oriented operational risk and queue state · ${formatDate(at.at)} · ${formatClock(at.at)} UTC+3`} trailing={<OperatorButton onClick={onQueue}>Open Unified Queue</OperatorButton>} />
       <div className="grid grid-cols-4 gap-3">{signals.map(signal => <OperatorMetric key={signal.label} {...signal} />)}</div>
       <div className="mt-5 grid grid-cols-[1.45fr_1fr] gap-5">
         <DarkPanel title="Queue health" trailing={<button onClick={onQueue} className="text-xs font-semibold" style={{ color: ACCENT }}>View all work</button>}>
           <div className="grid grid-cols-[1.5fr_.6fr_.7fr_.8fr] gap-3 px-3 pb-2 text-[9px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}><span>Queue</span><span>Open</span><span>Oldest</span><span>Health</span></div>
-          {health.map(([queue, open, oldest, status]) => <div key={queue} className="grid grid-cols-[1.5fr_.6fr_.7fr_.8fr] items-center gap-3 border-t px-3 py-3 text-xs" style={{ borderColor: BORDER, color: TEXT }}><span className="font-semibold">{queue}</span><span className="font-mono">{open}</span><span className="font-mono" style={{ color: MUTED }}>{oldest}</span><OperatorState tone={status === 'Critical' ? 'danger' : status === 'Warning' ? 'warning' : 'success'}>{status}</OperatorState></div>)}
+          {health.map(([queue, open, oldestAge, status]) => <div key={queue} className="grid grid-cols-[1.5fr_.6fr_.7fr_.8fr] items-center gap-3 border-t px-3 py-3 text-xs" style={{ borderColor: BORDER, color: TEXT }}><span className="font-semibold">{queue}</span><span className="font-mono">{open}</span><span className="font-mono" style={{ color: MUTED }}>{oldestAge}</span><OperatorState tone="neutral">{status}</OperatorState></div>)}
         </DarkPanel>
         <div className="flex flex-col gap-5">
-          <DarkPanel title="Provider incidents"><div className="rounded-xl p-4" style={{ background: RAISED }}><div className="flex items-center justify-between"><span className="text-sm font-semibold" style={{ color: TEXT }}>Payment callback delays</span><OperatorState tone="warning">Monitoring</OperatorState></div><p className="mt-2 text-xs leading-relaxed" style={{ color: MUTED }}>Provider confirmations delayed for 7 Orders. Reconciliation remains active; no Seller action required.</p><div className="mt-3 font-mono text-[10px]" style={{ color: ACCENT }}>INC-074 · started 09:12</div></div></DarkPanel>
+          <DarkPanel title="Provider incidents"><div className="rounded-xl p-4 text-xs" style={{ background: RAISED, color: MUTED }}>—</div></DarkPanel>
           <DarkPanel title="Control posture"><ControlRow label="Queue assignment" value="Audited" /><ControlRow label="Restricted access" value="Reason required" /><ControlRow label="Consequential actions" value="Approval gated" /></DarkPanel>
         </div>
       </div>
@@ -146,7 +222,7 @@ function OverviewPanel({ onQueue }: { onQueue: () => void }) {
   )
 }
 
-function WorkQueuePanel({ initialQueue }: { initialQueue: QueueFilter }) {
+function WorkQueuePanel({ at, work, initialQueue }: { at: Moment; work: WorkItem[]; initialQueue: QueueFilter }) {
   const [queue, setQueue] = useState<QueueFilter>(initialQueue)
   const [priority, setPriority] = useState('All')
   const [market, setMarket] = useState('All')
@@ -154,14 +230,15 @@ function WorkQueuePanel({ initialQueue }: { initialQueue: QueueFilter }) {
   const [assignment, setAssignment] = useState('All')
   const [status, setStatus] = useState('All')
   const [claimed, setClaimed] = useState<string[]>([])
-  const [opened, setOpened] = useState<(typeof WORK_ITEMS)[number] | null>(null)
-  const rows = WORK_ITEMS.filter(item =>
+  const [opened, setOpened] = useState<WorkItem | null>(null)
+  // The age filter compares whole minutes, so cases opened minutes or days ago are classed correctly.
+  const rows = work.filter(item =>
     (queue === 'All' || item.queue === queue) &&
     (priority === 'All' || item.priority === priority) &&
     (market === 'All' || item.market === market) &&
     (assignment === 'All' || (assignment === 'Unassigned' ? item.assigned === 'Unassigned' : item.assigned !== 'Unassigned')) &&
     (status === 'All' || item.state === status) &&
-    (age === 'All' || (age === 'Over 8h' ? parseInt(item.age) >= 8 : parseInt(item.age) < 8))
+    (age === 'All' || (age === 'Over 8h' ? item.minutes >= 8 * 60 : item.minutes < 8 * 60))
   )
   const claim = (caseRef: string) => setClaimed(values => values.includes(caseRef) ? values : [...values, caseRef])
   return (
@@ -169,11 +246,11 @@ function WorkQueuePanel({ initialQueue }: { initialQueue: QueueFilter }) {
       <OperatorHeader title="Unified Work Queue" description="Prioritized operational cases across named workflows. Claiming assigns work only." />
       <div className="mb-4 grid grid-cols-6 gap-2">
         <DarkSelect label="Priority" value={priority} options={['All', 'P0', 'P1', 'P2']} onChange={setPriority} />
-        <DarkSelect label="Market" value={market} options={['All', 'ET-ADD']} onChange={setMarket} />
+        <DarkSelect label="Market" value={market} options={['All', MARKET.id]} onChange={setMarket} />
         <DarkSelect label="Queue" value={queue} options={['All', 'Support', 'Moderation', 'Claims', 'Verification / Recovery', 'Trust Appeals', 'Manual Handoff']} onChange={value => setQueue(value as QueueFilter)} />
         <DarkSelect label="Age" value={age} options={['All', 'Over 8h', 'Under 8h']} onChange={setAge} />
         <DarkSelect label="Assignment" value={assignment} options={['All', 'Unassigned', 'Assigned']} onChange={setAssignment} />
-        <DarkSelect label="Status" value={status} options={['All', 'Open', 'Evidence Review', 'Policy Review', 'Manual Review', 'Investigating']} onChange={setStatus} />
+        <DarkSelect label="Status" value={status} options={['All', ...new Set(work.map(item => item.state))]} onChange={setStatus} />
       </div>
       <div className="overflow-hidden rounded-2xl border" style={{ borderColor: BORDER, background: SURFACE }}>
         <div className="grid grid-cols-[70px_150px_110px_1.5fr_90px_70px_120px_130px_150px] gap-3 px-4 py-3 text-[9px] font-semibold uppercase tracking-wider" style={{ background: RAISED, color: MUTED }}><span>Priority</span><span>Queue</span><span>Case</span><span>Subject</span><span>Market</span><span>Age</span><span>Assigned To</span><span>Workflow State</span><span>Actions</span></div>
@@ -183,94 +260,155 @@ function WorkQueuePanel({ initialQueue }: { initialQueue: QueueFilter }) {
         })}
       </div>
       <div className="mt-4 rounded-xl border p-3 text-xs" style={{ borderColor: BORDER, background: SURFACE, color: MUTED }}>Claim Work Item changes assignment to the current Operator. It does not alter payment, Order, claim, moderation, verification, Trust, or handoff business state.</div>
-      {opened && <CaseWorkspace item={opened} onClose={() => setOpened(null)} />}
+      {opened && <CaseWorkspace item={opened} at={at} onClose={() => setOpened(null)} />}
     </div>
   )
 }
 
-function CaseWorkspace({ item, onClose }: { item: (typeof WORK_ITEMS)[number]; onClose: () => void }) {
+function CaseWorkspace({ item, at, onClose }: { item: WorkItem; at: Moment; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={`${item.queue} case workspace`} style={{ background: 'rgba(0,0,0,.58)' }} onClick={onClose}>
       <div className="flex h-full w-[920px] flex-col border-l shadow-xl" style={{ borderColor: BORDER, background: BG }} onClick={event => event.stopPropagation()}>
         <div className="flex items-start justify-between border-b p-6" style={{ borderColor: BORDER, background: SURFACE }}><div><div className="flex items-center gap-3"><span className="font-mono text-xs font-semibold" style={{ color: ACCENT }}>{item.caseRef}</span><OperatorState tone={item.priority === 'P0' ? 'danger' : 'warning'}>{item.priority}</OperatorState><OperatorState tone="neutral">{item.state}</OperatorState></div><div className="mt-2 font-display text-2xl font-semibold" style={{ color: TEXT }}>{item.queue} Case Workspace</div><div className="mt-1 text-xs" style={{ color: MUTED }}>{item.subject} · {item.market} · {item.age} old</div></div><button onClick={onClose} aria-label="Close case workspace" className="flex h-8 w-8 items-center justify-center rounded-full text-lg" style={{ background: RAISED, color: MUTED }}>×</button></div>
         <div className="flex-1 overflow-y-auto p-6">
-          {item.queue === 'Support' && <SupportCase />}
-          {item.queue === 'Moderation' && <ModerationCase />}
-          {item.queue === 'Claims' && <ClaimCase />}
-          {item.queue === 'Verification / Recovery' && <VerificationCase />}
-          {item.queue === 'Manual Handoff' && <HandoffCase />}
-          {item.queue === 'Trust Appeals' && <TrustAppealCase />}
+          {item.queue === 'Support' && <SupportCase id={item.caseRef as SupportId} at={at} />}
+          {item.queue === 'Moderation' && <ModerationCase id={item.caseRef as ModerationId} at={at} />}
+          {item.queue === 'Claims' && <ClaimCase id={item.caseRef as ClaimId} at={at} />}
+          {item.queue === 'Verification / Recovery' && <VerificationCase id={item.caseRef as VerificationId} at={at} />}
+          {item.queue === 'Manual Handoff' && <HandoffCase id={item.caseRef as HandoffReviewId} />}
+          {item.queue === 'Trust Appeals' && <TrustAppealCase id={item.caseRef as TrustAppealId} at={at} />}
         </div>
       </div>
     </div>
   )
 }
 
-function SupportCase() {
+/** 'Verified · QR' style evidence for a recorded handoff, or 'Not verified'. */
+function handoffText(evidence: { method: string } | undefined, how: string) {
+  if (!evidence) return '—'
+  return evidence.method === 'Not verified' ? 'Not verified' : evidence.method === 'QR' ? `Verified · ${how}` : `Verified · ${evidence.method}`
+}
+
+/** 'D Mon HH:MM': a day and time on the story timeline. */
+function dayTime(time: Timestamp) {
+  return `${formatDayMonth(time)} ${formatClock(time)}`
+}
+
+/** The Buyer–Seller messages sent about an Order by the story moment. */
+function orderMessages(orderId: keyof typeof ORDERS, at: Moment) {
+  const conversation = CONVERSATION_IDS.find(id => CONVERSATIONS[id].buyer === ORDERS[orderId].buyer && CONVERSATIONS[id].seller === ORDERS[orderId].seller)
+  return conversation ? messagesAt(conversation, at).filter(m => 'order' in m.context && m.context.order === orderId) : []
+}
+
+function SupportCase({ id, at }: { id: SupportId; at: Moment }) {
+  // The Seller's support request as DEMO_DATA records it, with the Operator's reply once it has been sent.
+  const support = SUPPORT_CASES[id]
+  const order = ORDERS[support.order]
+  const seller = SELLERS[support.seller]
+  const totals = orderTotals(support.order)
+  const paid = paidAt(support.order)
+  const happened = (state: 'Pickup Verified' | 'Completed') => { const t = stateTime(support.order, state); return !!t && happenedBefore(t, at) }
+  const messages = orderMessages(support.order, at)
+  const claims = CLAIM_IDS.filter(claim => CLAIMS[claim].order === support.order && claimStateAt(claim, at) !== null && claimStateAt(claim, at) !== 'Resolved')
   const [note, setNote] = useState('')
-  const [notes, setNotes] = useState(['09:18 · Buyer reports Order status has not refreshed.', '09:24 · Provider and fulfilment records checked.'])
+  const [notes, setNotes] = useState([
+    `${formatClock(support.raised)} · ${shortName(STAFF[support.raisedBy].name)} (${seller.name}): “${support.message}”`,
+    ...(happenedBefore(support.resolved.at, at) ? [`${formatClock(support.resolved.at)} · ${OPERATORS[support.resolved.by].role} replied with ${support.resolved.replySummary}.`] : []),
+  ])
   return (
     <div className="grid grid-cols-[1.35fr_.65fr] gap-5">
       <div className="flex flex-col gap-5">
-        <CaseSection title="Account / Seller"><CaseGrid rows={[['Account', 'ACC-4821 · Maya T.'], ['Seller', 'SELL-ADDIS-ATELIER · Addis Atelier'], ['Relationship', 'Buyer–Seller Order thread'], ['Account state', 'Active']]} /></CaseSection>
-        <CaseSection title="Order"><CaseGrid rows={[['Seller Order', 'ADU-24091'], ['Product', 'Habesha Kemis — Classic White'], ['Status', 'Paid · Needs preparation'], ['Total', 'ETB 2,994']]} /></CaseSection>
-        <CaseSection title="Payment"><CaseGrid rows={[['Provider fact', 'Paid · confirmed 09:42'], ['Provider reference', 'PAY-8A41-0926'], ['Authority', 'Provider + Adulis backend'], ['Operator control', 'Read-only']]} /><CaseNotice>Payment is externally established. This workspace contains no payment-state control.</CaseNotice></CaseSection>
-        <CaseSection title="Fulfilment and Handoff"><CaseGrid rows={[['Fulfilment', 'Courier Delivery'], ['Courier', 'Not assigned'], ['Pickup', 'Pending'], ['Delivery', 'Pending']]} /></CaseSection>
-        <CaseSection title="Chat and Claims"><EvidenceLine label="Buyer–Seller chat" value="4 messages · last at 09:16" /><EvidenceLine label="Claims" value="No active Claim" /></CaseSection>
+        <CaseSection title="Account / Seller"><CaseGrid rows={[['Account', `${shortName(STAFF[support.raisedBy].name)} · ${STAFF[support.raisedBy].role}`], ['Seller', `${support.seller} · ${seller.name}`], ['Relationship', `Seller Order with ${shortName(BUYERS[order.buyer].name)}`], ['Account state', '—']]} /></CaseSection>
+        <CaseSection title="Order"><CaseGrid rows={[['Seller Order', support.order], ['Product', order.lines.map(line => PRODUCTS[line.product].name).join(', ')], ['Status', orderStateAt(support.order, at) ?? '—'], ['Total', formatEtb(totals.total)]]} /></CaseSection>
+        <CaseSection title="Payment"><CaseGrid rows={[['Provider fact', `Paid · confirmed ${formatClock(paid)}`], ['Provider reference', paymentReference(support.order)], ['Authority', 'Provider + Adulis backend'], ['Operator control', 'Read-only']]} /><CaseNotice>Payment is externally established. This workspace contains no payment-state control.</CaseNotice></CaseSection>
+        <CaseSection title="Fulfilment and Handoff"><CaseGrid rows={[['Fulfilment', order.fulfilment], ['Courier', order.courier ? COURIERS[order.courier].name : '—'], ['Pickup', order.fulfilment !== 'Courier Delivery' ? '—' : happened('Pickup Verified') ? 'Verified' : 'Pending'], ['Delivery', happened('Completed') ? 'Verified' : 'Pending']]} /></CaseSection>
+        <CaseSection title="Chat and Claims"><EvidenceLine label="Buyer–Seller chat" value={messages.length ? `${messages.length} message${messages.length === 1 ? '' : 's'} · last at ${formatClock(messages[messages.length - 1].at)}` : '—'} /><EvidenceLine label="Claims" value={claims.length ? claims.join(', ') : 'No active Claim'} /></CaseSection>
       </div>
       <div className="flex flex-col gap-5">
-        <CaseSection title="Support notes">{notes.map((item, index) => <div key={index} className="border-l py-1 pl-3 text-xs leading-relaxed" style={{ borderColor: ACCENT, color: MUTED }}>{item}</div>)}<div className="mt-4"><Textarea label="New support note" value={note} onChange={event => setNote(event.target.value)} rows={4} placeholder="Add a factual case note." /></div><OperatorButton disabled={!note} onClick={() => { setNotes(values => [...values, `09:41 · ${note}`]); setNote('') }}>Add Support Note</OperatorButton></CaseSection>
+        <CaseSection title="Support notes">{notes.map((item, index) => <div key={index} className="border-l py-1 pl-3 text-xs leading-relaxed" style={{ borderColor: ACCENT, color: MUTED }}>{item}</div>)}<div className="mt-4"><Textarea label="New support note" value={note} onChange={event => setNote(event.target.value)} rows={4} placeholder="Add a factual case note." /></div><OperatorButton disabled={!note} onClick={() => { setNotes(values => [...values, `${formatClock(at.at)} · ${note}`]); setNote('') }}>Add Support Note</OperatorButton></CaseSection>
         <CaseSection title="Purpose-specific actions"><CaseAction label="Send status explanation" detail="Send the buyer a summary of the recorded Order state." /><CaseAction label="Escalate fulfilment issue" detail="Move this case to a named fulfilment workflow." /><CaseAction label="Close support case" detail="Resolve the support request without changing Order state." /></CaseSection>
       </div>
     </div>
   )
 }
 
-function ModerationCase() {
+function ModerationCase({ id, at }: { id: ModerationId; at: Moment }) {
+  // The report as DEMO_DATA records it. Restrict takes the post off For You, Search and the Storefront (Flow K).
+  const report = MODERATION_CASES[id]
+  const post = SHOPPABLE_POSTS[report.post]
+  const seller = SELLERS[post.seller]
   const [target, setTarget] = useState('Shoppable Post')
   const [action, setAction] = useState('')
   const targets = ['Product Post', 'Shoppable Post', 'Review', 'Seller safety case']
+  const distribution = [isForYouEligibleAt(report.post, at) && 'FYP', isPubliclyEligibleAt(report.post, at) && 'Search', isPubliclyEligibleAt(report.post, at) && 'Storefront'].filter(Boolean).join(' · ') || '—'
+  const reports = keys(MODERATION_CASES).filter(other => MODERATION_CASES[other].post === report.post && happenedBefore(MODERATION_CASES[other].reported, at)).length
+  const revision = post.published ? `Revision published ${formatDate(post.published)}` : '—'
+  const history = [
+    post.published && `${formatDayMonth(post.published)} · Revision published`,
+    `${dayTime(report.reported)} · Report received`,
+    happenedBefore(report.action.at, at) && `${dayTime(report.action.at)} · ${report.action.kind} by ${OPERATORS[report.action.by].role}`,
+  ].filter((event): event is string => !!event)
+  const removedFromSearch = action.startsWith('Restricted') || action.startsWith('Removed')
   return (
     <div className="space-y-5">
       <div className="flex gap-2">{targets.map(value => <button key={value} onClick={() => setTarget(value)} className="rounded-full border px-3 py-2 text-xs font-semibold" style={{ borderColor: target === value ? ACCENT : BORDER, background: target === value ? `${ACCENT}18` : SURFACE, color: target === value ? ACCENT : MUTED }}>{value}</button>)}</div>
       {action && <ActionResult>{action}</ActionResult>}
       <div className="grid grid-cols-2 gap-5">
-        <CaseSection title="Entity and exact revision"><CaseGrid rows={[['Entity', `${target} · SHP-018`], ['Exact revision', 'Revision 7 · published 29 Sep, 16:32'], ['Publication', 'Published'], ['Current distribution', 'FYP · Search · Storefront']]} /></CaseSection>
-        <CaseSection title="Report"><CaseGrid rows={[['Report reason', 'Potentially misleading availability statement'], ['Reporter', 'Buyer account · presentation-safe'], ['Submitted', '30 Sep · 03:41'], ['Report count', '2 linked reports']]} /></CaseSection>
-        <CaseSection title="Evidence"><EvidenceLine label="Reported frame" value="Media frame 2 · caption segment captured" /><EvidenceLine label="Revision snapshot" value="Immutable revision 7" /><EvidenceLine label="Related chat" value="No linked chat evidence" /></CaseSection>
-        <CaseSection title="Seller and Products"><CaseGrid rows={[['Seller', 'Addis Atelier · @addisatelier'], ['Trust', 'ESTABLISHED · read-only'], ['Tagged Products', 'PRD-001, PRD-002'], ['Availability', 'Both currently available']]} /></CaseSection>
-        <CaseSection title="Policy"><CaseGrid rows={[['Policy', 'Content Accuracy 3.2'], ['Policy version', 'ET-CONTENT-2026.09'], ['Decision standard', 'Materially misleading commerce claim'], ['Prior history', '1 No Action · 0 restrictions']]} /></CaseSection>
-        <CaseSection title="History"><CaseTimeline events={['29 Sep 16:32 · Revision 7 published', '30 Sep 03:41 · First report received', '30 Sep 06:02 · Second report linked', '30 Sep 09:41 · Operator opened case']} /></CaseSection>
+        <CaseSection title="Entity and exact revision"><CaseGrid rows={[['Entity', `${target} · ${report.post}`], ['Exact revision', revision], ['Publication', restrictionAt(report.post, at) ? 'Restricted' : post.publication], ['Current distribution', distribution]]} /></CaseSection>
+        <CaseSection title="Report"><CaseGrid rows={[['Report reason', report.reason], ['Reporter', 'Buyer account · presentation-safe'], ['Submitted', `${formatDayMonth(report.reported)} · ${formatClock(report.reported)}`], ['Report count', `${reports} linked report${reports === 1 ? '' : 's'}`]]} /></CaseSection>
+        <CaseSection title="Evidence"><EvidenceLine label="Reported frame" value="—" /><EvidenceLine label="Revision snapshot" value={revision} /><EvidenceLine label="Related chat" value="No linked chat evidence" /></CaseSection>
+        <CaseSection title="Seller and Products"><CaseGrid rows={[['Seller', `${seller.name} · ${seller.handle}`], ['Trust', `${trustAt(post.seller, at) ?? '—'} · read-only`], ['Tagged Products', post.tags.join(', ') || '—'], ['Availability', post.tags.map(product => PRODUCTS[product].availability).join(', ') || '—']]} /></CaseSection>
+        <CaseSection title="Policy"><CaseGrid rows={[['Policy', '—'], ['Policy version', '—'], ['Decision standard', '—'], ['Prior history', '—']]} /></CaseSection>
+        <CaseSection title="History"><CaseTimeline events={history} /></CaseSection>
       </div>
       <CaseSection title="Moderation actions">
-        <div className="flex flex-wrap gap-2"><OperatorButton variant="secondary" onClick={() => setAction('No Action recorded. Entity distribution remains unchanged.')}>No Action</OperatorButton><OperatorButton onClick={() => setAction('Restricted. Entity removed from FYP and Search while remaining visible in the Seller workspace.')}>Restrict</OperatorButton><OperatorButton onClick={() => setAction('Removed. Entity is no longer visible in FYP, Search, or Storefront.')}>Remove</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction('Restored. Eligible surfaces will republish after policy state refresh.')}>Restore</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction('Escalated to senior moderation review.')}>Escalate</OperatorButton></div>
-        <div className="mt-4 grid grid-cols-3 gap-3"><DistributionEffect surface="FYP" affected={action.startsWith('Restricted') || action.startsWith('Removed')} /><DistributionEffect surface="Search" affected={action.startsWith('Restricted') || action.startsWith('Removed')} /><DistributionEffect surface="Storefront" affected={action.startsWith('Removed')} /></div>
+        <div className="flex flex-wrap gap-2"><OperatorButton variant="secondary" onClick={() => setAction('No Action recorded. Entity distribution remains unchanged.')}>No Action</OperatorButton><OperatorButton onClick={() => setAction('Restricted. Entity removed from FYP, Search and Storefront while remaining visible in the Seller workspace.')}>Restrict</OperatorButton><OperatorButton onClick={() => setAction('Removed. Entity is no longer visible in FYP, Search, or Storefront.')}>Remove</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction('Restored. Eligible surfaces will republish after policy state refresh.')}>Restore</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction('Escalated to senior moderation review.')}>Escalate</OperatorButton></div>
+        <div className="mt-4 grid grid-cols-3 gap-3"><DistributionEffect surface="FYP" affected={removedFromSearch} /><DistributionEffect surface="Search" affected={removedFromSearch} /><DistributionEffect surface="Storefront" affected={removedFromSearch} /></div>
       </CaseSection>
     </div>
   )
 }
 
-function ClaimCase() {
+function ClaimCase({ id, at }: { id: ClaimId; at: Moment }) {
+  // The Claim, its Order's payment, handoff and checkpoint evidence, and its history by the story moment.
+  const claim = CLAIMS[id]
+  const order = ORDERS[claim.order]
+  const seller = SELLERS[order.seller]
+  const line = order.lines.find(item => item.product === claim.product) ?? order.lines[0]
+  const totals = orderTotals(claim.order)
+  const paid = paidAt(claim.order)
+  const pickedUp = stateTime(claim.order, 'Pickup Verified')
+  const completed = stateTime(claim.order, 'Completed')
+  const location = order.finalHandoff?.location
+  const messages = orderMessages(claim.order, at)
   const [action, setAction] = useState('')
+  const timeline = [
+    `${dayTime(paid)} · Provider payment confirmed`,
+    pickedUp && `${dayTime(pickedUp)} · Pickup verified`,
+    completed && `${dayTime(completed)} · Delivery verified`,
+    ...claim.history.filter(entry => happenedBefore(entry.at, at)).map(entry => `${dayTime(entry.at)} · ${entry.state === 'Open' ? 'Claim submitted' : `Claim ${entry.state}${entry.by ? ` · ${OPERATORS[entry.by].role}` : ''}`}`),
+  ].filter((event): event is string => !!event)
   return (
     <div className="space-y-5">
       {action && <ActionResult>{action}</ActionResult>}
       <div className="grid grid-cols-2 gap-5">
-        <CaseSection title="Parties"><CaseGrid rows={[['Buyer', 'Maya T. · ACC-4821'], ['Seller', 'Addis Atelier · @addisatelier'], ['Seller Order', 'ADU-24086'], ['Claim', 'CLM-2041 · Item not as described']]} /></CaseSection>
-        <CaseSection title="Products"><EvidenceLine label="Product" value="Habesha Kemis — Classic White" /><EvidenceLine label="Variant" value="Size M · Gold border" /><EvidenceLine label="Quantity" value="1" /></CaseSection>
-        <CaseSection title="Provider payment fact"><CaseGrid rows={[['Payment', 'Paid · provider confirmed'], ['Provider reference', 'PAY-8A41-0819'], ['Products', 'ETB 2,800'], ['Adulis surcharge', 'ETB 14'], ['Courier Delivery charge', 'ETB 180'], ['Total', 'ETB 2,994']]} /><CaseNotice>Payment fact is read-only and cannot be changed from a Claim.</CaseNotice></CaseSection>
-        <CaseSection title="Assignment and Handoff"><CaseGrid rows={[['Courier assignment', 'Daniel K. · approved relationship'], ['Pickup', 'Verified · Seller Pickup QR'], ['Delivery', 'Verified · Recipient scan'], ['Final handoff', '30 Sep · 11:06']]} /></CaseSection>
-        <CaseSection title="Checkpoint evidence"><EvidenceLine label="Pickup checkpoint" value="Location recorded · 10:14" /><EvidenceLine label="Delivery checkpoint" value="Location unavailable · handoff remains valid" /></CaseSection>
-        <CaseSection title="Chat evidence"><CaseTimeline events={['09:16 · Buyer asked about border colour', '09:18 · Seller confirmed Gold selection', '11:42 · Buyer reported Silver item received']} /></CaseSection>
-        <CaseSection title="Submitted evidence"><div className="grid grid-cols-3 gap-2"><EvidenceTileDark label="Buyer item photo" /><EvidenceTileDark label="Package label" /><EvidenceTileDark label="Product revision" /></div></CaseSection>
-        <CaseSection title="Timeline"><CaseTimeline events={['09:42 · Provider payment confirmed', '10:14 · Pickup verified', '11:06 · Delivery verified', '11:42 · Claim submitted', '12:05 · Seller response received']} /></CaseSection>
+        <CaseSection title="Parties"><CaseGrid rows={[['Buyer', `${shortName(BUYERS[order.buyer].name)} · ${order.buyer}`], ['Seller', `${seller.name} · ${seller.handle}`], ['Seller Order', claim.order], ['Claim', `${id} · ${claim.issue}`]]} /></CaseSection>
+        <CaseSection title="Products"><EvidenceLine label="Product" value={PRODUCTS[claim.product].name} /><EvidenceLine label="Variant" value={lineOptions(line)} /><EvidenceLine label="Quantity" value={String(line.quantity)} /></CaseSection>
+        <CaseSection title="Provider payment fact"><CaseGrid rows={[['Payment', 'Paid · provider confirmed'], ['Provider reference', paymentReference(claim.order)], ['Products', formatEtb(totals.products)], ['Adulis surcharge', formatEtb(totals.surcharge)], [`${order.fulfilment} charge`, formatEtb(totals.delivery)], ['Total', formatEtb(totals.total)]]} /><CaseNotice>Payment fact is read-only and cannot be changed from a Claim.</CaseNotice></CaseSection>
+        <CaseSection title="Assignment and Handoff"><CaseGrid rows={[['Courier assignment', order.courier ? `${COURIERS[order.courier].name} · approved relationship` : '—'], ['Pickup', handoffText(order.pickup, 'Seller Pickup QR')], ['Delivery', handoffText(order.finalHandoff, 'Recipient scan')], ['Final handoff', completed ? `${formatDayMonth(completed)} · ${formatClock(completed)}` : '—']]} /></CaseSection>
+        <CaseSection title="Checkpoint evidence"><EvidenceLine label="Pickup checkpoint" value={order.pickup?.location && pickedUp ? `Location ${order.pickup.location} · ${formatClock(pickedUp)}` : '—'} /><EvidenceLine label="Delivery checkpoint" value={location ? `Location ${location}${location === 'unavailable' ? ' · handoff remains valid' : ''}` : '—'} /></CaseSection>
+        <CaseSection title="Chat evidence"><CaseTimeline events={messages.length ? messages.map(m => `${dayTime(m.at)} · ${m.from === 'buyer' ? 'Buyer' : 'Seller'}: ${m.text}`) : ['—']} /></CaseSection>
+        <CaseSection title="Submitted evidence"><div className="grid grid-cols-3 gap-2">{Array.from({ length: claim.evidencePhotos }, (_, index) => <EvidenceTileDark key={index} label={`Buyer photo ${index + 1}`} />)}</div></CaseSection>
+        <CaseSection title="Timeline"><CaseTimeline events={timeline} /></CaseSection>
       </div>
       <CaseSection title="Claim actions"><div className="flex gap-2"><OperatorButton variant="secondary" onClick={() => setAction('Evidence request sent to the relevant party. Claim state moved to Evidence Required.')}>Request Evidence</OperatorButton><OperatorButton onClick={() => setAction('Decision proposal drafted for required review. No payment fact was changed.')}>Propose Decision</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction('Claim escalated to senior review.')}>Escalate</OperatorButton></div></CaseSection>
     </div>
   )
 }
 
-function VerificationCase() {
+function VerificationCase({ id, at }: { id: VerificationId; at: Moment }) {
+  // The recovery request as DEMO_DATA records it: the evidence is the account history; no identity documents.
+  const request = VERIFICATION_CASES[id]
   const [focus, setFocus] = useState('Suspicious recovery')
   const [action, setAction] = useState('')
   const focuses = ['Social account control', 'Social business verification', 'Account linkage', 'Phone recovery', 'Suspicious recovery', 'Seller admission appeal']
@@ -279,10 +417,10 @@ function VerificationCase() {
       <div className="flex flex-wrap gap-2">{focuses.map(value => <button key={value} onClick={() => setFocus(value)} className="rounded-full border px-3 py-2 text-xs font-semibold" style={{ borderColor: focus === value ? ACCENT : BORDER, background: focus === value ? `${ACCENT}18` : SURFACE, color: focus === value ? ACCENT : MUTED }}>{value}</button>)}</div>
       {action && <ActionResult>{action}</ActionResult>}
       <div className="grid grid-cols-2 gap-5">
-        <CaseSection title="Recovery subject"><CaseGrid rows={[['Seller', 'Nura Glow · @nura-glow'], ['Case focus', focus], ['Account linkage', 'Seller profile ↔ social business page'], ['Risk', 'Elevated · recent phone change']]} /></CaseSection>
-        <CaseSection title="Social account control"><EvidenceLine label="Connected account" value="@nura-glow · active session challenge passed" /><EvidenceLine label="Business page" value="Nura Glow Beauty · administrative control confirmed" /><EvidenceLine label="Linkage history" value="Linked 18 months · no prior disputes" /></CaseSection>
-        <CaseSection title="Phone recovery"><CaseGrid rows={[['Previous phone', 'Ending 4421 · inactive'], ['Requested phone', 'Ending 8083'], ['Request time', 'Today · 06:14'], ['Recent change', 'Session reset requested 2h later']]} /></CaseSection>
-        <CaseSection title="Seller admission appeal"><CaseGrid rows={[['Admission state', 'Existing Seller · not applicable'], ['Appeal history', 'No prior admission appeals'], ['Market', 'ET-ADD'], ['Policy', 'Seller Admission 2.4']]} /></CaseSection>
+        <CaseSection title="Recovery subject"><CaseGrid rows={[['Account', `${shortName(BUYERS[request.buyer].name)} · ${request.buyer}`], ['Case focus', focus], ['Account linkage', `Account history · ${request.evidenceOrders.join(', ')}`], ['Risk', '—']]} /></CaseSection>
+        <CaseSection title="Social account control"><EvidenceLine label="Connected account" value="—" /><EvidenceLine label="Business page" value="—" /><EvidenceLine label="Linkage history" value="—" /></CaseSection>
+        <CaseSection title="Phone recovery"><CaseGrid rows={[['Request', `“${request.message}”`], ['Request type', request.kind], ['Request time', whenLabel(request.submitted, at)], ['Previous phone', '—']]} /></CaseSection>
+        <CaseSection title="Seller admission appeal"><CaseGrid rows={[['Admission state', '—'], ['Appeal history', '—'], ['Market', MARKET.id], ['Policy', '—']]} /></CaseSection>
       </div>
       <CaseNotice>Recovery decisions use account control, business verification, linkage history, phone signals, and risk review. Only the supported evidence shown here is requested.</CaseNotice>
       <CaseSection title="Verification / Recovery actions"><div className="flex gap-2"><OperatorButton onClick={() => setAction(`${focus} approved with audit record.`)}>Approve Supported Recovery</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction(`${focus} rejected; existing account linkage remains unchanged.`)}>Reject Recovery</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction('Escalated for additional risk review.')}>Escalate</OperatorButton></div></CaseSection>
@@ -290,7 +428,13 @@ function VerificationCase() {
   )
 }
 
-function HandoffCase() {
+function HandoffCase({ id }: { id: HandoffReviewId }) {
+  // The failed final handoff as DEMO_DATA records it: no delivery checkpoint, because the handoff wasn't verified.
+  const review = HANDOFF_REVIEWS[id]
+  const order = ORDERS[review.order]
+  const buyer = shortName(BUYERS[order.buyer].name)
+  const courier = order.courier ? COURIERS[order.courier].name : '—'
+  const pickedUp = stateTime(review.order, 'Pickup Verified')
   const [reason, setReason] = useState('')
   const [action, setAction] = useState('')
   return (
@@ -298,32 +442,37 @@ function HandoffCase() {
       <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}><div className="text-sm font-semibold" style={{ color: 'var(--color-danger)' }}>Exceptional manual review</div><p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>Normal QR and OTP verification did not produce a conclusive automated result. Manual Verification is exceptional, reasoned, and audited.</p></div>
       {action && <ActionResult>{action}</ActionResult>}
       <div className="grid grid-cols-2 gap-5">
-        <CaseSection title="Order and parties"><CaseGrid rows={[['Order', 'ADU-24083'], ['Buyer / delegate', 'Maya T. / Rahel T.'], ['Seller', 'Addis Atelier'], ['Courier', 'Daniel K.']]} /></CaseSection>
-        <CaseSection title="Pickup"><CaseGrid rows={[['Seller Pickup QR', 'Verified · 10:14'], ['Courier assignment', 'Daniel K.'], ['Package custody', 'Transferred'], ['Pickup checkpoint', 'Location recorded']]} /></CaseSection>
-        <CaseSection title="Delivery attempts"><CaseTimeline events={['11:02 · Delivery QR presented', '11:04 · Recipient scan timed out', '11:06 · Second QR attempt failed', '11:09 · OTP fallback attempted']} /></CaseSection>
-        <CaseSection title="OTP attempts"><CaseGrid rows={[['Attempt 1', '11:09 · expired'], ['Attempt 2', '11:12 · provider timeout'], ['Attempt limit', 'Reached'], ['Recipient', 'Delegated recipient Rahel T.']]} /></CaseSection>
-        <CaseSection title="Checkpoint evidence"><EvidenceLine label="Pickup checkpoint" value="Location recorded · 10:14" /><EvidenceLine label="Delivery checkpoint" value="Location recorded · 11:03" /></CaseSection>
-        <CaseSection title="Timestamps"><CaseGrid rows={[['Courier arrival', '11:01:22'], ['First handoff attempt', '11:02:18'], ['Last OTP attempt', '11:12:09'], ['Case created', '11:13:44']]} /></CaseSection>
+        <CaseSection title="Order and parties"><CaseGrid rows={[['Order', review.order], ['Buyer / delegate', order.recipient ? `${buyer} / ${shortName(order.recipient.name)}` : buyer], ['Seller', SELLERS[order.seller].name], ['Courier', courier]]} /></CaseSection>
+        <CaseSection title="Pickup"><CaseGrid rows={[['Seller Pickup QR', pickedUp ? `Verified · ${formatClock(pickedUp)}` : '—'], ['Courier assignment', courier], ['Package custody', pickedUp ? 'Transferred' : '—'], ['Pickup checkpoint', order.pickup?.location ? `Location ${order.pickup.location}` : '—']]} /></CaseSection>
+        <CaseSection title="Delivery attempts"><CaseTimeline events={[`${formatClock(review.deliveryAttempt.at)} · QR scan failed: ${review.deliveryAttempt.qrFailure}`, `${formatClock(review.otp.from)}–${formatClock(review.otp.to)} · ${review.otp.codesSent} OTP codes sent`, `${formatClock(review.escalated.at)} · Escalated by ${courier}: “${review.escalated.note}”`]} /></CaseSection>
+        <CaseSection title="OTP attempts"><CaseGrid rows={[['Codes sent', String(review.otp.codesSent)], ['Window', `${formatClock(review.otp.from)}–${formatClock(review.otp.to)}`], ['Outcome', review.otp.outcome], ['Recipient', buyer]]} /></CaseSection>
+        <CaseSection title="Checkpoint evidence"><EvidenceLine label="Pickup checkpoint" value={order.pickup?.location && pickedUp ? `Location ${order.pickup.location} · ${formatClock(pickedUp)}` : '—'} /><EvidenceLine label="Delivery checkpoint" value="None · handoff not verified" /></CaseSection>
+        <CaseSection title="Timestamps"><CaseGrid rows={[['Courier arrival', '—'], ['First handoff attempt', dayTime(review.deliveryAttempt.at)], ['Last OTP attempt', dayTime(review.otp.to)], ['Case created', dayTime(review.escalated.at)]]} /></CaseSection>
       </div>
       <CaseSection title="Manual Verification decision"><Textarea label="Required decision reason" value={reason} onChange={event => setReason(event.target.value)} rows={4} placeholder="Explain how the available handoff evidence supports this exceptional decision." /><div className="mt-4 flex gap-2"><OperatorButton disabled={!reason} onClick={() => setAction('Manual Verification approved with required reason and audit record.')}>Approve Manual Verification</OperatorButton><OperatorButton variant="secondary" disabled={!reason} onClick={() => setAction('Manual Verification rejected. Existing verified business state remains unchanged.')}>Reject</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction('Manual Handoff case escalated for senior review.')}>Escalate</OperatorButton></div></CaseSection>
     </div>
   )
 }
 
-function TrustAppealCase() {
+function TrustAppealCase({ id, at }: { id: TrustAppealId; at: Moment }) {
+  // The appeal and its evidence summary as DEMO_DATA records them. Operators can't type a Trust level.
+  const appeal = TRUST_APPEALS[id]
+  const seller = SELLERS[appeal.seller]
+  const evidence = appeal.evidence
   const [action, setAction] = useState('')
+  const since = (date: string) => (date.length > 7 ? formatDayMonth(date) : formatMonthShortYear(date))
   return (
     <div className="space-y-5">
       {action && <ActionResult>{action}</ActionResult>}
       <div className="grid grid-cols-2 gap-5">
-        <CaseSection title="Current Trust level"><div className="font-display text-3xl font-semibold" style={{ color: TEXT }}>REBUILDING</div><p className="mt-2 text-xs" style={{ color: MUTED }}>Read-only, domain-controlled Trust state.</p></CaseSection>
-        <CaseSection title="Appeal"><CaseGrid rows={[['Seller', 'Buna Lane · @buna-lane'], ['Submitted', '29 Sep · 14:12'], ['Appeal reason', 'Reliability improvements since restriction'], ['Requested outcome', 'Re-evaluation under current policy']]} /></CaseSection>
-        <CaseSection title="History"><CaseTimeline events={['12 Jun · NEW', '03 Aug · ESTABLISHED', '18 Sep · REBUILDING after fulfilment threshold', '29 Sep · Appeal submitted']} /></CaseSection>
-        <CaseSection title="Evidence"><EvidenceLine label="Fulfilment reliability" value="94% over last 30 days" /><EvidenceLine label="Claims" value="1 open · 3 resolved" /><EvidenceLine label="Response reliability" value="97%" /></CaseSection>
-        <CaseSection title="Policy"><CaseGrid rows={[['Policy', 'Seller Trust 4.1'], ['Evaluation window', '30 and 90 day outcomes'], ['Current policy version', 'TRUST-2026.09'], ['Decision source', 'Domain workflow + approved review']]} /></CaseSection>
+        <CaseSection title="Current Trust level"><div className="font-display text-3xl font-semibold" style={{ color: TEXT }}>{trustAt(appeal.seller, at) ?? '—'}</div><p className="mt-2 text-xs" style={{ color: MUTED }}>Read-only, domain-controlled Trust state.</p></CaseSection>
+        <CaseSection title="Appeal"><CaseGrid rows={[['Seller', `${seller.name} · ${seller.handle}`], ['Submitted', `${formatDayMonth(appeal.submitted)} · ${formatClock(appeal.submitted)}`], ['Appeal reason', appeal.reason], ['Requested outcome', '—']]} /></CaseSection>
+        <CaseSection title="History"><CaseTimeline events={[...seller.trustHistory.map(change => `${since(change.since)} · ${change.level}`), `${formatDayMonth(appeal.submitted)} · Appeal submitted`]} /></CaseSection>
+        <CaseSection title="Evidence"><EvidenceLine label="Fulfilment reliability" value={`${evidence.fulfilmentReliabilityPercent}% · ${formatDayMonth(evidence.from)} – ${formatDayMonth(evidence.to)}`} /><EvidenceLine label="Claims" value={`${evidence.upheldClaims.total} upheld · ${evidence.upheldClaims.notAsDescribed} not as described, ${evidence.upheldClaims.damaged} damaged`} /><EvidenceLine label="Paid Orders" value={String(evidence.paidOrders)} /></CaseSection>
+        <CaseSection title="Policy"><CaseGrid rows={[['Policy', '—'], ['Evaluation window', `${formatDate(evidence.from)} – ${formatDate(evidence.to)}`], ['Current policy version', appeal.policyVersion], ['Decision source', 'Domain workflow + approved review']]} /></CaseSection>
         <CaseSection title="Control boundary"><CaseNotice>Operators review evidence and record an appeal outcome. Trust levels are not directly typed, selected, or edited.</CaseNotice></CaseSection>
       </div>
-      <CaseSection title="Appeal actions"><div className="flex gap-2"><OperatorButton onClick={() => setAction('Appeal evidence accepted for domain re-evaluation. Trust level was not directly changed.')}>Submit for Re-evaluation</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction('Appeal denied under Seller Trust 4.1. Current level remains domain-controlled.')}>Deny Appeal</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction('Trust Appeal escalated for senior review.')}>Escalate</OperatorButton></div></CaseSection>
+      <CaseSection title="Appeal actions"><div className="flex gap-2"><OperatorButton onClick={() => setAction('Appeal evidence accepted for domain re-evaluation. Trust level was not directly changed.')}>Submit for Re-evaluation</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction(`Appeal denied under ${appeal.policyVersion}. Current level remains domain-controlled.`)}>Deny Appeal</OperatorButton><OperatorButton variant="secondary" onClick={() => setAction('Trust Appeal escalated for senior review.')}>Escalate</OperatorButton></div></CaseSection>
     </div>
   )
 }
@@ -365,19 +514,28 @@ function ActionResult({ children }: { children: ReactNode }) {
   return <div className="rounded-xl border p-4 text-sm font-semibold" style={{ borderColor: `${ACCENT}50`, background: `${ACCENT}12`, color: ACCENT }}>{children}</div>
 }
 
-function SearchPanel({ mode }: { mode: 'global' | 'seller' | 'account' }) {
+type SearchEntity = 'Account' | 'Seller' | 'Order' | 'Claim' | 'Content'
+interface SearchResult { type: SearchEntity; ref: string; title: string; detail: string; restricted: boolean }
+
+/** Every searchable canonical record at the story moment: Buyer accounts, Sellers, Orders, Claims and Shoppable Posts. */
+function searchRecords(at: Moment): SearchResult[] {
+  const post = (id: (typeof SHOPPABLE_POST_IDS)[number]) => (SHOPPABLE_POSTS[id].publication === 'Draft' ? 'Draft' : restrictionAt(id, at) ? 'Restricted' : 'Published')
+  return [
+    ...keys(BUYERS).map(id => ({ type: 'Account' as const, ref: id, title: BUYERS[id].name, detail: `Buyer account · ${MARKET.city}`, restricted: true })),
+    ...SELLER_IDS.map(id => ({ type: 'Seller' as const, ref: id, title: SELLERS[id].name, detail: `${SELLERS[id].handle} · ${trustLabel(trustAt(id, at))}${SELLERS[id].storeOpen ? ' · Store open' : ''}`, restricted: true })),
+    ...ORDER_IDS.filter(id => orderStateAt(id, at) !== null).map(id => ({ type: 'Order' as const, ref: id, title: `${SELLERS[ORDERS[id].seller].name} → ${shortName(BUYERS[ORDERS[id].buyer].name)}`, detail: `${orderStateAt(id, at)} · ${MARKET.id}`, restricted: false })),
+    ...CLAIM_IDS.filter(id => claimStateAt(id, at) !== null).map(id => ({ type: 'Claim' as const, ref: id, title: CLAIMS[id].issue, detail: `${claimStateAt(id, at)} · ${CLAIMS[id].order}`, restricted: false })),
+    ...SHOPPABLE_POST_IDS.filter(id => happenedBefore(SHOPPABLE_POSTS[id].created, at)).map(id => ({ type: 'Content' as const, ref: id, title: SHOPPABLE_POSTS[id].title, detail: `${post(id)} · ${SELLERS[SHOPPABLE_POSTS[id].seller].name}`, restricted: false })),
+  ]
+}
+
+function SearchPanel({ at, mode }: { at: Moment; mode: 'global' | 'seller' | 'account' }) {
   const [query, setQuery] = useState(mode === 'seller' ? 'addis' : mode === 'account' ? 'Maya' : '')
   const [type, setType] = useState(mode === 'global' ? 'All' : mode === 'seller' ? 'Seller' : 'Account')
   const [accessTarget, setAccessTarget] = useState<string | null>(null)
   const [accessGranted, setAccessGranted] = useState<string[]>([])
-  const [openedRef, setOpenedRef] = useState<string | null>(null)
-  const results = [
-    { type: 'Account', ref: 'ACC-4821', title: 'Maya Tesfaye', detail: 'Buyer account · Active · Addis Ababa', restricted: true },
-    { type: 'Seller', ref: 'SELL-ADDIS-ATELIER', title: 'Addis Atelier', detail: '@addisatelier · Established · Active Store', restricted: true },
-    { type: 'Order', ref: 'ADU-24091', title: 'Addis Atelier → Maya T.', detail: 'Paid · Needs preparation · ET-ADD', restricted: false },
-    { type: 'Claim', ref: 'CLM-2041', title: 'Item not as described', detail: 'Evidence Review · ADU-24086', restricted: false },
-    { type: 'Content', ref: 'SHP-018', title: 'Spring styling in Addis Ababa', detail: 'Published · Addis Atelier', restricted: false },
-  ].filter(result => {
+  const [opened, setOpened] = useState<SearchResult | null>(null)
+  const results = searchRecords(at).filter(result => {
     const scopeMatch = (type === 'All' || result.type === type) && (mode === 'global' || result.type.toLowerCase() === mode)
     const queryMatch = !query || `${result.ref} ${result.title} ${result.detail}`.toLowerCase().includes(query.toLowerCase())
     return scopeMatch && queryMatch
@@ -392,23 +550,23 @@ function SearchPanel({ mode }: { mode: 'global' | 'seller' | 'account' }) {
         <div className="grid grid-cols-[110px_220px_1fr_150px] gap-4 px-5 py-3 text-[9px] font-semibold uppercase tracking-wider" style={{ background: RAISED, color: MUTED }}><span>Type</span><span>Reference</span><span>Result</span><span>Access</span></div>
         {results.map(result => {
           const granted = accessGranted.includes(result.ref)
-          return <div key={result.ref} className="grid grid-cols-[110px_220px_1fr_150px] items-center gap-4 border-t px-5 py-4" style={{ borderColor: BORDER }}><OperatorState tone="neutral">{result.type}</OperatorState><span className="font-mono text-xs font-semibold" style={{ color: ACCENT }}>{result.ref}</span><span><span className="block text-sm font-semibold" style={{ color: TEXT }}>{result.title}</span><span className="text-xs" style={{ color: MUTED }}>{result.detail}</span></span>{result.restricted && !granted ? <button onClick={() => setAccessTarget(result.ref)} className="rounded px-3 py-2 text-xs font-semibold" style={{ background: RAISED, color: ACCENT }}>Reason for Access</button> : <OperatorButton variant="secondary" onClick={() => setOpenedRef(result.ref)}>Open</OperatorButton>}</div>
+          return <div key={result.ref} className="grid grid-cols-[110px_220px_1fr_150px] items-center gap-4 border-t px-5 py-4" style={{ borderColor: BORDER }}><OperatorState tone="neutral">{result.type}</OperatorState><span className="font-mono text-xs font-semibold" style={{ color: ACCENT }}>{result.ref}</span><span><span className="block text-sm font-semibold" style={{ color: TEXT }}>{result.title}</span><span className="text-xs" style={{ color: MUTED }}>{result.detail}</span></span>{result.restricted && !granted ? <button onClick={() => setAccessTarget(result.ref)} className="rounded px-3 py-2 text-xs font-semibold" style={{ background: RAISED, color: ACCENT }}>Reason for Access</button> : <OperatorButton variant="secondary" onClick={() => setOpened(result)}>Open</OperatorButton>}</div>
         })}
       </div>
       <div className="mt-4 rounded-xl border p-3 text-xs" style={{ borderColor: BORDER, color: MUTED }}>Search is scoped to supported domain entities: Account, Seller, Order, Claim, and Content. Generic database browsing or editing is not available.</div>
       {accessTarget && <ReasonForAccessOverlay target={accessTarget} onClose={() => setAccessTarget(null)} onConfirm={() => { setAccessGranted(values => [...values, accessTarget]); setAccessTarget(null) }} />}
-      {openedRef && <SearchResultDrawer reference={openedRef} onClose={() => setOpenedRef(null)} />}
+      {opened && <SearchResultDrawer reference={opened.ref} entity={opened.type} onClose={() => setOpened(null)} />}
     </div>
   )
 }
 
-function SearchResultDrawer({ reference, onClose }: { reference: string; onClose: () => void }) {
-  const entity = reference.startsWith('ACC') ? 'Account' : reference.startsWith('SELL') ? 'Seller' : reference.startsWith('ADU') ? 'Order' : reference.startsWith('CLM') ? 'Claim' : 'Content'
+function SearchResultDrawer({ reference, entity, onClose }: { reference: string; entity: SearchEntity; onClose: () => void }) {
+  // The result's own record type, never guessed from its reference.
   return (
     <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(0,0,0,.58)' }} onClick={onClose}>
       <div className="h-full w-[480px] border-l p-6 shadow-xl" style={{ borderColor: BORDER, background: SURFACE }} onClick={event => event.stopPropagation()}>
         <div className="flex items-start justify-between"><div><div className="font-mono text-xs font-semibold" style={{ color: ACCENT }}>{reference}</div><div className="mt-1 font-display text-2xl font-semibold" style={{ color: TEXT }}>{entity} summary</div></div><button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-lg" style={{ background: RAISED, color: MUTED }}>×</button></div>
-        <div className="mt-6 grid grid-cols-2 gap-5"><DarkField label="Entity type" value={entity} /><DarkField label="Market" value="ET-ADD" /><DarkField label="Reference" value={reference} /><DarkField label="Access" value={entity === 'Account' || entity === 'Seller' ? 'Reason recorded' : 'Operational'} /></div>
+        <div className="mt-6 grid grid-cols-2 gap-5"><DarkField label="Entity type" value={entity} /><DarkField label="Market" value={MARKET.id} /><DarkField label="Reference" value={reference} /><DarkField label="Access" value={entity === 'Account' || entity === 'Seller' ? 'Reason recorded' : 'Operational'} /></div>
         <div className="mt-6 rounded-xl border p-4" style={{ borderColor: BORDER, background: RAISED }}><div className="text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>Presentation-safe summary</div><p className="mt-2 text-sm leading-relaxed" style={{ color: TEXT }}>Supported domain information is shown through named workflows. Raw database fields and internal identifiers are not available.</p></div>
         <div className="mt-6 text-xs" style={{ color: MUTED }}>Opening this result is recorded in the Operator audit trail.</div>
       </div>
@@ -424,7 +582,7 @@ function ReasonForAccessOverlay({ target, onClose, onConfirm }: { target: string
       <div className="w-full max-w-lg rounded-2xl border p-6 shadow-xl" style={{ borderColor: BORDER, background: SURFACE }} onClick={event => event.stopPropagation()}>
         <div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `${ACCENT}18`, color: ACCENT }}><IconKey size={18} /></span><div><div className="font-display text-xl font-semibold" style={{ color: TEXT }}>Reason for Access</div><div className="mt-1 font-mono text-xs" style={{ color: MUTED }}>{target} · Restricted information</div></div></div>
         <p className="mt-5 text-sm leading-relaxed" style={{ color: MUTED }}>Provide a work-related reason before viewing restricted account or Seller information. Access is time-stamped and written to the audit log.</p>
-        <div className="mt-5"><TextInput label="Case or work reference" value={caseRef} onChange={event => setCaseRef(event.target.value)} placeholder="e.g. SUP-4812" /></div>
+        <div className="mt-5"><TextInput label="Case or work reference" value={caseRef} onChange={event => setCaseRef(event.target.value)} placeholder={`e.g. ${keys(SUPPORT_CASES)[0]}`} /></div>
         <div className="mt-4"><Textarea label="Access reason" value={reason} onChange={event => setReason(event.target.value)} placeholder="Explain why this information is required for the current workflow." rows={4} /></div>
         <div className="mt-5 flex justify-end gap-2"><OperatorButton variant="secondary" onClick={onClose}>Cancel</OperatorButton><OperatorButton disabled={!reason || !caseRef} onClick={onConfirm}>Record Reason & Continue</OperatorButton></div>
       </div>
@@ -432,12 +590,28 @@ function ReasonForAccessOverlay({ target, onClose, onConfirm }: { target: string
   )
 }
 
-function FounderDecisionsPanel() {
-  const [actor, setActor] = useState<FounderActor>('CEO')
-  const [phase, setPhase] = useState<'review' | 'proposal' | 'approval' | 'returned' | 'executed'>('review')
-  const [proposal, setProposal] = useState('')
-  const [proposer, setProposer] = useState<FounderActor | null>(null)
+function FounderDecisionsPanel({ at }: { at: Moment }) {
+  // DEMO_DATA's Founder decision under dual review (Flow J): the Claim it resolves, its evidence and its history. The
+  // panel opens at the decision's state at the story moment, with the Founder who acts next.
+  const { focus } = useStory()
+  const decisionId = focus?.decision ?? keys(DECISIONS)[0]
+  const decision = DECISIONS[decisionId]
+  const claimId = CLAIM_IDS.find(id => CLAIMS[id].decision === decisionId)
+  const claim = claimId && CLAIMS[claimId]
+  const order = claim && ORDERS[claim.order]
+  const role = (id: keyof typeof OPERATORS) => OPERATORS[id].role as FounderActor
+  const proposed = happenedBefore(decision.proposed, at)
+  const approved = happenedBefore(decision.approved, at)
+  const [actor, setActor] = useState<FounderActor>(approved ? role(decision.approvedBy) : proposed ? role(decision.approvedBy) : role(decision.proposedBy))
+  const [phase, setPhase] = useState<'review' | 'proposal' | 'approval' | 'returned' | 'executed'>(approved ? 'executed' : proposed ? 'approval' : 'review')
+  const [proposal, setProposal] = useState(proposed ? decision.text : '')
+  const [proposer, setProposer] = useState<FounderActor | null>(proposed ? role(decision.proposedBy) : null)
   const [returnReason, setReturnReason] = useState('')
+  const history = [
+    ...(claim ? claim.history.filter(entry => happenedBefore(entry.at, at)).map(entry => `${dayTime(entry.at)} · ${entry.state === 'Open' ? `${claimId} submitted` : `${claimId} ${entry.state}${entry.by ? ` · ${OPERATORS[entry.by].role}` : ''}`}`) : []),
+    ...(proposed ? [`${dayTime(decision.proposed)} · ${role(decision.proposedBy)} proposed ${decisionId}`] : []),
+    ...(approved ? [`${dayTime(decision.approved)} · ${role(decision.approvedBy)} approved ${decisionId}`] : []),
+  ]
   const otherFounder = actor === 'CEO' ? 'COO/CTO' : 'CEO'
   const needsReview = phase === 'review' || phase === 'returned'
   const needsApproval = phase === 'approval' && proposer !== actor
@@ -450,12 +624,12 @@ function FounderDecisionsPanel() {
       </div>
       <div className="grid grid-cols-[1.35fr_.65fr] gap-5">
         <div className="flex flex-col gap-5">
-          <DarkPanel title="Material decision · GOV-AP-104">
-            <div className="flex items-start justify-between"><div><div className="font-display text-xl font-semibold" style={{ color: TEXT }}>Enable Seller admission in ET-ADD</div><p className="mt-1 text-xs" style={{ color: MUTED }}>Controlled domain action · Market configuration</p></div><OperatorState tone={phase === 'executed' ? 'success' : phase === 'returned' ? 'danger' : 'warning'}>{phase === 'review' ? 'Evidence Review' : phase === 'proposal' ? 'Proposal Draft' : phase === 'approval' ? 'Awaiting Approval' : phase === 'returned' ? 'Returned' : 'Executed'}</OperatorState></div>
+          <DarkPanel title={`Material decision · ${proposed || !claimId ? decisionId : claimId}`}>
+            <div className="flex items-start justify-between"><div><div className="font-display text-xl font-semibold" style={{ color: TEXT }}>{claim ? `${claimId} · ${claim.issue}` : decisionId}</div><p className="mt-1 text-xs" style={{ color: MUTED }}>Controlled domain action · Claim decision</p></div><OperatorState tone={phase === 'executed' ? 'success' : phase === 'returned' ? 'danger' : 'warning'}>{phase === 'review' ? 'Evidence Review' : phase === 'proposal' ? 'Proposal Draft' : phase === 'approval' ? 'Awaiting Approval' : phase === 'returned' ? 'Returned' : 'Executed'}</OperatorState></div>
           </DarkPanel>
           <DarkPanel title="Review evidence">
-            <div className="grid grid-cols-2 gap-4"><GovernanceEvidence title="Market readiness" value="Operational readiness checklist complete" source="OPS-ET-2026-09" /><GovernanceEvidence title="Provider readiness" value="Payments and reconciliation healthy" source="INC status · green" /><GovernanceEvidence title="Queue capacity" value="Projected launch queue within coverage" source="Capacity review 30 Sep" /><GovernanceEvidence title="Policy" value="Seller Admission 2.4 approved" source="POL-SELLER-2.4" /></div>
-            <div className="mt-4"><CaseTimeline events={['28 Sep · COO/CTO attached provider readiness', '29 Sep · CEO requested queue capacity evidence', '30 Sep · Capacity evidence added', '30 Sep · Case ready for Founder review']} /></div>
+            {claim && order && claimId && <div className="grid grid-cols-2 gap-4"><GovernanceEvidence title="Claim" value={`${claim.issue}: “${claim.statement}”`} source={claimId} /><GovernanceEvidence title="Evidence" value={`${claim.evidencePhotos} Buyer photo${claim.evidencePhotos === 1 ? '' : 's'}`} source={claimId} /><GovernanceEvidence title="Payment" value={`Paid · ${formatEtb(orderTotals(claim.order).total)}`} source={paymentReference(claim.order)} /><GovernanceEvidence title="Handoff" value={`${handoffText(order.finalHandoff, 'Recipient scan')}${order.finalHandoff?.location ? ` · location ${order.finalHandoff.location}` : ''}`} source={claim.order} /></div>}
+            <div className="mt-4"><CaseTimeline events={history.length ? history : ['—']} /></div>
           </DarkPanel>
           {(phase === 'proposal' || phase === 'returned') && (
             <DarkPanel title="Decision Proposal">
@@ -473,7 +647,7 @@ function FounderDecisionsPanel() {
               {actor === proposer && <div className="mt-3 text-xs" style={{ color: ACCENT }}>Switch to {otherFounder} to demonstrate independent approval.</div>}
             </DarkPanel>
           )}
-          {phase === 'executed' && <ActionResult>Approved by {actor}. Controlled market configuration action executed and written to Audit.</ActionResult>}
+          {phase === 'executed' && <ActionResult>Approved by {actor}. Controlled action executed and written to Audit.</ActionResult>}
         </div>
         <div className="flex flex-col gap-5">
           <DarkPanel title="Workflow">
@@ -484,7 +658,7 @@ function FounderDecisionsPanel() {
             <GovernanceStep number="05" label="Audit record" active={phase === 'executed'} done={phase === 'executed'} />
           </DarkPanel>
           {phase === 'review' && <OperatorButton onClick={() => setPhase('proposal')}>Review Complete · Create Proposal</OperatorButton>}
-          <DarkPanel title="Approval History"><ApprovalHistory /></DarkPanel>
+          <DarkPanel title="Approval History"><ApprovalHistory at={at} /></DarkPanel>
         </div>
       </div>
     </div>
@@ -535,19 +709,16 @@ function OperatorAccessPanel({ soloState, setSoloState }: { soloState: SoloState
 
 function AuditPanel() {
   const [filter, setFilter] = useState('All')
-  const events = [
-    ['09:41:22', 'COO/CTO', 'Opened restricted Seller', 'SELL-ADDIS-ATELIER', 'SUP-4812 · support investigation', 'Success'],
-    ['09:34:08', 'System', 'Assigned work priority', 'CLM-2041', 'SLA evaluation', 'Success'],
-    ['09:12:44', 'CEO', 'Approved Decision Proposal', 'GOV-AP-099', 'Provider incident safeguard', 'Success'],
-    ['08:58:11', 'COO/CTO', 'Returned for Changes', 'GOV-AP-101', 'Rollback evidence incomplete', 'Returned'],
-    ['08:31:02', 'COO/CTO', 'Activated Solo Coverage', 'COV-018', 'CEO unreachable · urgent provider incident', 'Expired'],
-  ].filter(event => filter === 'All' || event[1] === filter)
+  // DEMO_DATA's audit records (specification §49), most recent first.
+  const events = AUDIT_LOG.slice().reverse()
+    .map(event => [dayTime(event.at), event.actor, event.action, event.target, event.reason, event.result])
+    .filter(event => filter === 'All' || event[1] === filter)
   return (
     <div className="mx-auto max-w-7xl p-8">
       <OperatorHeader title="Audit" description="Immutable record of privileged access, Founder decisions, and controlled actions." trailing={<DarkSelect label="Actor" value={filter} options={['All', 'CEO', 'COO/CTO', 'System']} onChange={setFilter} />} />
       <div className="overflow-hidden rounded-2xl border" style={{ borderColor: BORDER, background: SURFACE }}>
         <div className="grid grid-cols-[110px_120px_1.2fr_180px_1.4fr_100px] gap-3 px-4 py-3 text-[9px] font-semibold uppercase tracking-wider" style={{ background: RAISED, color: MUTED }}><span>Timestamp</span><span>Actor</span><span>Action</span><span>Target</span><span>Reason</span><span>Result</span></div>
-        {events.map(event => <div key={`${event[0]}-${event[2]}`} className="grid grid-cols-[110px_120px_1.2fr_180px_1.4fr_100px] items-center gap-3 border-t px-4 py-4 text-xs" style={{ borderColor: BORDER, color: TEXT }}><span className="font-mono" style={{ color: MUTED }}>{event[0]}</span><span className="font-semibold">{event[1]}</span><span>{event[2]}</span><span className="font-mono" style={{ color: ACCENT }}>{event[3]}</span><span style={{ color: MUTED }}>{event[4]}</span><OperatorState tone={event[5] === 'Success' ? 'success' : event[5] === 'Returned' ? 'warning' : 'neutral'}>{event[5]}</OperatorState></div>)}
+        {events.map(event => <div key={`${event[0]}-${event[2]}`} className="grid grid-cols-[110px_120px_1.2fr_180px_1.4fr_100px] items-center gap-3 border-t px-4 py-4 text-xs" style={{ borderColor: BORDER, color: TEXT }}><span className="font-mono" style={{ color: MUTED }}>{event[0]}</span><span className="font-semibold">{event[1]}</span><span>{event[2]}</span><span className="font-mono" style={{ color: ACCENT }}>{event[3]}</span><span style={{ color: MUTED }}>{event[4]}</span><OperatorState tone={event[5] === 'Succeeded' ? 'success' : event[5] === 'Returned' ? 'warning' : 'neutral'}>{event[5]}</OperatorState></div>)}
       </div>
     </div>
   )
@@ -560,26 +731,24 @@ function ConfigurationPanel() {
       <OperatorHeader title="Configuration" description="Current launch configuration. Material changes enter Founder Decision flow." />
       {proposal && <ActionResult>{proposal}</ActionResult>}
       <div className="mt-5 grid grid-cols-2 gap-5">
-        <DarkPanel title="Market configuration"><ConfigRow label="Market" value="ET-ADD · Addis Ababa" /><ConfigRow label="Seller admission" value="Controlled launch" /><ConfigRow label="Buyer availability" value="Active" /><ConfigRow label="Courier mode" value="Approved Seller Pools" /><ProposeButton onClick={() => setProposal('Decision Proposal created for ET-ADD market configuration change.')}>Propose Market Change</ProposeButton></DarkPanel>
+        {/* DEMO_DATA defines the market and the Trust policy version only; other settings and statuses are undefined. */}
+        <DarkPanel title="Market configuration"><ConfigRow label="Market" value={`${MARKET.id} · ${MARKET.city}`} /><ConfigRow label="Seller admission" value="—" /><ConfigRow label="Buyer availability" value="—" /><ConfigRow label="Courier mode" value="Approved Seller Pools" /><ProposeButton onClick={() => setProposal(`Decision Proposal created for ${MARKET.id} market configuration change.`)}>Propose Market Change</ProposeButton></DarkPanel>
         <DarkPanel title="Feature flags"><ConfigRow label="Buyer Discovery" value="Enabled" /><ConfigRow label="Seller Companion" value="Enabled" /><ConfigRow label="Courier Mode" value="Enabled" /><ConfigRow label="Manual Handoff" value="Exceptional only" /><ProposeButton onClick={() => setProposal('Decision Proposal created for launch feature flag change.')}>Propose Flag Change</ProposeButton></DarkPanel>
-        <DarkPanel title="Provider status"><ConfigRow label="Payment provider" value="Operational · monitoring incident" /><ConfigRow label="Callback reconciliation" value="Active" /><ConfigRow label="Notifications" value="Operational" /><ConfigRow label="Media processing" value="Operational" /></DarkPanel>
-        <DarkPanel title="Policy versions"><ConfigRow label="Seller Admission" value="2.4" /><ConfigRow label="Content Accuracy" value="3.2" /><ConfigRow label="Seller Trust" value="4.1" /><ConfigRow label="Claims" value="2.8" /><ProposeButton onClick={() => setProposal('Decision Proposal created for policy version activation.')}>Propose Policy Activation</ProposeButton></DarkPanel>
+        <DarkPanel title="Provider status"><ConfigRow label="Payment provider" value="—" /><ConfigRow label="Callback reconciliation" value="—" /><ConfigRow label="Notifications" value="—" /><ConfigRow label="Media processing" value="—" /></DarkPanel>
+        <DarkPanel title="Policy versions"><ConfigRow label="Seller Admission" value="—" /><ConfigRow label="Content Accuracy" value="—" /><ConfigRow label="Seller Trust" value={[...new Set(keys(TRUST_APPEALS).map(id => TRUST_APPEALS[id].policyVersion))].join(', ') || '—'} /><ConfigRow label="Claims" value="—" /><ProposeButton onClick={() => setProposal('Decision Proposal created for policy version activation.')}>Propose Policy Activation</ProposeButton></DarkPanel>
       </div>
     </div>
   )
 }
 
 function SystemHealthPanel() {
-  const systems = [
-    ['Database', 'Operational', '18ms'], ['Queues', 'Operational', '31 open work items'], ['Background jobs', 'Operational', '0 failed'],
-    ['Payment reconciliation', 'Degraded', '7 callbacks delayed'], ['Notifications', 'Operational', '99.8% delivered'], ['Media', 'Operational', '42s p95'],
-    ['Privacy services', 'Operational', 'No active incident'], ['Payment provider', 'Monitoring', 'INC-074'],
-  ]
+  // The specification's service list (§49). DEMO_DATA records no service status, metrics or incidents.
+  const systems = ['Database', 'Queues', 'Background jobs', 'Payment reconciliation', 'Notifications', 'Media', 'Privacy services', 'Payment provider'].map(name => [name, '—', '—'])
   return (
     <div className="mx-auto max-w-7xl p-8">
       <OperatorHeader title="System Health" description="Launch-critical services, incidents, and recovery posture." />
-      <div className="grid grid-cols-4 gap-4">{systems.map(([name, status, detail]) => <div key={name} className="rounded-2xl border p-5" style={{ borderColor: status === 'Degraded' ? ACCENT : BORDER, background: SURFACE }}><div className="flex items-start justify-between"><span className="text-sm font-semibold" style={{ color: TEXT }}>{name}</span><span className={`h-2.5 w-2.5 rounded-full ${status === 'Operational' ? 'bg-success' : 'bg-warning'}`} /></div><div className="mt-5 font-mono text-xs font-semibold" style={{ color: status === 'Operational' ? 'var(--color-success)' : ACCENT }}>{status}</div><div className="mt-1 text-[10px]" style={{ color: MUTED }}>{detail}</div></div>)}</div>
-      <div className="mt-5 grid grid-cols-[1.3fr_.7fr] gap-5"><DarkPanel title="Active incident"><div className="flex items-start justify-between"><div><div className="text-sm font-semibold" style={{ color: TEXT }}>INC-074 · Payment callback delays</div><p className="mt-2 text-xs leading-relaxed" style={{ color: MUTED }}>Provider confirmations delayed for 7 Orders. Reconciliation is checking provider truth. Seller payment state remains externally controlled.</p></div><OperatorState tone="warning">Monitoring</OperatorState></div><CaseTimeline events={['09:12 · Alert opened', '09:18 · Reconciliation capacity increased', '09:29 · Delay reduced', '09:41 · Monitoring continues']} /></DarkPanel><DarkPanel title="Launch posture"><ControlRow label="Critical services" value="7 / 8 operational" /><ControlRow label="Data loss" value="None detected" /><ControlRow label="Manual intervention" value="Not required" /><ControlRow label="Next review" value="10:00 UTC+3" /></DarkPanel></div>
+      <div className="grid grid-cols-4 gap-4">{systems.map(([name, status, detail]) => <div key={name} className="rounded-2xl border p-5" style={{ borderColor: BORDER, background: SURFACE }}><div className="flex items-start justify-between"><span className="text-sm font-semibold" style={{ color: TEXT }}>{name}</span><span className="h-2.5 w-2.5 rounded-full bg-border-strong" /></div><div className="mt-5 font-mono text-xs font-semibold" style={{ color: MUTED }}>{status}</div><div className="mt-1 text-[10px]" style={{ color: MUTED }}>{detail}</div></div>)}</div>
+      <div className="mt-5 grid grid-cols-[1.3fr_.7fr] gap-5"><DarkPanel title="Active incident"><div className="text-xs" style={{ color: MUTED }}>—</div></DarkPanel><DarkPanel title="Launch posture"><ControlRow label="Critical services" value="—" /><ControlRow label="Data loss" value="—" /><ControlRow label="Manual intervention" value="—" /><ControlRow label="Next review" value="—" /></DarkPanel></div>
     </div>
   )
 }
@@ -596,8 +765,9 @@ function GovernanceStep({ number, label, active, done }: { number: string; label
   return <div className="flex items-center gap-3 border-t py-3 first:border-t-0" style={{ borderColor: BORDER }}><span className="flex h-7 w-7 items-center justify-center rounded-full font-mono text-[9px] font-bold" style={{ background: active || done ? ACCENT : RAISED, color: active || done ? BG : MUTED }}>{done ? '✓' : number}</span><span className="text-xs font-semibold" style={{ color: active ? ACCENT : done ? TEXT : MUTED }}>{label}</span></div>
 }
 
-function ApprovalHistory() {
-  return <div><ApprovalHistoryRow refId="GOV-AP-099" decision="Provider incident safeguard" result="Approved" actors="COO/CTO → CEO" /><ApprovalHistoryRow refId="GOV-AP-101" decision="Queue SLA change" result="Returned" actors="CEO → COO/CTO" /><ApprovalHistoryRow refId="GOV-AP-096" decision="Policy 3.2 activation" result="Approved" actors="CEO → COO/CTO" /></div>
+function ApprovalHistory({ at }: { at: Moment }) {
+  // Founder decisions approved by the story moment.
+  return <div>{keys(DECISIONS).filter(id => happenedBefore(DECISIONS[id].approved, at)).map(id => <ApprovalHistoryRow key={id} refId={id} decision={DECISIONS[id].text} result="Approved" actors={`${OPERATORS[DECISIONS[id].proposedBy].role} → ${OPERATORS[DECISIONS[id].approvedBy].role}`} />)}</div>
 }
 
 function ApprovalHistoryRow({ refId, decision, result, actors }: { refId: string; decision: string; result: string; actors: string }) {
