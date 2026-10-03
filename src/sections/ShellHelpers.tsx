@@ -1,9 +1,11 @@
 /** Shared structural primitives for Adulis product shell prototypes. */
 
 import { useState, ReactNode } from 'react'
+import { initials } from '../demo-data'
 
 /* ─── Phone Frame ─── */
-export function PhoneFrame({ children, label }: { children: ReactNode; label?: string }) {
+/** `clock` is the status-bar time: the story moment the surface shows ('10:25'). */
+export function PhoneFrame({ children, label, clock }: { children: ReactNode; label?: string; clock: string }) {
   return (
     <div className="phone-stage flex flex-col items-center py-10" style={{ background: 'var(--color-background)', minHeight: '100%' }}>
       {label && (
@@ -26,7 +28,7 @@ export function PhoneFrame({ children, label }: { children: ReactNode; label?: s
           className="flex-shrink-0 flex items-center justify-between px-6"
           style={{ height: 44, background: 'inherit' }}
         >
-          <span className="text-xs font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-mono)' }}>9:41</span>
+          <span className="text-xs font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-mono)' }}>{clock}</span>
           <div className="flex items-center gap-1">
             <StatusSignal />
             <StatusWifi />
@@ -207,7 +209,7 @@ export function ConsoleTopBar({
             className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
             style={{ background: accent, color: '#fff' }}
           >
-            AA
+            {initials(sellerName)}
           </div>
           <span className="text-sm font-medium" style={{ color: text }}>{sellerName}</span>
           {sellerSelector && (
@@ -226,7 +228,7 @@ export function ConsoleTopBar({
           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ml-1"
           style={{ background: dark ? 'var(--color-operator-raised)' : 'var(--color-brand-muted)', color: dark ? 'var(--color-operator-accent)' : 'var(--color-brand-dark)' }}
         >
-          {dark ? 'OP' : 'AA'}
+          {dark ? 'OP' : sellerName ? initials(sellerName) : ''}
         </div>
       </div>
     </header>

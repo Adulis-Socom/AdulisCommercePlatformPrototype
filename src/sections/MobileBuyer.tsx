@@ -6,6 +6,17 @@ import {
   PhoneFrame, BottomNav, IconHome, IconShop, IconHeart, IconOrders, IconUser,
   IconSearch, IconChevronRight,
 } from './ShellHelpers'
+import { useStory, useStoryMoment } from '../StoryClock'
+import {
+  BUYERS, CHATBOTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DEMO_CARTS, MARKET, MODERATION_CASES, ORDERS,
+  ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
+  adulisSurcharge, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, claimStateAt, claimSubmitted, claimsForOrder, describeFulfilment,
+  forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatEtb, fulfilmentOptionsAt, happenedBefore, initials, lineOptions, messagesAt,
+  notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, productQualityAt, reviewsAt, sellerPostsAt, sellerProductsAt,
+  sellerServiceAt, shortName, stateTime, trustAt, trustLabel,
+  type ClaimId, type CollectionId, type ConversationId, type FulfilmentMode, type ModerationId, type Moment, type NotificationRecord, type OrderId,
+  type OrderState, type ProductId, type SellerId, type ShoppablePostId, type Timestamp,
+} from '../demo-data'
 
 type TabKey = 'foryou' | 'shop' | 'saved' | 'orders' | 'you'
 type SearchTab = 'top' | 'products' | 'posts' | 'sellers'
@@ -19,14 +30,31 @@ type Screen =
   | 'claim-start' | 'claim-form' | 'claim-status' | 'chats' | 'conversation'
   | 'chatbot' | 'notifications'
 type Fulfilment = 'collection' | 'seller' | 'courier'
-type OrderStage = 'paid' | 'preparing' | 'ready' | 'assigned' | 'pickup' | 'out'
 
+const FULFILMENT_MODE: Record<Fulfilment, FulfilmentMode> = { collection: 'Buyer Collection', seller: 'Seller Delivery', courier: 'Courier Delivery' }
+const FULFILMENT_KEY: Record<FulfilmentMode, Fulfilment> = { 'Buyer Collection': 'collection', 'Seller Delivery': 'seller', 'Courier Delivery': 'courier' }
+
+// The start screen's photograph illustrates no demo record, so it stays. Products and posts show neutral placeholders:
+// DEMO_DATA defines no imagery, and the inherited photographs showed other items.
 const PHOTOS = {
-  hero: 'https://images.unsplash.com/photo-1604267624174-4e939059d6ea?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=85&w=900',
-  blue: 'https://images.unsplash.com/photo-1662894310975-bce268199aec?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=85&w=900',
-  field: 'https://images.unsplash.com/photo-1598122666068-59b41e0a3193?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=85&w=900',
   group: 'https://images.unsplash.com/photo-1691826280718-b365d22809e3?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=85&w=900',
 }
+
+const BUYER = SURFACE_DEFAULTS.buyer
+// The Seller cart the checkout screens show: the first of DEMO_DATA's Flow D carts.
+const CHECKOUT_CART = DEMO_CARTS[0]
+
+// Claim issues: the categories the approved documents use (DEMO_DATA › Claims). Report reasons: the prototype report
+// categories (specification §7).
+const CLAIM_ISSUES = ['Item damaged', 'Item not as described']
+const REPORT_CATEGORIES = [
+  'Misleading or inaccurate product information',
+  'Prohibited or unsafe product',
+  'Spam or scam',
+  'Inappropriate or abusive content',
+  'Intellectual-property concern',
+  'Other',
+]
 
 const TABS = [
   { key: 'foryou' as TabKey, label: 'For You', icon: <IconHome size={22} /> },
@@ -36,11 +64,32 @@ const TABS = [
   { key: 'you' as TabKey, label: 'You', icon: <IconUser size={22} /> },
 ]
 
-const PRODUCT = {
-  name: 'Habesha Kemis — Classic White',
-  price: 'ETB 2,800',
-  seller: 'Addis Atelier',
-  description: 'Premium Ethiopian cotton with hand-embroidered Tibeb borders, made to order by master tailors in Addis Ababa.',
+/** A cart's Products subtotal at the Products' regular prices. */
+function cartProducts(cart: OrderId) {
+  return ORDERS[cart].lines.reduce((sum, line) => sum + PRODUCTS[line.product].price * line.quantity, 0)
+}
+
+/** The checkout total for the cart with a fulfilment option: Products + delivery charge + the 0.5% surcharge. */
+function cartTotal(fulfilment: Fulfilment, at: Moment) {
+  const products = cartProducts(CHECKOUT_CART)
+  const delivery = fulfilmentOptionsAt(ORDERS[CHECKOUT_CART].seller, at).find(option => option.mode === FULFILMENT_MODE[fulfilment])?.charge ?? 0
+  return { products, delivery, surcharge: adulisSurcharge(products), total: products + delivery + adulisSurcharge(products) }
+}
+
+/** The Order's DEMO_DATA Claim that hasn't been submitted at `at`: the Claim a claim step submits. Other claims are transient. */
+function upcomingClaim(orderId: OrderId, at: Moment): ClaimId | undefined {
+  return claimsForOrder(orderId).find(id => !happenedBefore(claimSubmitted(id), at))
+}
+
+/** A neutral stand-in for a Product or post image: DEMO_DATA defines no imagery, so it shows the record's initials. */
+function Placeholder({ label, initialsOf, className, dark }: { label: string; initialsOf?: string; className: string; dark?: boolean }) {
+  return <div role="img" aria-label={label} className={`flex items-center justify-center font-display font-bold ${dark ? 'text-white/20' : 'bg-surface-raised text-text-muted'} ${className}`}>{initials(initialsOf ?? label)}</div>
+}
+
+/** The Product's availability as Buyers see it: an out-of-stock Product is "Currently unavailable". */
+function availabilityText(id: ProductId) {
+  const availability = PRODUCTS[id].availability
+  return availability === 'Out of Stock' ? 'Currently unavailable' : availability
 }
 
 export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
@@ -52,11 +101,32 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [saved, setSaved] = useState(true)
   const [searchTab, setSearchTab] = useState<SearchTab>('top')
   const [query, setQuery] = useState('')
-  const [cartConfirmation, setCartConfirmation] = useState(false)
+  const [addedToCart, setAddedToCart] = useState<{ product: ProductId; options: readonly string[]; quantity: number } | null>(null)
   const [reportOpen, setReportOpen] = useState(false)
   const [fulfilment, setFulfilment] = useState<Fulfilment>('courier')
-  const [orderStage, setOrderStage] = useState<OrderStage>('paid')
-  const paymentTotal = 2814 + (fulfilment === 'courier' ? 180 : fulfilment === 'seller' ? 120 : 0)
+  // The records the screens show: a guided-flow step starts on its DEMO_DATA records, and opening an item selects it.
+  const story = useStory()
+  const focus = story.focus
+  // The step's story moment; it moves on as the Buyer performs the step's documented events (payment, scan, review).
+  const [at, advanceTo] = useStoryMoment()
+  const [postId, setPostId] = useState<ShoppablePostId>(focus?.post ?? SURFACE_DEFAULTS.post)
+  const [productId, setProductId] = useState<ProductId>(focus?.product ?? SURFACE_DEFAULTS.product)
+  const [sellerId, setSellerId] = useState<SellerId>(SHOPPABLE_POSTS[focus?.post ?? SURFACE_DEFAULTS.post].seller)
+  const [orderId, setOrderId] = useState<OrderId>(focus?.order ?? SURFACE_DEFAULTS.order)
+  const [collectionId, setCollectionId] = useState<CollectionId>(COLLECTION_IDS.find(id => COLLECTIONS[id].owner === BUYER)!)
+  const [chatSellerId, setChatSellerId] = useState<SellerId>(CONVERSATIONS[focus?.conversation ?? SURFACE_DEFAULTS.conversation].seller)
+  const [claimIssue, setClaimIssue] = useState('')
+  const [claimId, setClaimId] = useState<ClaimId | undefined>(upcomingClaim(focus?.order ?? SURFACE_DEFAULTS.order, story.moment))
+  const [orderStage, setOrderStage] = useState<OrderState>(orderStateAt(focus?.order ?? SURFACE_DEFAULTS.order, story.moment) ?? 'Paid')
+  const paymentTotal = cartTotal(fulfilment, at).total
+  const openPost = (id: ShoppablePostId) => { setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); setScreen('post') }
+  const openProduct = (id: ProductId) => { setProductId(id); setSellerId(PRODUCTS[id].seller); setScreen('product') }
+  const openSeller = (id: SellerId) => { setSellerId(id); setScreen('seller') }
+  const openOrder = (id: OrderId) => { setOrderId(id); setOrderStage(orderStateAt(id, at) ?? 'Paid'); setScreen('order-detail') }
+  const openConversation = (seller: SellerId) => { setChatSellerId(seller); setScreen('conversation') }
+  const openClaim = () => { setClaimId(upcomingClaim(orderId, at)); setScreen('claim-start') }
+  const paid = () => { advanceTo(paidAt(CHECKOUT_CART)); setScreen('payment-success') }
+  const handoffVerified = () => { const done = stateTime(orderId, 'Completed'); if (done) advanceTo(done); setScreen('delivery-confirmed') }
 
   const goTab = (key: TabKey) => {
     setActiveTab(key)
@@ -69,76 +139,82 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const showNav = ['feed', 'search', 'saved', 'orders'].includes(screen)
 
   return (
-    <PhoneFrame label="05 — MOBILE BUYER · MAYA T.">
+    <PhoneFrame label={`05 — MOBILE BUYER · ${shortName(BUYERS[BUYER].name).toUpperCase()}`} clock={formatClockShort(at.at)}>
       <div className="relative flex flex-1 flex-col overflow-hidden">
         {screen === 'start' && <AppStart onExplore={() => setScreen('feed')} />}
         {screen === 'feed' && (
           <Feed
+            at={at}
             onSearch={() => { setScreen('search'); setActiveTab('shop') }}
-            onPost={() => setScreen('post')}
-            onHotspot={() => setSheetOpen(true)}
-            onSeller={() => setScreen('seller')}
+            onPost={openPost}
+            onHotspot={id => { setPostId(id); setSheetOpen(true) }}
+            onSeller={openSeller}
           />
         )}
         {screen === 'post' && (
           <ExpandedPost
+            postId={postId}
             onBack={() => setScreen('feed')}
             onHotspot={() => setSheetOpen(true)}
-            onSeller={() => setScreen('seller')}
+            onSeller={() => openSeller(SHOPPABLE_POSTS[postId].seller)}
             onReport={() => setReportOpen(true)}
           />
         )}
         {screen === 'product' && (
           <ProductDetail
+            productId={productId}
+            at={at}
             saved={saved}
             onSave={() => setSaved(!saved)}
             onBack={() => setScreen('post')}
-            onSeller={() => setScreen('seller')}
-            onAddToCart={() => setCartConfirmation(true)}
-            onChat={() => setScreen('chatbot')}
+            onSeller={() => openSeller(PRODUCTS[productId].seller)}
+            onAddToCart={(options, quantity) => setAddedToCart({ product: productId, options, quantity })}
+            // Only a Seller with a chatbot has one to ask; otherwise Chat opens the conversation with the Seller.
+            onChat={() => (CHATBOTS[PRODUCTS[productId].seller] ? setScreen('chatbot') : openConversation(PRODUCTS[productId].seller))}
           />
         )}
-        {screen === 'seller' && <SellerProfile onBack={() => setScreen('feed')} onShop={() => setScreen('seller-shop')} />}
-        {screen === 'seller-shop' && <SellerShop onBack={() => setScreen('seller')} onProduct={() => setScreen('product')} onSearch={() => setScreen('search')} />}
+        {screen === 'seller' && <SellerProfile sellerId={sellerId} at={at} onBack={() => setScreen('feed')} onShop={() => setScreen('seller-shop')} onPost={openPost} />}
+        {screen === 'seller-shop' && <SellerShop sellerId={sellerId} at={at} onBack={() => setScreen('seller')} onProduct={openProduct} onSearch={() => setScreen('search')} />}
         {screen === 'search' && (
           <Search
+            at={at}
             query={query}
             setQuery={setQuery}
             tab={searchTab}
             setTab={setSearchTab}
-            onProduct={() => setScreen('product')}
-            onPost={() => setScreen('post')}
-            onSeller={() => setScreen('seller')}
+            onProduct={openProduct}
+            onPost={openPost}
+            onSeller={openSeller}
           />
         )}
-        {screen === 'saved' && <Saved onCollection={() => setScreen('collection')} onProduct={() => setScreen('product')} onPost={() => setScreen('post')} />}
-        {screen === 'collection' && <Collection onBack={() => setScreen('saved')} onProduct={() => setScreen('product')} onPost={() => setScreen('post')} />}
+        {screen === 'saved' && <Saved onCollection={id => { setCollectionId(id); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
+        {screen === 'collection' && <Collection collectionId={collectionId} onBack={() => setScreen('saved')} onProduct={openProduct} onPost={openPost} />}
         {screen === 'seller-cart' && <SellerCart onBack={() => setScreen('product')} onAllCarts={() => setScreen('multi-cart')} onCheckout={() => setScreen('checkout-coordinator')} />}
         {screen === 'multi-cart' && <MultiCart onBack={() => setScreen('seller-cart')} onCheckout={() => setScreen('checkout-coordinator')} />}
         {screen === 'checkout-coordinator' && <CheckoutCoordinator onBack={() => setScreen('multi-cart')} onContinue={() => setScreen('seller-checkout')} />}
-        {screen === 'seller-checkout' && <SellerCheckout fulfilment={fulfilment} setFulfilment={setFulfilment} onBack={() => setScreen('checkout-coordinator')} onPay={() => setScreen('payment-transition')} />}
+        {screen === 'seller-checkout' && <SellerCheckout at={at} fulfilment={fulfilment} setFulfilment={setFulfilment} onBack={() => setScreen('checkout-coordinator')} onPay={() => setScreen('payment-transition')} />}
         {screen === 'payment-transition' && <PaymentTransition amount={paymentTotal} onBack={() => setScreen('seller-checkout')} onContinue={() => setScreen('payment-processing')} />}
-        {screen === 'payment-processing' && <PaymentProcessing amount={paymentTotal} onPaid={() => setScreen('payment-success')} onFailed={() => setScreen('payment-failed')} onChecking={() => setScreen('payment-checking')} />}
+        {screen === 'payment-processing' && <PaymentProcessing amount={paymentTotal} onPaid={paid} onFailed={() => setScreen('payment-failed')} onChecking={() => setScreen('payment-checking')} />}
         {screen === 'payment-success' && <PaymentSuccess amount={paymentTotal} onDone={() => { setActiveTab('orders'); setScreen('orders') }} />}
         {screen === 'payment-failed' && <PaymentFailed onRetry={() => setScreen('payment-transition')} onCart={() => setScreen('seller-cart')} />}
-        {screen === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={() => setScreen('payment-success')} />}
-        {screen === 'orders' && <OrdersList onOrder={() => setScreen('order-detail')} onChats={() => setScreen('chats')} onNotifications={() => setScreen('notifications')} />}
-        {screen === 'order-detail' && <OrderDetail stage={orderStage} setStage={setOrderStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => setScreen('otp')} onClaim={() => setScreen('claim-start')} onChat={() => setScreen('conversation')} />}
+        {screen === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={paid} />}
+        {screen === 'orders' && <OrdersList at={at} onOrder={openOrder} onChats={() => setScreen('chats')} onNotifications={() => setScreen('notifications')} />}
+        {screen === 'order-detail' && <OrderDetail orderId={orderId} stage={orderStage} setStage={setOrderStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => setScreen('otp')} onClaim={openClaim} onChat={() => openConversation(ORDERS[orderId].seller)} />}
         {screen === 'delegated-recipient' && <DelegatedRecipient onBack={() => setScreen('order-detail')} onSave={() => setScreen('order-detail')} />}
         {screen === 'qr-scanner' && <DeliveryScanner onBack={() => setScreen('order-detail')} onCamera={() => setScreen('qr-camera')} onOtp={() => setScreen('otp')} />}
         {screen === 'qr-camera' && <ScannerCamera onBack={() => setScreen('qr-scanner')} onScan={() => setScreen('qr-verifying')} />}
-        {screen === 'qr-verifying' && <QrVerifying onVerified={() => setScreen('delivery-confirmed')} />}
-        {screen === 'delivery-confirmed' && <DeliveryConfirmed onContinue={() => setScreen('completed')} />}
-        {screen === 'otp' && <OtpFallback onBack={() => setScreen('qr-scanner')} onVerify={() => setScreen('delivery-confirmed')} />}
-        {screen === 'completed' && <CompletedOrder onBack={() => setScreen('orders')} onReview={() => setScreen('review')} onClaim={() => setScreen('claim-start')} />}
-        {screen === 'review' && <ReviewOrder onBack={() => setScreen('completed')} onSubmit={() => setScreen('completed')} />}
-        {screen === 'claim-start' && <ClaimStart onBack={() => setScreen('order-detail')} onContinue={() => setScreen('claim-form')} />}
-        {screen === 'claim-form' && <ClaimForm onBack={() => setScreen('claim-start')} onSubmit={() => setScreen('claim-status')} />}
-        {screen === 'claim-status' && <ClaimStatus onDone={() => setScreen('order-detail')} />}
-        {screen === 'chats' && <ChatList onBack={() => setScreen('orders')} onConversation={() => setScreen('conversation')} onBot={() => setScreen('chatbot')} />}
-        {screen === 'conversation' && <Conversation onBack={() => setScreen('chats')} />}
-        {screen === 'chatbot' && <Chatbot onBack={() => setScreen('product')} />}
-        {screen === 'notifications' && <Notifications onBack={() => setScreen('orders')} onOrder={() => setScreen('order-detail')} onChat={() => setScreen('conversation')} />}
+        {screen === 'qr-verifying' && <QrVerifying orderId={orderId} onVerified={handoffVerified} />}
+        {screen === 'delivery-confirmed' && <DeliveryConfirmed orderId={orderId} onContinue={() => setScreen('completed')} />}
+        {screen === 'otp' && <OtpFallback onBack={() => setScreen('qr-scanner')} onVerify={handoffVerified} />}
+        {screen === 'completed' && <CompletedOrder orderId={orderId} onBack={() => setScreen('orders')} onReview={() => setScreen('review')} onClaim={openClaim} />}
+        {screen === 'review' && <ReviewOrder orderId={orderId} onBack={() => setScreen('completed')} onSubmit={() => { const review = REVIEW_IDS.find(id => REVIEWS[id].order === orderId); if (review) advanceTo(REVIEWS[review].written); setScreen('completed') }} />}
+        {screen === 'claim-start' && <ClaimStart orderId={orderId} issue={claimIssue} setIssue={setClaimIssue} onBack={() => setScreen('order-detail')} onContinue={() => setScreen('claim-form')} />}
+        {screen === 'claim-form' && <ClaimForm claimId={claimId} issue={claimIssue} onBack={() => setScreen('claim-start')} onSubmit={() => { if (claimId) advanceTo(claimSubmitted(claimId)); setScreen('claim-status') }} />}
+        {screen === 'claim-status' && <ClaimStatus orderId={orderId} claimId={claimId} at={at} onDone={() => setScreen('order-detail')} />}
+        {screen === 'chats' && <ChatList at={at} onBack={() => setScreen('orders')} onConversation={openConversation} />}
+        {screen === 'conversation' && <Conversation sellerId={chatSellerId} at={at} onBack={() => setScreen('chats')} />}
+        {screen === 'chatbot' && <Chatbot productId={productId} onBack={() => setScreen('product')} onEscalate={advanceTo} />}
+        {screen === 'notifications' && <Notifications at={at} onBack={() => setScreen('orders')} onOrder={openOrder} />}
 
         {showNav && (
           <BottomNav items={TABS} active={activeTab} onSelect={k => goTab(k as TabKey)} />
@@ -146,17 +222,19 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
 
         {sheetOpen && (
           <ProductSheet
+            postId={postId}
             onClose={() => setSheetOpen(false)}
-            onDetail={() => { setSheetOpen(false); setScreen('product') }}
+            onDetail={id => { setSheetOpen(false); openProduct(id) }}
           />
         )}
-        {cartConfirmation && (
+        {addedToCart && (
           <AddToCartConfirmation
-            onClose={() => setCartConfirmation(false)}
-            onCart={() => { setCartConfirmation(false); setScreen('seller-cart') }}
+            {...addedToCart}
+            onClose={() => setAddedToCart(null)}
+            onCart={() => { setAddedToCart(null); setScreen('seller-cart') }}
           />
         )}
-        {reportOpen && <ReportPostSheet onClose={() => setReportOpen(false)} />}
+        {reportOpen && <ReportPostSheet postId={postId} onClose={() => setReportOpen(false)} />}
       </div>
     </PhoneFrame>
   )
@@ -205,16 +283,18 @@ function GuestStrip() {
   )
 }
 
-function Feed({ onSearch, onPost, onHotspot, onSeller }: {
-  onSearch: () => void; onPost: () => void; onHotspot: () => void; onSeller: () => void
+function Feed({ at, onSearch, onPost, onHotspot, onSeller }: {
+  at: Moment; onSearch: () => void; onPost: (id: ShoppablePostId) => void; onHotspot: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void
 }) {
   return (
     <>
       <Header title="For You" onSearch={onSearch} trailing={<IconButton label="Notifications">○</IconButton>} />
       <GuestStrip />
       <div className="flex-1 snap-y snap-mandatory overflow-y-auto bg-text-primary">
-        <ShoppablePost image={PHOTOS.hero} seller="Addis Atelier" caption="A modern take on the Habesha Kemis, made slowly in Addis Ababa." count={2} onOpen={onPost} onHotspot={onHotspot} onSeller={onSeller} />
-        <ShoppablePost image={PHOTOS.blue} seller="Nile Loom" caption="Indigo, hand finishing, and a silhouette made for warm afternoons." count={3} onOpen={onPost} onHotspot={onHotspot} onSeller={onSeller} />
+        {forYouAt(at).map(id => {
+          const post = SHOPPABLE_POSTS[id]
+          return <ShoppablePost key={id} title={post.title} seller={SELLERS[post.seller].name} trust={trustLabel(trustAt(post.seller, at))} caption={post.caption} count={post.tags.length} onOpen={() => onPost(id)} onHotspot={() => onHotspot(id)} onSeller={() => onSeller(post.seller)} />
+        })}
         <div className="h-48 bg-surface p-5">
           <div className="mb-3 text-xs font-semibold text-text-muted">Finding more stories for you</div>
           <Skeleton height={112} radius="var(--radius-xl)" />
@@ -224,13 +304,13 @@ function Feed({ onSearch, onPost, onHotspot, onSeller }: {
   )
 }
 
-function ShoppablePost({ image, seller, caption, count, onOpen, onHotspot, onSeller }: {
-  image: string; seller: string; caption: string; count: number; onOpen: () => void; onHotspot: () => void; onSeller: () => void
+function ShoppablePost({ title, seller, trust, caption, count, onOpen, onHotspot, onSeller }: {
+  title: string; seller: string; trust: string; caption: string; count: number; onOpen: () => void; onHotspot: () => void; onSeller: () => void
 }) {
   return (
     <div className="relative h-full min-h-[632px] snap-start overflow-hidden">
       <button onClick={onOpen} className="absolute inset-0 h-full w-full">
-        <img src={image} alt={`${seller} shoppable post`} className="h-full w-full object-cover" />
+        <Placeholder label={`${seller} shoppable post: ${title}`} initialsOf={title} dark className="h-full w-full text-6xl" />
       </button>
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/80" />
       <button onClick={onHotspot} aria-label="View tagged product" className="absolute left-[57%] top-[42%] flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-brand text-sm font-bold text-white shadow-lg">
@@ -238,51 +318,58 @@ function ShoppablePost({ image, seller, caption, count, onOpen, onHotspot, onSel
       </button>
       <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
         <button onClick={onSeller} className="mb-2 flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-muted font-bold text-brand-dark">AA</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-muted font-bold text-brand-dark">{initials(seller)}</span>
           <span className="text-sm font-semibold">{seller}</span>
-          <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px]">Established</span>
+          <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px]">{trust}</span>
         </button>
         <p className="text-sm leading-relaxed text-white/90">{caption}</p>
         <button onClick={onHotspot} className="mt-3 flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-text-primary shadow-md">
-          <TagIcon /> In this post · {count} products
+          <TagIcon /> In this post · {count} product{count === 1 ? '' : 's'}
         </button>
       </div>
     </div>
   )
 }
 
-function ExpandedPost({ onBack, onHotspot, onSeller, onReport }: { onBack: () => void; onHotspot: () => void; onSeller: () => void; onReport: () => void }) {
+function ExpandedPost({ postId, onBack, onHotspot, onSeller, onReport }: { postId: ShoppablePostId; onBack: () => void; onHotspot: () => void; onSeller: () => void; onReport: () => void }) {
+  const post = SHOPPABLE_POSTS[postId]
+  const seller = SELLERS[post.seller]
+  const first = post.tags[0] ? PRODUCTS[post.tags[0]] : undefined
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-text-primary">
-      <img src={PHOTOS.hero} alt="Habesha Kemis scene" className="absolute inset-0 h-full w-full object-cover" />
+      <Placeholder label={`${seller.name} shoppable post: ${post.title}`} initialsOf={post.title} dark className="absolute inset-0 h-full w-full text-6xl" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/80" />
       <div className="relative flex items-center gap-3 p-4 text-white">
         <IconButton label="Back" onClick={onBack} dark>‹</IconButton>
         <button onClick={onSeller} className="flex flex-1 items-center gap-2 text-left">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-muted text-xs font-bold text-brand-dark">AA</span>
-          <span className="text-sm font-semibold">Addis Atelier</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-muted text-xs font-bold text-brand-dark">{initials(seller.name)}</span>
+          <span className="text-sm font-semibold">{seller.name}</span>
         </button>
         <button onClick={onReport} className="rounded-full bg-black/35 px-3 py-2 text-xs font-semibold text-white">Report</button>
       </div>
-      <button onClick={onHotspot} className="absolute left-[55%] top-[39%] flex items-center gap-2 rounded-full bg-white p-1.5 pr-3 text-xs font-semibold text-text-primary shadow-lg">
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand text-white">+</span>
-        ETB 2,800
-      </button>
+      {first && (
+        <button onClick={onHotspot} className="absolute left-[55%] top-[39%] flex items-center gap-2 rounded-full bg-white p-1.5 pr-3 text-xs font-semibold text-text-primary shadow-lg">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand text-white">+</span>
+          {formatEtb(first.price)}
+        </button>
+      )}
       <button onClick={onHotspot} className="absolute right-[12%] top-[59%] h-8 w-8 rounded-full border-2 border-white bg-brand text-white shadow-lg">+</button>
       <div className="relative mt-auto p-4 text-white">
         <span className="rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider">Scene explorer</span>
-        <div className="mt-3 font-display text-2xl font-semibold">Heritage, in a new frame.</div>
+        <div className="mt-3 font-display text-2xl font-semibold">{post.title}</div>
         <p className="mt-1 text-sm text-white/80">Tap a product hotspot to explore the pieces in this scene.</p>
         <button onClick={onHotspot} className="mt-4 flex w-full items-center justify-between rounded-xl bg-white p-3 text-sm font-semibold text-text-primary">
           <span className="flex items-center gap-2"><TagIcon /> In this post</span>
-          <span>2 products</span>
+          <span>{post.tags.length} product{post.tags.length === 1 ? '' : 's'}</span>
         </button>
       </div>
     </div>
   )
 }
 
-function ProductSheet({ onClose, onDetail }: { onClose: () => void; onDetail: () => void }) {
+function ProductSheet({ postId, onClose, onDetail }: { postId: ShoppablePostId; onClose: () => void; onDetail: (id: ProductId) => void }) {
+  // The post's tagged Products: the first as the featured row, the others as compact rows, as before.
+  const [first, ...others] = SHOPPABLE_POSTS[postId].tags
   return (
     <div onClick={onClose} className="absolute inset-0 z-50 flex flex-col justify-end bg-black/45" role="presentation">
       <div onClick={e => e.stopPropagation()} className="rounded-t-3xl bg-surface px-5 pb-7 pt-3 shadow-xl" role="dialog" aria-modal="true" aria-label="Products in this post">
@@ -292,51 +379,63 @@ function ProductSheet({ onClose, onDetail }: { onClose: () => void; onDetail: ()
           <IconButton label="Close" onClick={onClose}>×</IconButton>
         </div>
         <div role="list" aria-label="Shoppable products in this post">
-        <div role="listitem">
-        <button onClick={onDetail} className="flex w-full gap-3 text-left">
-          <img src={PHOTOS.hero} alt={PRODUCT.name} className="h-24 w-20 rounded-xl object-cover" />
+        {first && <div role="listitem">
+        <button onClick={() => onDetail(first)} disabled={PRODUCTS[first].availability === 'Out of Stock'} className="flex w-full gap-3 text-left">
+          <Placeholder label={PRODUCTS[first].name} className="h-24 w-20 rounded-xl text-lg" />
           <span className="flex flex-1 flex-col">
-            <span className="text-xs text-text-muted">{PRODUCT.seller}</span>
-            <span className="mt-1 text-sm font-semibold leading-snug text-text-primary">{PRODUCT.name}</span>
-            <span className="mt-2 text-sm font-bold text-brand">{PRODUCT.price}</span>
-            <span className="mt-1 text-xs text-success">Made to order · Available</span>
+            <span className="text-xs text-text-muted">{SELLERS[PRODUCTS[first].seller].name}</span>
+            <span className="mt-1 text-sm font-semibold leading-snug text-text-primary">{PRODUCTS[first].name}</span>
+            <span className="mt-2 text-sm font-bold text-brand">{formatEtb(PRODUCTS[first].price)}</span>
+            <span className="mt-1 text-xs text-success">{availabilityText(first)}</span>
           </span>
           <IconChevronRight size={16} />
         </button>
-        </div>
-        <div className="my-4 h-px bg-border" />
-        <div role="listitem">
-        <button disabled className="flex w-full items-center gap-3 text-left opacity-70">
-          <img src={PHOTOS.field} alt="Tibeb scarf" className="h-16 w-16 rounded-xl object-cover" />
-          <span className="flex-1"><span className="block text-sm font-semibold">Tibeb Scarf — Gold Weave</span><span className="text-xs text-text-muted">ETB 650 · Low stock</span></span>
-          <IconChevronRight size={16} />
-        </button>
-        </div>
+        </div>}
+        {others.map(id => (
+          <div key={id}>
+            <div className="my-4 h-px bg-border" />
+            <div role="listitem">
+            <button onClick={() => onDetail(id)} disabled={PRODUCTS[id].availability === 'Out of Stock'} className={`flex w-full items-center gap-3 text-left ${PRODUCTS[id].availability === 'Out of Stock' ? 'opacity-70' : ''}`}>
+              <Placeholder label={PRODUCTS[id].name} className="h-16 w-16 rounded-xl" />
+              <span className="flex-1"><span className="block text-sm font-semibold">{PRODUCTS[id].name}</span><span className="text-xs text-text-muted">{formatEtb(PRODUCTS[id].price)} · {availabilityText(id)}</span></span>
+              <IconChevronRight size={16} />
+            </button>
+            </div>
+          </div>
+        ))}
         </div>
       </div>
     </div>
   )
 }
 
-function ProductDetail({ onBack, onSeller, saved, onSave, onAddToCart, onChat }: { onBack: () => void; onSeller: () => void; saved: boolean; onSave: () => void; onAddToCart: () => void; onChat: () => void }) {
-  const [variant, setVariant] = useState('M')
+function ProductDetail({ productId, at, onBack, onSeller, saved, onSave, onAddToCart, onChat }: { productId: ProductId; at: Moment; onBack: () => void; onSeller: () => void; saved: boolean; onSave: () => void; onAddToCart: (options: readonly string[], quantity: number) => void; onChat: () => void }) {
+  const product = PRODUCTS[productId]
+  const seller = SELLERS[product.seller]
+  const service = sellerServiceAt(product.seller, at)
+  const quality = productQualityAt(productId, at)
+  const latestReview = reviewsAt({ product: productId }, at)[0]
+  // One choice per variant group; a Size group starts on M, as before, and other groups on their first option.
+  const [choices, setChoices] = useState<string[]>(product.variants.map(group => (group.name === 'Size' && group.options.includes('M') ? 'M' : group.options[0])))
   const [quantity, setQuantity] = useState(1)
   return (
     <>
       <Header title="Product" onBack={onBack} trailing={<IconButton label="Share">↗</IconButton>} />
       <div className="flex-1 overflow-y-auto pb-24">
         <div className="relative">
-          <img src={PHOTOS.hero} alt={PRODUCT.name} className="h-80 w-full object-cover" />
-          <div className="absolute bottom-3 left-1/2 rounded-full bg-black/50 px-2.5 py-1 text-[10px] text-white">1 / 3</div>
+          <Placeholder label={product.name} className="h-80 w-full text-5xl" />
         </div>
         <div className="p-5">
-          <div className="text-xs font-semibold uppercase tracking-wider text-brand">Traditional wear</div>
-          <div className="mt-1 font-display text-2xl font-semibold leading-tight">{PRODUCT.name}</div>
-          <div className="mt-2 text-xl font-bold text-brand">{PRODUCT.price}</div>
-          <div className="mt-2 flex items-center gap-2 text-xs"><span className="text-success">● Available</span><span className="text-text-muted">Made to order · 5–7 days</span></div>
+          <div className="mt-1 font-display text-2xl font-semibold leading-tight">{product.name}</div>
+          <div className="mt-2 text-xl font-bold text-brand">{formatEtb(product.price)}</div>
+          <div className="mt-2 flex items-center gap-2 text-xs"><span className={product.availability === 'Available' ? 'text-success' : product.availability === 'Low Stock' ? 'text-warning' : 'text-text-muted'}>● {availabilityText(productId)}</span></div>
 
-          <SectionLabel>Choose size</SectionLabel>
-          <div className="flex gap-2">{['S', 'M', 'L', 'XL', 'Custom'].map(v => <Choice key={v} active={variant === v} onClick={() => setVariant(v)}>{v}</Choice>)}</div>
+          {product.variants.map((group, index) => (
+            <div key={index}>
+              <SectionLabel>Choose {(group.name ?? 'option').toLowerCase()}</SectionLabel>
+              <div className="flex gap-2">{group.options.map(v => <Choice key={v} active={choices[index] === v} onClick={() => setChoices(values => values.map((value, i) => (i === index ? v : value)))}>{v}</Choice>)}</div>
+            </div>
+          ))}
           <SectionLabel>Quantity</SectionLabel>
           <div className="inline-flex items-center rounded-lg border border-border">
             <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="h-9 w-10 text-lg">−</button>
@@ -345,28 +444,33 @@ function ProductDetail({ onBack, onSeller, saved, onSave, onAddToCart, onChat }:
           </div>
 
           <button onClick={onSeller} className="mt-6 flex w-full items-center gap-3 rounded-xl bg-surface-raised p-3 text-left">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">AA</span>
-            <span className="flex-1"><span className="block text-sm font-semibold">Addis Atelier</span><span className="text-xs text-text-muted">Established seller · 4.9 rating</span></span>
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials(seller.name)}</span>
+            <span className="flex-1"><span className="block text-sm font-semibold">{seller.name}</span><span className="text-xs text-text-muted">{trustLabel(trustAt(product.seller, at))} seller · {service ? service.average : '—'} rating</span></span>
             <IconChevronRight size={16} />
           </button>
 
           <InfoBlock title="Trust">Purchase protection · Seller identity and business details reviewed by Adulis.</InfoBlock>
-          <InfoBlock title="Description">{PRODUCT.description}</InfoBlock>
-          <InfoBlock title="Specifications">100% Ethiopian cotton · Hand embroidery · Made in Addis Ababa · Hand wash cold</InfoBlock>
-          <InfoBlock title="Fulfilment">Courier delivery in Addis Ababa · Estimated 1–3 business days after production.</InfoBlock>
-          <InfoBlock title="Reviews · 4.9 (87)">“The embroidery is even more beautiful in person. Custom sizing was perfect.” — Maya T.</InfoBlock>
+          <InfoBlock title="Description">{product.description ?? '—'}</InfoBlock>
+          <InfoBlock title="Specifications">{product.attributes.join(' · ') || '—'}</InfoBlock>
+          <InfoBlock title="Fulfilment">{describeFulfilment(fulfilmentOptionsAt(product.seller, at))}</InfoBlock>
+          <InfoBlock title={`Reviews · ${quality ? `${quality.average} (${quality.ratings})` : quality === null ? 'No ratings yet' : '—'}`}>{latestReview ? <>“{REVIEWS[latestReview].text}” — {shortName(BUYERS[ORDERS[REVIEWS[latestReview].order].buyer].name)}</> : '—'}</InfoBlock>
         </div>
       </div>
       <div className="absolute bottom-0 left-0 right-0 flex gap-2 border-t border-border bg-surface p-3 pb-5">
         <Button variant="tertiary" size="lg" onClick={onSave}>{saved ? 'Saved' : 'Save'}</Button>
         <Button variant="tertiary" size="lg" onClick={onChat}>Chat</Button>
-        <Button size="lg" style={{ flex: 1 }} onClick={onAddToCart}>Add to Cart</Button>
+        <Button size="lg" style={{ flex: 1 }} onClick={() => onAddToCart(choices, quantity)}>Add to Cart</Button>
       </div>
     </>
   )
 }
 
-function SellerProfile({ onBack, onShop }: { onBack: () => void; onShop: () => void }) {
+function SellerProfile({ sellerId, at, onBack, onShop, onPost }: { sellerId: SellerId; at: Moment; onBack: () => void; onShop: () => void; onPost: (id: ShoppablePostId) => void }) {
+  const seller = SELLERS[sellerId]
+  const service = sellerServiceAt(sellerId, at)
+  const following = (BUYERS[BUYER].follows ?? []).includes(sellerId)
+  // The two-post preview keeps its cap; it shows the Seller's first two published posts.
+  const recent = sellerPostsAt(sellerId, at).filter(id => SHOPPABLE_POSTS[id].publication === 'Published').slice(0, 2)
   return (
     <>
       <Header title="Seller" onBack={onBack} trailing={<IconButton label="Share">↗</IconButton>} />
@@ -374,21 +478,20 @@ function SellerProfile({ onBack, onShop }: { onBack: () => void; onShop: () => v
         <div className="h-28 bg-gradient-to-br from-brand-muted to-warning-bg" />
         <div className="-mt-10 px-5">
           <div className="flex items-end justify-between">
-            <div className="flex h-20 w-20 items-center justify-center rounded-2xl border-4 border-surface bg-brand-muted font-display text-2xl font-bold text-brand-dark">AA</div>
-            <Button size="sm" variant="secondary">Follow</Button>
+            <div className="flex h-20 w-20 items-center justify-center rounded-2xl border-4 border-surface bg-brand-muted font-display text-2xl font-bold text-brand-dark">{initials(seller.name)}</div>
+            <Button size="sm" variant="secondary">{following ? 'Following' : 'Follow'}</Button>
           </div>
-          <div className="mt-3 font-display text-2xl font-semibold">Addis Atelier</div>
-          <div className="text-sm text-text-muted">@addisatelier · Bole, Addis Ababa</div>
-          <div className="mt-2 inline-flex rounded-full bg-success-bg px-2.5 py-1 text-xs font-semibold text-success">Established seller</div>
-          <p className="mt-4 text-sm leading-relaxed text-text-secondary">Handcrafted Ethiopian fashion, made to order in Addis Ababa. Every piece carries the craft of a master tailor.</p>
+          <div className="mt-3 font-display text-2xl font-semibold">{seller.name}</div>
+          <div className="text-sm text-text-muted">{seller.handle} · {seller.area}, {MARKET.city}</div>
+          <div className="mt-2 inline-flex rounded-full bg-success-bg px-2.5 py-1 text-xs font-semibold text-success">{trustLabel(trustAt(sellerId, at))} seller</div>
+          <p className="mt-4 text-sm leading-relaxed text-text-secondary">{seller.bio ?? '—'}</p>
           <div className="my-5 grid grid-cols-3 divide-x divide-border rounded-xl bg-surface-raised p-3 text-center">
-            <Stat value="4.9" label="Rating" /><Stat value="42" label="Products" /><Stat value="1.2k" label="Followers" />
+            <Stat value={service ? String(service.average) : '—'} label="Rating" /><Stat value={String(sellerProductsAt(sellerId, at).length)} label="Products" /><Stat value={seller.followers === undefined ? '—' : formatCompactCount(seller.followers)} label="Followers" />
           </div>
-          <Button onClick={onShop} style={{ width: '100%' }}>Shop Addis Atelier</Button>
+          <Button onClick={onShop} style={{ width: '100%' }}>Shop {seller.name}</Button>
           <SectionLabel>Recent shoppable posts</SectionLabel>
           <div className="grid grid-cols-2 gap-2">
-            <img src={PHOTOS.hero} alt="Recent post" className="h-44 w-full rounded-xl object-cover" />
-            <img src={PHOTOS.field} alt="Recent post" className="h-44 w-full rounded-xl object-cover" />
+            {recent.map(id => <button key={id} onClick={() => onPost(id)} className="text-left"><Placeholder label={SHOPPABLE_POSTS[id].title} className="h-44 w-full rounded-xl text-3xl" /></button>)}
           </div>
         </div>
       </div>
@@ -396,31 +499,35 @@ function SellerProfile({ onBack, onShop }: { onBack: () => void; onShop: () => v
   )
 }
 
-function SellerShop({ onBack, onProduct, onSearch }: { onBack: () => void; onProduct: () => void; onSearch: () => void }) {
+function SellerShop({ sellerId, at, onBack, onProduct, onSearch }: { sellerId: SellerId; at: Moment; onBack: () => void; onProduct: (id: ProductId) => void; onSearch: () => void }) {
+  // Available first, as labelled; DEMO_DATA gives Products no category, so only the All filter remains.
+  const products = sellerProductsAt(sellerId, at)
+  const sorted = [...products.filter(id => PRODUCTS[id].availability !== 'Out of Stock'), ...products.filter(id => PRODUCTS[id].availability === 'Out of Stock')]
   return (
     <>
-      <Header title="Addis Atelier" onBack={onBack} onSearch={onSearch} />
+      <Header title={SELLERS[sellerId].name} onBack={onBack} onSearch={onSearch} />
       <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-4 py-3">
-        <Choice active>All</Choice><Choice>Traditional</Choice><Choice>Accessories</Choice><Choice>Dresses</Choice>
+        <Choice active>All</Choice>
       </div>
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="mb-4 flex items-end justify-between"><div><div className="font-display text-xl font-semibold">Shop</div><div className="text-xs text-text-muted">42 products</div></div><span className="text-xs font-semibold text-text-muted">Available first</span></div>
+        <div className="mb-4 flex items-end justify-between"><div><div className="font-display text-xl font-semibold">Shop</div><div className="text-xs text-text-muted">{products.length} product{products.length === 1 ? '' : 's'}</div></div><span className="text-xs font-semibold text-text-muted">Available first</span></div>
         <div className="grid grid-cols-2 gap-3">
-          <ProductCard image={PHOTOS.hero} name={PRODUCT.name} price={PRODUCT.price} onClick={onProduct} />
-          <ProductCard image={PHOTOS.field} name="Tibeb Scarf — Gold Weave" price="ETB 650" onClick={onProduct} />
-          <ProductCard image={PHOTOS.blue} name="Ethiopian Cotton Dress" price="ETB 1,900" onClick={onProduct} />
-          <div className="opacity-60"><ProductCard image={PHOTOS.group} name="Habesha Ankle Boots" price="Unavailable" onClick={onProduct} /></div>
+          {sorted.map(id => PRODUCTS[id].availability === 'Out of Stock'
+            ? <div key={id} className="opacity-60"><ProductCard name={PRODUCTS[id].name} price={availabilityText(id)} onClick={() => onProduct(id)} /></div>
+            : <ProductCard key={id} name={PRODUCTS[id].name} price={formatEtb(PRODUCTS[id].price)} onClick={() => onProduct(id)} />)}
         </div>
       </div>
     </>
   )
 }
 
-function Search({ query, setQuery, tab, setTab, onProduct, onPost, onSeller }: {
-  query: string; setQuery: (q: string) => void; tab: SearchTab; setTab: (t: SearchTab) => void
-  onProduct: () => void; onPost: () => void; onSeller: () => void
+function Search({ at, query, setQuery, tab, setTab, onProduct, onPost, onSeller }: {
+  at: Moment; query: string; setQuery: (q: string) => void; tab: SearchTab; setTab: (t: SearchTab) => void
+  onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void
 }) {
-  const zero = query.toLowerCase() === 'camera'
+  // Search behaves as before: any query other than the zero-result example shows the same results, which are the
+  // canonical Products, Shoppable Posts and Sellers that Buyers can see.
+  const zero = query.toLowerCase() === BUYERS[BUYER].zeroResultQuery
   const active = query.length > 0
   return (
     <>
@@ -432,7 +539,7 @@ function Search({ query, setQuery, tab, setTab, onProduct, onPost, onSeller }: {
           placeholder="Search products, posts, sellers"
         />
       </div>
-      {!active ? <SearchLanding onQuery={setQuery} /> : zero ? <ZeroSearch onClear={() => setQuery('')} /> : (
+      {!active ? <SearchLanding onQuery={setQuery} /> : zero ? <ZeroSearch query={query} onClear={() => setQuery('')} /> : (
         <>
           <div className="flex border-b border-border bg-surface">
             {(['top', 'products', 'posts', 'sellers'] as SearchTab[]).map(t => (
@@ -440,10 +547,10 @@ function Search({ query, setQuery, tab, setTab, onProduct, onPost, onSeller }: {
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-4">
-            {tab === 'top' && <TopResults onProduct={onProduct} onPost={onPost} onSeller={onSeller} />}
-            {tab === 'products' && <ProductResults onProduct={onProduct} />}
-            {tab === 'posts' && <PostResults onPost={onPost} />}
-            {tab === 'sellers' && <SellerResults onSeller={onSeller} />}
+            {tab === 'top' && <TopResults at={at} onProduct={onProduct} onPost={onPost} onSeller={onSeller} />}
+            {tab === 'products' && <ProductResults at={at} onProduct={onProduct} />}
+            {tab === 'posts' && <PostResults at={at} onPost={onPost} />}
+            {tab === 'sellers' && <SellerResults at={at} onSeller={onSeller} />}
           </div>
         </>
       )}
@@ -452,102 +559,133 @@ function Search({ query, setQuery, tab, setTab, onProduct, onPost, onSeller }: {
 }
 
 function SearchLanding({ onQuery }: { onQuery: (q: string) => void }) {
+  // DEMO_DATA defines no browse categories, so the category tiles aren't shown.
+  const buyer = BUYERS[BUYER]
   return (
     <div className="flex-1 overflow-y-auto p-5">
       <div className="font-display text-2xl font-semibold">What are you looking for?</div>
       <p className="mt-1 text-sm text-text-muted">Search intentionally across Products, Posts and Sellers.</p>
       <SectionLabel>Recent</SectionLabel>
-      {['Habesha kemis', 'Handwoven coffee sets'].map(q => <button key={q} onClick={() => onQuery(q)} className="flex w-full items-center justify-between border-b border-border py-3 text-sm"><span>↗ &nbsp;{q}</span><span className="text-text-muted">×</span></button>)}
-      <SectionLabel>Explore categories</SectionLabel>
-      <div className="grid grid-cols-2 gap-2">
-        {['Traditional wear', 'Home & living', 'Coffee & tea', 'Artisan gifts'].map(c => <button key={c} onClick={() => onQuery(c)} className="rounded-xl bg-surface-raised p-4 text-left text-sm font-semibold">{c}</button>)}
-      </div>
-      <button onClick={() => onQuery('camera')} className="mt-6 text-xs font-semibold text-text-muted underline">Preview zero-results example</button>
+      {(buyer.recentSearches ?? []).map(q => <button key={q} onClick={() => onQuery(q)} className="flex w-full items-center justify-between border-b border-border py-3 text-sm"><span>↗ &nbsp;{q}</span><span className="text-text-muted">×</span></button>)}
+      <button onClick={() => onQuery(buyer.zeroResultQuery ?? '')} className="mt-6 text-xs font-semibold text-text-muted underline">Preview zero-results example</button>
     </div>
   )
 }
 
-function TopResults({ onProduct, onPost, onSeller }: { onProduct: () => void; onPost: () => void; onSeller: () => void }) {
+function TopResults({ at, onProduct, onPost, onSeller }: { at: Moment; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void }) {
+  const products = buyerVisibleProductsAt(at), posts = buyerVisiblePostsAt(at), sellers = buyerVisibleSellers()
   return (
     <div>
-      <ResultHeading title="Products" count="24" /><ProductRow onClick={onProduct} />
-      <ResultHeading title="Posts" count="18" /><PostRow onClick={onPost} />
-      <ResultHeading title="Sellers" count="6" /><SellerRow onClick={onSeller} />
+      <ResultHeading title="Products" count={String(products.length)} /><ProductRow productId={products[0]} onClick={() => onProduct(products[0])} />
+      <ResultHeading title="Posts" count={String(posts.length)} /><PostRow postId={posts[0]} onClick={() => onPost(posts[0])} />
+      <ResultHeading title="Sellers" count={String(sellers.length)} /><SellerRow sellerId={sellers[0]} at={at} onClick={() => onSeller(sellers[0])} />
     </div>
   )
 }
 
-function ProductResults({ onProduct }: { onProduct: () => void }) {
-  return <div><div className="mb-3 flex gap-2"><Choice active>Available</Choice><Choice>Price</Choice><Choice>Category</Choice></div><div className="grid grid-cols-2 gap-3"><ProductCard image={PHOTOS.hero} name={PRODUCT.name} price={PRODUCT.price} onClick={onProduct} /><ProductCard image={PHOTOS.field} name="Tibeb Scarf — Gold Weave" price="ETB 650" onClick={onProduct} /><ProductCard image={PHOTOS.blue} name="Cotton Day Dress" price="ETB 1,900" onClick={onProduct} /></div></div>
+function ProductResults({ at, onProduct }: { at: Moment; onProduct: (id: ProductId) => void }) {
+  return <div><div className="mb-3 flex gap-2"><Choice active>Available</Choice><Choice>Price</Choice><Choice>Category</Choice></div><div className="grid grid-cols-2 gap-3">{buyerVisibleProductsAt(at).map(id => <ProductCard key={id} name={PRODUCTS[id].name} price={formatEtb(PRODUCTS[id].price)} onClick={() => onProduct(id)} />)}</div></div>
 }
 
-function PostResults({ onPost }: { onPost: () => void }) {
-  return <div className="grid grid-cols-2 gap-2"><PostTile image={PHOTOS.hero} onClick={onPost} /><PostTile image={PHOTOS.blue} onClick={onPost} /><PostTile image={PHOTOS.field} onClick={onPost} /></div>
+function PostResults({ at, onPost }: { at: Moment; onPost: (id: ShoppablePostId) => void }) {
+  return <div className="grid grid-cols-2 gap-2">{buyerVisiblePostsAt(at).map(id => <PostTile key={id} title={SHOPPABLE_POSTS[id].title} label={`${SHOPPABLE_POSTS[id].tags.length} product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}`} onClick={() => onPost(id)} />)}</div>
 }
 
-function SellerResults({ onSeller }: { onSeller: () => void }) {
-  return <div className="flex flex-col gap-2"><SellerRow onClick={onSeller} /><SellerRow onClick={onSeller} name="Nile Loom" initials="NL" category="Textiles · ESTABLISHED" /><SellerRow onClick={onSeller} name="Buna Market" initials="BM" category="Coffee · NEW" /></div>
+function SellerResults({ at, onSeller }: { at: Moment; onSeller: (id: SellerId) => void }) {
+  return <div className="flex flex-col gap-2">{buyerVisibleSellers().map(id => <SellerRow key={id} sellerId={id} at={at} onClick={() => onSeller(id)} />)}</div>
 }
 
-function ZeroSearch({ onClear }: { onClear: () => void }) {
+function ZeroSearch({ query, onClear }: { query: string; onClear: () => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised text-2xl">⌕</div>
-      <div className="mt-4 font-display text-xl font-semibold">No results for “camera”</div>
+      <div className="mt-4 font-display text-xl font-semibold">No results for “{query}”</div>
       <p className="mt-2 text-sm leading-relaxed text-text-muted">Try a broader term, check the spelling, or browse a category instead.</p>
       <Button onClick={onClear} variant="secondary" style={{ marginTop: 20 }}>Clear search</Button>
     </div>
   )
 }
 
-function Saved({ onCollection, onProduct, onPost }: { onCollection: () => void; onProduct: () => void; onPost: () => void }) {
+function collectionContents(id: CollectionId) {
+  const items = COLLECTIONS[id].items
+  const products = items.flatMap(item => ('product' in item ? [item.product] : []))
+  const posts = items.flatMap(item => ('post' in item ? [item.post] : []))
+  return { products, posts, unavailable: products.filter(p => PRODUCTS[p].availability === 'Out of Stock').length }
+}
+
+function Saved({ onCollection, onProduct, onPost }: { onCollection: (id: CollectionId) => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void }) {
+  const collections = COLLECTION_IDS.filter(id => COLLECTIONS[id].owner === BUYER)
+  // "Recently saved" shows the default Collection's first Product Post and first whole Shoppable Post.
+  const recent = collectionContents(collections.find(id => COLLECTIONS[id].isDefault) ?? collections[0])
   return (
     <>
       <Header title="Saved" />
       <GuestStrip />
       <div className="flex-1 overflow-y-auto p-4">
         <div className="mb-4 flex items-end justify-between"><div><div className="font-display text-2xl font-semibold">Your finds</div><div className="text-xs text-text-muted">Private to you</div></div><Button size="sm">New collection</Button></div>
-        <button onClick={onCollection} className="w-full rounded-2xl border border-border bg-surface p-3 text-left shadow-sm">
-          <div className="grid h-44 grid-cols-2 gap-1 overflow-hidden rounded-xl">
-            <img src={PHOTOS.hero} alt="" className="h-full w-full object-cover" />
-            <div className="grid gap-1"><img src={PHOTOS.field} alt="" className="h-full min-h-0 w-full object-cover" /><img src={PHOTOS.blue} alt="" className="h-full min-h-0 w-full object-cover" /></div>
-          </div>
-          <div className="mt-3 flex items-center justify-between"><span><span className="block font-semibold">Ceremony looks</span><span className="text-xs text-text-muted">4 Product Posts · 2 Shoppable Posts</span></span><IconChevronRight size={16} /></div>
-        </button>
+        {collections.map(id => {
+          const { products, posts } = collectionContents(id)
+          const tiles = [...products.map(p => PRODUCTS[p].name), ...posts.map(p => SHOPPABLE_POSTS[p].title)]
+          return (
+            <button key={id} onClick={() => onCollection(id)} className="mb-3 w-full rounded-2xl border border-border bg-surface p-3 text-left shadow-sm">
+              <div className="grid h-44 grid-cols-2 gap-1 overflow-hidden rounded-xl">
+                <Placeholder label={tiles[0]} className="h-full w-full text-2xl" />
+                <div className="grid gap-1"><Placeholder label={tiles[1]} className="h-full min-h-0 w-full" /><Placeholder label={tiles[2]} className="h-full min-h-0 w-full" /></div>
+              </div>
+              <div className="mt-3 flex items-center justify-between"><span><span className="block font-semibold">{COLLECTIONS[id].name}</span><span className="text-xs text-text-muted">{products.length} Product Post{products.length === 1 ? '' : 's'} · {posts.length} Shoppable Post{posts.length === 1 ? '' : 's'}</span></span><IconChevronRight size={16} /></div>
+            </button>
+          )
+        })}
         <SectionLabel>Recently saved</SectionLabel>
-        <div className="grid grid-cols-2 gap-2"><ProductCard image={PHOTOS.hero} name={PRODUCT.name} price={PRODUCT.price} onClick={onProduct} /><PostTile image={PHOTOS.blue} onClick={onPost} label="Shoppable post" /></div>
+        <div className="grid grid-cols-2 gap-2">
+          {recent.products[0] && <ProductCard name={PRODUCTS[recent.products[0]].name} price={PRODUCTS[recent.products[0]].availability === 'Out of Stock' ? availabilityText(recent.products[0]) : formatEtb(PRODUCTS[recent.products[0]].price)} onClick={() => onProduct(recent.products[0])} />}
+          {recent.posts[0] && <PostTile title={SHOPPABLE_POSTS[recent.posts[0]].title} onClick={() => onPost(recent.posts[0])} label="Shoppable post" />}
+        </div>
       </div>
     </>
   )
 }
 
-function Collection({ onBack, onProduct, onPost }: { onBack: () => void; onProduct: () => void; onPost: () => void }) {
+function Collection({ collectionId, onBack, onProduct, onPost }: { collectionId: CollectionId; onBack: () => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void }) {
+  const { products, posts, unavailable } = collectionContents(collectionId)
+  const total = products.length + posts.length
   return (
     <>
-      <Header title="Ceremony looks" onBack={onBack} trailing={<IconButton label="More">•••</IconButton>} />
+      <Header title={COLLECTIONS[collectionId].name} onBack={onBack} trailing={<IconButton label="More">•••</IconButton>} />
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="text-sm text-text-muted">A private collection · 6 saved items</div>
-        <div className="mt-4 flex gap-2"><Choice active>All 6</Choice><Choice>Product Posts 4</Choice><Choice>Shoppable Posts 2</Choice></div>
+        <div className="text-sm text-text-muted">A private collection · {total} saved item{total === 1 ? '' : 's'}</div>
+        <div className="mt-4 flex gap-2"><Choice active>All {total}</Choice><Choice>Product Posts {products.length}</Choice><Choice>Shoppable Posts {posts.length}</Choice></div>
         <SectionLabel>Product Posts</SectionLabel>
-        <div className="grid grid-cols-2 gap-2"><ProductCard image={PHOTOS.hero} name={PRODUCT.name} price={PRODUCT.price} onClick={onProduct} /><ProductCard image={PHOTOS.field} name="Tibeb Scarf" price="ETB 650" onClick={onProduct} /></div>
+        <div className="grid grid-cols-2 gap-2">{products.map(id => <ProductCard key={id} name={PRODUCTS[id].name} price={PRODUCTS[id].availability === 'Out of Stock' ? availabilityText(id) : formatEtb(PRODUCTS[id].price)} onClick={() => onProduct(id)} />)}</div>
         <SectionLabel>Whole Shoppable Posts</SectionLabel>
-        <div className="grid grid-cols-2 gap-2"><PostTile image={PHOTOS.blue} onClick={onPost} label="3 products" /><PostTile image={PHOTOS.group} onClick={onPost} label="2 products" /></div>
-        <div className="mt-5 rounded-xl border border-warning/30 bg-warning-bg p-3"><div className="text-sm font-semibold text-warning">1 saved Product Post is unavailable</div><div className="mt-1 text-xs text-text-secondary">It remains in this Collection so you can find it again if it returns.</div></div>
+        <div className="grid grid-cols-2 gap-2">{posts.map(id => <PostTile key={id} title={SHOPPABLE_POSTS[id].title} onClick={() => onPost(id)} label={`${SHOPPABLE_POSTS[id].tags.length} product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}`} />)}</div>
+        {unavailable > 0 && <div className="mt-5 rounded-xl border border-warning/30 bg-warning-bg p-3"><div className="text-sm font-semibold text-warning">{unavailable} saved Product Post{unavailable === 1 ? ' is' : 's are'} unavailable</div><div className="mt-1 text-xs text-text-secondary">It remains in this Collection so you can find it again if it returns.</div></div>}
       </div>
     </>
   )
 }
 
-const ORDER_STAGES: { key: OrderStage; label: string; detail: string }[] = [
-  { key: 'paid', label: 'Paid', detail: 'Payment confirmed by provider' },
-  { key: 'preparing', label: 'Preparing', detail: 'Addis Atelier is preparing your item' },
-  { key: 'ready', label: 'Ready for Courier', detail: 'Package is ready for collection' },
-  { key: 'assigned', label: 'Courier Assigned', detail: 'A seller-approved courier is assigned' },
-  { key: 'pickup', label: 'Pickup Verified', detail: 'Courier pickup was verified at the seller' },
-  { key: 'out', label: 'Out for Delivery', detail: 'Your package is on its way' },
-]
+// The existing explanatory line for each state; states without one show only their name.
+const STAGE_DETAIL: Partial<Record<OrderState, (seller: string) => string>> = {
+  'Paid': () => 'Payment confirmed by provider',
+  'Preparing': seller => `${seller} is preparing your item`,
+  'Ready for Courier': () => 'Package is ready for collection',
+  'Courier Assigned': () => 'A seller-approved courier is assigned',
+  'Pickup Verified': () => 'Courier pickup was verified at the seller',
+  'Out for Delivery': () => 'Your package is on its way',
+}
 
-function OrdersList({ onOrder, onChats, onNotifications }: { onOrder: () => void; onChats: () => void; onNotifications: () => void }) {
+/** An Order's stages, in its own fulfilment mode's timeline (rules 4.4–4.7). */
+function orderStages(orderId: OrderId) {
+  const seller = SELLERS[ORDERS[orderId].seller].name
+  return ORDER_TIMELINES[ORDERS[orderId].fulfilment].map(state => ({ key: state, label: state, detail: STAGE_DETAIL[state]?.(seller) ?? '' }))
+}
+
+function OrdersList({ at, onOrder, onChats, onNotifications }: { at: Moment; onOrder: (id: OrderId) => void; onChats: () => void; onNotifications: () => void }) {
+  // The Buyer's Orders at the story moment, most recently paid first.
+  const orders = ordersAt({ buyer: BUYER }, at).sort((a, b) => paidAt(b).localeCompare(paidAt(a)))
+  const active = orders.filter(id => orderStateAt(id, at) !== 'Completed')
+  const completed = orders.filter(id => orderStateAt(id, at) === 'Completed')
   return (
     <>
       <Header title="Orders" trailing={<div className="flex gap-1"><IconButton label="Chats" onClick={onChats}><ChatIcon /></IconButton><IconButton label="Notifications" onClick={onNotifications}><BellIcon /></IconButton></div>} />
@@ -555,33 +693,50 @@ function OrdersList({ onOrder, onChats, onNotifications }: { onOrder: () => void
         <div className="font-display text-2xl font-semibold">Your Seller Orders</div>
         <p className="mt-1 text-sm text-text-muted">Track preparation and verified handoff progress.</p>
         <SectionLabel>Active</SectionLabel>
-        <button onClick={onOrder} className="w-full rounded-2xl border border-border bg-surface p-4 text-left shadow-sm">
-          <SellerIdentity initials="AA" name="Addis Atelier" meta="Order ADU-24091 · Paid" />
-          <div className="my-4 flex gap-3">
-            <img src={PHOTOS.hero} alt={PRODUCT.name} className="h-20 w-16 rounded-lg object-cover" />
-            <span className="flex-1"><span className="block text-sm font-semibold">{PRODUCT.name}</span><span className="mt-1 block text-xs text-text-muted">Size M · Quantity 1</span><span className="mt-2 block text-sm font-bold">ETB 2,994</span></span>
-          </div>
-          <div className="flex items-center justify-between rounded-xl bg-success-bg px-3 py-2 text-xs"><span className="font-semibold text-success">Paid</span><span className="text-text-secondary">View progress ›</span></div>
-        </button>
+        {active.length === 0 && <p className="text-sm text-text-muted">No active Seller Orders</p>}
+        {active.map(id => {
+          const order = ORDERS[id]
+          const seller = SELLERS[order.seller].name
+          const state = orderStateAt(id, at)
+          return (
+            <button key={id} onClick={() => onOrder(id)} className="mb-3 w-full rounded-2xl border border-border bg-surface p-4 text-left shadow-sm">
+              <SellerIdentity initials={initials(seller)} name={seller} meta={`Order ${id} · ${state}`} />
+              <div className="my-4 flex gap-3">
+                <Placeholder label={PRODUCTS[order.lines[0].product].name} className="h-20 w-16 rounded-lg" />
+                <span className="flex-1"><span className="block text-sm font-semibold">{order.lines.map(line => PRODUCTS[line.product].name).join(' · ')}</span><span className="mt-1 block text-xs text-text-muted">{order.lines.map(line => `${lineOptions(line)} · Quantity ${line.quantity}`).join(' · ')}</span><span className="mt-2 block text-sm font-bold">{formatEtb(orderTotals(id).total)}</span></span>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-success-bg px-3 py-2 text-xs"><span className="font-semibold text-success">{state}</span><span className="text-text-secondary">View progress ›</span></div>
+            </button>
+          )
+        })}
         <SectionLabel>Completed</SectionLabel>
-        <div className="rounded-2xl border border-border p-4 opacity-80">
-          <SellerIdentity initials="NG" name="Nura Glow" meta="Order ADL-NG-0984 · Completed" />
-          <div className="mt-3 flex items-center justify-between text-xs"><span className="text-text-secondary">Honey & Black Seed Skin Set</span><span className="font-semibold">ETB 1,112</span></div>
-        </div>
+        {completed.map(id => {
+          const seller = SELLERS[ORDERS[id].seller].name
+          return (
+            <div key={id} className="mb-3 rounded-2xl border border-border p-4 opacity-80">
+              <SellerIdentity initials={initials(seller)} name={seller} meta={`Order ${id} · Completed`} />
+              <div className="mt-3 flex items-center justify-between text-xs"><span className="text-text-secondary">{ORDERS[id].lines.map(line => PRODUCTS[line.product].name).join(' · ')}</span><span className="font-semibold">{formatEtb(orderTotals(id).total)}</span></div>
+            </div>
+          )
+        })}
       </div>
     </>
   )
 }
 
-function OrderDetail({ stage, setStage, onBack, onDelegate, onScan, onOtp, onClaim, onChat }: {
-  stage: OrderStage; setStage: (stage: OrderStage) => void; onBack: () => void; onDelegate: () => void
+function OrderDetail({ orderId, stage, setStage, onBack, onDelegate, onScan, onOtp, onClaim, onChat }: {
+  orderId: OrderId; stage: OrderState; setStage: (stage: OrderState) => void; onBack: () => void; onDelegate: () => void
   onScan: () => void; onOtp: () => void; onClaim: () => void; onChat: () => void
 }) {
-  const currentIndex = ORDER_STAGES.findIndex(item => item.key === stage)
-  const current = ORDER_STAGES[currentIndex]
+  const order = ORDERS[orderId]
+  const stages = orderStages(orderId)
+  const totals = orderTotals(orderId)
+  const currentIndex = Math.max(0, stages.findIndex(item => item.key === stage))
+  const current = stages[currentIndex]
+  const courierMode = order.fulfilment === 'Courier Delivery'
   return (
     <>
-      <Header title="Order ADU-24091" onBack={onBack} trailing={<IconButton label="Chat with seller" onClick={onChat}><ChatIcon /></IconButton>} />
+      <Header title={`Order ${orderId}`} onBack={onBack} trailing={<IconButton label="Chat with seller" onClick={onChat}><ChatIcon /></IconButton>} />
       <div className="flex-1 overflow-y-auto p-4">
         <div className="rounded-2xl bg-brand-muted p-4">
           <div className="text-xs font-semibold uppercase tracking-wider text-brand-dark">Current status</div>
@@ -592,18 +747,19 @@ function OrderDetail({ stage, setStage, onBack, onDelegate, onScan, onOtp, onCla
         <div className="mt-4">
           <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype status</div>
           <div className="flex gap-1.5 overflow-x-auto pb-2">
-            {ORDER_STAGES.map(item => <Choice key={item.key} active={item.key === stage} onClick={() => setStage(item.key)}>{item.label}</Choice>)}
+            {stages.map(item => <Choice key={item.key} active={item.key === stage} onClick={() => setStage(item.key)}>{item.label}</Choice>)}
           </div>
         </div>
 
         <SectionLabel>Progress</SectionLabel>
         <div className="ml-2">
-          {ORDER_STAGES.map((item, index) => (
-            <TimelineItem key={item.key} label={item.label} detail={item.detail} done={index <= currentIndex} current={index === currentIndex} last={index === ORDER_STAGES.length - 1} />
+          {stages.map((item, index) => (
+            <TimelineItem key={item.key} label={item.label} detail={item.detail} done={index <= currentIndex} current={index === currentIndex} last={index === stages.length - 1} />
           ))}
         </div>
 
-        {stage === 'out' && (
+        {/* The Buyer scans while the Order is out for delivery or in Delivery Handoff (rule 8). */}
+        {courierMode && (stage === 'Out for Delivery' || stage === 'Delivery Handoff') && (
           <div className="mt-2 rounded-2xl border border-brand/20 p-4">
             <div className="font-display text-lg font-semibold">Prepare for handoff</div>
             <p className="mt-1 text-xs leading-relaxed text-text-muted">When the courier arrives, they display the Delivery QR. You or your delegate scans it.</p>
@@ -615,13 +771,14 @@ function OrderDetail({ stage, setStage, onBack, onDelegate, onScan, onOtp, onCla
 
         <SectionLabel>Order summary</SectionLabel>
         <div className="rounded-xl bg-surface-raised p-4">
-          <PriceRow label="Buyer" value="Maya T." />
-          <PriceRow label="Seller" value="Addis Atelier" />
-          <PriceRow label="Courier" value={currentIndex >= ORDER_STAGES.findIndex(item => item.key === 'assigned') ? 'Daniel K.' : 'Not assigned'} />
-          <PriceRow label="Product" value="ETB 2,800" />
-          <PriceRow label="Courier Delivery" value="ETB 180" />
-          <PriceRow label="Adulis surcharge — 0.5%" value="ETB 14" />
-          <div className="mt-2 border-t border-border pt-3"><PriceRow label="Paid total" value="ETB 2,994" strong /></div>
+          <PriceRow label="Buyer" value={shortName(BUYERS[order.buyer].name)} />
+          <PriceRow label="Seller" value={SELLERS[order.seller].name} />
+          {/* Courier details belong to Courier Delivery Orders only (rule 4.7). */}
+          {courierMode && order.courier && <PriceRow label="Courier" value={currentIndex >= stages.findIndex(item => item.key === 'Courier Assigned') ? COURIERS[order.courier].name : 'Not assigned'} />}
+          <PriceRow label="Product" value={formatEtb(totals.products)} />
+          <PriceRow label={order.fulfilment} value={formatEtb(totals.delivery)} />
+          <PriceRow label="Adulis surcharge — 0.5%" value={formatEtb(totals.surcharge)} />
+          <div className="mt-2 border-t border-border pt-3"><PriceRow label="Paid total" value={formatEtb(totals.total)} strong /></div>
         </div>
         <div className="mt-4 flex gap-2">
           <Button variant="tertiary" size="sm" onClick={onChat} style={{ flex: 1 }}>Chat with seller</Button>
@@ -704,24 +861,26 @@ function ScannerCamera({ onBack, onScan }: { onBack: () => void; onScan: () => v
   )
 }
 
-function QrVerifying({ onVerified }: { onVerified: () => void }) {
+function QrVerifying({ orderId, onVerified }: { orderId: OrderId; onVerified: () => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-7 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-full bg-info-bg text-info"><ProcessingIcon /></span>
       <div className="mt-5 font-display text-2xl font-semibold">Verifying delivery</div>
-      <p className="mt-2 text-sm leading-relaxed text-text-secondary">Adulis is verifying the Delivery QR against Order ADU-24091.</p>
+      <p className="mt-2 text-sm leading-relaxed text-text-secondary">Adulis is verifying the Delivery QR against Order {orderId}.</p>
       <Button onClick={onVerified} variant="tertiary" style={{ marginTop: 32 }}>Complete verification</Button>
     </div>
   )
 }
 
-function DeliveryConfirmed({ onContinue }: { onContinue: () => void }) {
+function DeliveryConfirmed({ orderId, onContinue }: { orderId: OrderId; onContinue: () => void }) {
+  // The verified final scan completes the Order, so its scan time is the Order's Completed time.
+  const scanned = stateTime(orderId, 'Completed')
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-full bg-success-bg text-success"><CheckIcon /></span>
       <div className="mt-5 font-display text-2xl font-semibold">Delivery confirmed</div>
-      <p className="mt-2 text-sm leading-relaxed text-text-secondary">Final handoff is verified. The Delivery QR was scanned successfully at 4:18 PM.</p>
-      <div className="mt-6 w-full rounded-xl bg-success-bg p-4 text-left"><PriceRow label="Seller Order" value="ADU-24091" /><PriceRow label="Handoff" value="Verified" strong /></div>
+      <p className="mt-2 text-sm leading-relaxed text-text-secondary">Final handoff is verified.{scanned && ` The Delivery QR was scanned successfully at ${formatClock12(scanned)}.`}</p>
+      <div className="mt-6 w-full rounded-xl bg-success-bg p-4 text-left"><PriceRow label="Seller Order" value={orderId} /><PriceRow label="Handoff" value="Verified" strong /></div>
       <Button size="lg" onClick={onContinue} style={{ width: '100%', marginTop: 24 }}>Continue</Button>
     </div>
   )
@@ -743,14 +902,16 @@ function OtpFallback({ onBack, onVerify }: { onBack: () => void; onVerify: () =>
   )
 }
 
-function CompletedOrder({ onBack, onReview, onClaim }: { onBack: () => void; onReview: () => void; onClaim: () => void }) {
+function CompletedOrder({ orderId, onBack, onReview, onClaim }: { orderId: OrderId; onBack: () => void; onReview: () => void; onClaim: () => void }) {
+  const order = ORDERS[orderId]
+  const names = order.lines.map(line => PRODUCTS[line.product].name).join(' · ')
   return (
     <>
       <Header title="Completed Order" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="rounded-2xl bg-success-bg p-5 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success text-white"><CheckIcon /></span><div className="mt-3 font-display text-2xl font-semibold">Completed</div><div className="mt-1 text-sm text-text-secondary">Delivery verified · Order ADU-24091</div></div>
+        <div className="rounded-2xl bg-success-bg p-5 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success text-white"><CheckIcon /></span><div className="mt-3 font-display text-2xl font-semibold">Completed</div><div className="mt-1 text-sm text-text-secondary">Delivery verified · Order {orderId}</div></div>
         <SectionLabel>Your order</SectionLabel>
-        <div className="flex gap-3"><img src={PHOTOS.hero} alt={PRODUCT.name} className="h-24 w-20 rounded-xl object-cover" /><div><div className="text-sm font-semibold">{PRODUCT.name}</div><div className="mt-1 text-xs text-text-muted">Addis Atelier · Size M</div><div className="mt-2 text-sm font-bold">ETB 2,994 paid</div></div></div>
+        <div className="flex gap-3"><Placeholder label={names} className="h-24 w-20 rounded-xl" /><div><div className="text-sm font-semibold">{names}</div><div className="mt-1 text-xs text-text-muted">{SELLERS[order.seller].name} · {order.lines.map(lineOptions).join(' · ')}</div><div className="mt-2 text-sm font-bold">{formatEtb(orderTotals(orderId).total)} paid</div></div></div>
         <div className="mt-6 rounded-xl border border-brand/20 p-4"><div className="font-display text-lg font-semibold">How was your order?</div><p className="mt-1 text-xs text-text-muted">Your verified handoff means this order now qualifies for a review.</p><Button onClick={onReview} style={{ width: '100%', marginTop: 14 }}>Review Order</Button></div>
         <button onClick={onClaim} className="mt-5 w-full text-center text-xs font-semibold text-brand">Problem with this Order?</button>
       </div>
@@ -758,15 +919,16 @@ function CompletedOrder({ onBack, onReview, onClaim }: { onBack: () => void; onR
   )
 }
 
-function ReviewOrder({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => void }) {
+function ReviewOrder({ orderId, onBack, onSubmit }: { orderId: OrderId; onBack: () => void; onSubmit: () => void }) {
   const [service, setService] = useState(0)
   const [quality, setQuality] = useState(0)
   const [comment, setComment] = useState('')
+  const seller = SELLERS[ORDERS[orderId].seller].name
   return (
     <>
       <Header title="Review Order" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
-        <SellerIdentity initials="AA" name="Addis Atelier" meta="Order ADU-24091 · Verified completion" />
+        <SellerIdentity initials={initials(seller)} name={seller} meta={`Order ${orderId} · Verified completion`} />
         <RatingField label="Seller Service" description="Communication, preparation and seller support" value={service} onChange={setService} />
         <RatingField label="Product Quality" description="Materials, workmanship and description accuracy" value={quality} onChange={setQuality} />
         <div className="mt-6"><Textarea label="Share your experience (optional)" value={comment} onChange={e => setComment(e.target.value)} placeholder="What should other buyers know?" rows={4} /></div>
@@ -781,21 +943,20 @@ function RatingField({ label, description, value, onChange }: { label: string; d
   return (
     <div className="mt-7 border-b border-border pb-6">
       <div className="font-display text-lg font-semibold">{label}</div><div className="text-xs text-text-muted">{description}</div>
-      <div className="mt-3 flex justify-between">{[1, 2, 3, 4, 5].map(rating => <button key={rating} onClick={() => onChange(rating)} aria-label={`${rating} stars`} className={`text-3xl ${rating <= value ? 'text-warning' : 'text-border-strong'}`}>★</button>)}</div>
+      <div className="mt-3 flex justify-between">{[1, 2, 3, 4, 5].map(rating => <button key={rating} onClick={() => onChange(rating)} aria-label={`${rating} star${rating === 1 ? '' : 's'}`} className={`text-3xl ${rating <= value ? 'text-warning' : 'text-border-strong'}`}>★</button>)}</div>
     </div>
   )
 }
 
-function ClaimStart({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
-  const [issue, setIssue] = useState('')
+function ClaimStart({ orderId, issue, setIssue, onBack, onContinue }: { orderId: OrderId; issue: string; setIssue: (issue: string) => void; onBack: () => void; onContinue: () => void }) {
   return (
     <>
       <Header title="Problem with this Order?" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
         <div className="font-display text-2xl font-semibold">What happened?</div>
-        <p className="mt-1 text-sm text-text-muted">Select the issue that best describes your problem with Order ADU-24091.</p>
+        <p className="mt-1 text-sm text-text-muted">Select the issue that best describes your problem with Order {orderId}.</p>
         <div className="mt-5 flex flex-col gap-2">
-          {['Item damaged', 'Item not as described', 'Missing item or parts', 'Delivery or handoff issue', 'Something else'].map(option => <button key={option} onClick={() => setIssue(option)} className={`flex items-center gap-3 rounded-xl border p-4 text-left text-sm font-semibold ${issue === option ? 'border-brand bg-brand-muted' : 'border-border'}`}><span className={`h-4 w-4 rounded-full border ${issue === option ? 'border-4 border-brand' : 'border-border-strong'}`} />{option}</button>)}
+          {CLAIM_ISSUES.map(option => <button key={option} onClick={() => setIssue(option)} className={`flex items-center gap-3 rounded-xl border p-4 text-left text-sm font-semibold ${issue === option ? 'border-brand bg-brand-muted' : 'border-border'}`}><span className={`h-4 w-4 rounded-full border ${issue === option ? 'border-4 border-brand' : 'border-border-strong'}`} />{option}</button>)}
         </div>
       </div>
       <div className="border-t border-border p-4 pb-6"><Button size="lg" disabled={!issue} onClick={onContinue} style={{ width: '100%' }}>Continue</Button></div>
@@ -803,19 +964,21 @@ function ClaimStart({ onBack, onContinue }: { onBack: () => void; onContinue: ()
   )
 }
 
-function ClaimForm({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => void }) {
+function ClaimForm({ claimId, issue, onBack, onSubmit }: { claimId?: ClaimId; issue: string; onBack: () => void; onSubmit: () => void }) {
   const [details, setDetails] = useState('')
   const [evidence, setEvidence] = useState(false)
+  // A DEMO_DATA Claim adds its recorded evidence photos; a transient claim adds the one simulated photo.
+  const photos = claimId ? CLAIMS[claimId].evidencePhotos : 1
   return (
     <>
       <Header title="Claim details" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="rounded-xl bg-surface-raised p-3 text-sm"><span className="font-semibold">Issue:</span> Item damaged</div>
+        <div className="rounded-xl bg-surface-raised p-3 text-sm"><span className="font-semibold">Issue:</span> {issue}</div>
         <div className="mt-5"><Textarea label="Describe the problem" value={details} onChange={e => setDetails(e.target.value)} placeholder="Tell us what happened and what part of the order is affected." rows={5} /></div>
         <SectionLabel>Evidence</SectionLabel>
         <button onClick={() => setEvidence(true)} className={`flex w-full items-center gap-3 rounded-xl border border-dashed p-4 text-left ${evidence ? 'border-success bg-success-bg' : 'border-border-strong'}`}>
           <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-raised text-lg">{evidence ? <CheckIconSmall /> : '+'}</span>
-          <span><span className="block text-sm font-semibold">{evidence ? 'damage-photo.jpg added' : 'Add photos or video'}</span><span className="text-xs text-text-muted">Show the item, packaging and affected area</span></span>
+          <span><span className="block text-sm font-semibold">{evidence ? `${photos} photo${photos === 1 ? '' : 's'} added` : 'Add photos or video'}</span><span className="text-xs text-text-muted">Show the item, packaging and affected area</span></span>
         </button>
         <p className="mt-4 text-xs leading-relaxed text-text-muted">Your claim and evidence are evaluated against the order and verified handoff record.</p>
       </div>
@@ -824,47 +987,63 @@ function ClaimForm({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => v
   )
 }
 
-function ClaimStatus({ onDone }: { onDone: () => void }) {
+function ClaimStatus({ orderId, claimId, at, onDone }: { orderId: OrderId; claimId?: ClaimId; at: Moment; onDone: () => void }) {
+  // A submitted Claim is Open until an Operator takes it (Claims). A transient claim has no DEMO_DATA identifier.
+  const state = (claimId && claimStateAt(claimId, at)) || 'Open'
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-full bg-info-bg text-info"><CheckIcon /></span>
       <div className="mt-5 font-display text-2xl font-semibold">Claim submitted</div>
       <p className="mt-2 text-sm leading-relaxed text-text-secondary">We received your issue and evidence. You’ll be notified when the review status changes.</p>
-      <div className="mt-6 w-full rounded-xl bg-surface-raised p-4 text-left"><PriceRow label="Claim" value="CLM-2041" /><PriceRow label="Status" value="Under review" strong /><PriceRow label="Seller Order" value="ADU-24091" /></div>
+      <div className="mt-6 w-full rounded-xl bg-surface-raised p-4 text-left">{claimId && <PriceRow label="Claim" value={claimId} />}<PriceRow label="Status" value={state} strong /><PriceRow label="Seller Order" value={orderId} /></div>
       <Button size="lg" onClick={onDone} style={{ width: '100%', marginTop: 24 }}>Return to Order</Button>
     </div>
   )
 }
 
-function ChatList({ onBack, onConversation, onBot }: { onBack: () => void; onConversation: () => void; onBot: () => void }) {
+// The Buyer's conversation with a Seller, if there is one (one per Buyer and Seller, rule 12.1).
+function conversationWith(sellerId: SellerId): ConversationId | undefined {
+  return CONVERSATION_IDS.find(id => CONVERSATIONS[id].buyer === BUYER && CONVERSATIONS[id].seller === sellerId)
+}
+
+function ChatList({ at, onBack, onConversation }: { at: Moment; onBack: () => void; onConversation: (seller: SellerId) => void }) {
+  // The Buyer's conversations with messages by the story moment, latest first. DEMO_DATA records no read state.
+  const threads = CONVERSATION_IDS.filter(id => CONVERSATIONS[id].buyer === BUYER)
+    .flatMap(id => { const last = messagesAt(id, at).pop(); return last ? [{ id, last }] : [] })
+    .sort((a, b) => b.last.at.localeCompare(a.last.at))
   return (
     <>
       <Header title="Messages" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
-        <button onClick={onBot} className="mb-4 flex w-full items-center gap-3 rounded-xl bg-brand-muted p-3 text-left"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand text-sm font-bold text-white">A</span><span className="flex-1"><span className="block text-sm font-semibold">Adulis Assistant</span><span className="text-xs text-text-muted">Help with orders and using Adulis</span></span><IconChevronRight size={16} /></button>
         <SectionLabel>Buyer–Seller threads</SectionLabel>
-        <button onClick={onConversation} className="flex w-full items-center gap-3 border-b border-border py-4 text-left"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">AA</span><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="font-semibold">Addis Atelier</span><span className="text-[10px] text-text-muted">2m</span></span><span className="block truncate text-xs text-text-muted">Your order is ready for courier pickup.</span></span><span className="h-2 w-2 rounded-full bg-brand" /></button>
-        <div className="flex items-center gap-3 border-b border-border py-4 opacity-70"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">NG</span><span><span className="block font-semibold">Nura Glow</span><span className="text-xs text-text-muted">Thanks for your message.</span></span></div>
+        {threads.map(({ id, last }) => {
+          const seller = SELLERS[CONVERSATIONS[id].seller].name
+          return <button key={id} onClick={() => onConversation(CONVERSATIONS[id].seller)} className="flex w-full items-center gap-3 border-b border-border py-4 text-left"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials(seller)}</span><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="font-semibold">{seller}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="block truncate text-xs text-text-muted">{last.text}</span></span></button>
+        })}
       </div>
     </>
   )
 }
 
-function Conversation({ onBack }: { onBack: () => void }) {
+function Conversation({ sellerId, at, onBack }: { sellerId: SellerId; at: Moment; onBack: () => void }) {
   const [context, setContext] = useState('Order')
   const [message, setMessage] = useState('')
   const [sent, setSent] = useState(false)
+  // The messages so far (none with a Seller the Buyer hasn't messaged), and their most recent Order for the Order chip.
+  const conversation = conversationWith(sellerId)
+  const messages = conversation ? messagesAt(conversation, at) : []
+  const latestOrder = ordersAt({ buyer: BUYER, seller: sellerId }, at).sort((a, b) => paidAt(b).localeCompare(paidAt(a)))[0]
   return (
     <>
-      <Header title="Addis Atelier" onBack={onBack} />
+      <Header title={SELLERS[sellerId].name} onBack={onBack} />
       <div className="border-b border-border bg-warning-bg px-4 py-2 text-[10px] leading-relaxed text-text-secondary">Chat helps coordination, but messages do not change payment, order, fulfilment or handoff truth.</div>
       <div className="flex gap-2 overflow-x-auto border-b border-border p-3">
-        {['Product', 'Post', 'Order'].map(item => <Choice key={item} active={context === item} onClick={() => setContext(item)}>{item === 'Order' ? 'Order ADU-24091' : item}</Choice>)}
+        {['Product', 'Post', 'Order'].map(item => <Choice key={item} active={context === item} onClick={() => setContext(item)}>{item === 'Order' && latestOrder ? `Order ${latestOrder}` : item}</Choice>)}
       </div>
       <div className="flex-1 overflow-y-auto bg-surface-raised p-4">
-        <div className="max-w-[78%] rounded-2xl rounded-tl-sm bg-surface p-3 text-sm shadow-sm">Hello Maya, your Kemis is ready. A courier will be assigned shortly.</div>
-        <div className="ml-auto mt-3 max-w-[78%] rounded-2xl rounded-tr-sm bg-brand p-3 text-sm text-white">Thank you. Please message me when pickup is verified.</div>
-        <div className="mt-3 max-w-[78%] rounded-2xl rounded-tl-sm bg-surface p-3 text-sm shadow-sm">Of course. The Order timeline will show the verified status.</div>
+        {messages.map((m, index) => (
+          <div key={index} className={`${m.from === 'buyer' ? 'ml-auto rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface shadow-sm'} ${index ? 'mt-3' : ''} max-w-[78%] rounded-2xl p-3 text-sm`}>{m.text}</div>
+        ))}
         {sent && <div className="ml-auto mt-3 max-w-[78%] rounded-2xl rounded-tr-sm bg-brand p-3 text-sm text-white">{message || 'Thanks for the update.'}</div>}
       </div>
       <div className="flex items-center gap-2 border-t border-border bg-surface p-3 pb-5">
@@ -875,35 +1054,58 @@ function Conversation({ onBack }: { onBack: () => void }) {
   )
 }
 
-function Chatbot({ onBack }: { onBack: () => void }) {
-  const [answer, setAnswer] = useState(false)
+function Chatbot({ productId, onBack, onEscalate }: { productId: ProductId; onBack: () => void; onEscalate: (at: Timestamp) => void }) {
+  const [asked, setAsked] = useState(false)
   const [escalated, setEscalated] = useState(false)
+  const seller = SELLERS[PRODUCTS[productId].seller].name
+  // The Seller's chatbot answers only its configured answers. DEMO_DATA's question to it is unmatched, so the Buyer
+  // is offered Talk to Seller; the question then continues in the conversation with the Seller.
+  const conversation = conversationWith(PRODUCTS[productId].seller)
+  const question = conversation && CONVERSATIONS[conversation].messages.find(m => m.escalatedFromChatbot)
   return (
     <>
-      <Header title="Adulis Assistant" onBack={onBack} />
+      <Header title={`${seller} chatbot`} onBack={onBack} />
       <div className="flex-1 overflow-y-auto bg-surface-raised p-4">
-        <div className="max-w-[84%] rounded-2xl rounded-tl-sm bg-surface p-3 text-sm shadow-sm">Hi Maya. I can explain order statuses, QR handoff, claims, and how to contact a seller. What do you need?</div>
-        {answer && <div className="mt-3 max-w-[84%] rounded-2xl rounded-tl-sm bg-surface p-3 text-sm shadow-sm">I don’t have an approved answer for custom navy embroidery. A human Seller can confirm what is available.</div>}
-        {escalated && <div className="mt-3 rounded-xl bg-success-bg p-3 text-sm font-semibold text-success">Escalated to Addis Atelier · Seller Companion Inbox</div>}
+        {asked && question && <div className="ml-auto max-w-[84%] rounded-2xl rounded-tr-sm bg-brand p-3 text-sm text-white">{question.text}</div>}
+        {escalated && <div className="mt-3 rounded-xl bg-success-bg p-3 text-sm font-semibold text-success">Escalated to {seller} · Seller Companion Inbox</div>}
       </div>
       <div className="border-t border-border bg-surface p-4 pb-6">
-        <div className="mb-3 text-xs font-semibold text-text-muted">Suggested question</div>
-        <button onClick={() => setAnswer(true)} className="w-full rounded-xl border border-border p-3 text-left text-sm font-semibold">Can the embroidery be navy?</button>
-        {answer && <Button onClick={() => setEscalated(true)} disabled={escalated} style={{ width: '100%', marginTop: 10 }}>{escalated ? 'Sent to Seller' : 'Talk to Seller'}</Button>}
+        {question && <>
+          <div className="mb-3 text-xs font-semibold text-text-muted">Suggested question</div>
+          <button onClick={() => setAsked(true)} className="w-full rounded-xl border border-border p-3 text-left text-sm font-semibold">{question.text}</button>
+        </>}
+        {asked && question && <Button onClick={() => { setEscalated(true); onEscalate(question.at) }} disabled={escalated} style={{ width: '100%', marginTop: 10 }}>{escalated ? 'Sent to Seller' : 'Talk to Seller'}</Button>}
       </div>
     </>
   )
 }
 
-function Notifications({ onBack, onOrder, onChat }: { onBack: () => void; onOrder: () => void; onChat: () => void }) {
+/** A Buyer notification in the list's title and detail form, from its DEMO_DATA event, and the Order it opens. */
+function notificationText(n: NotificationRecord): { title: string; detail: string; order?: OrderId } {
+  const e = n.event
+  const about = (order: OrderId) => `${SELLERS[ORDERS[order].seller].name} · Order ${order}`
+  switch (e.kind) {
+    case 'Order Paid': return { title: 'Payment confirmed', detail: `Order ${e.order} was created after provider confirmation.`, order: e.order }
+    case 'Order status': return { title: e.state, detail: about(e.order), order: e.order }
+    // DEMO_DATA's wording: the Courier, or for Seller Delivery the Seller, is ready to complete delivery.
+    case 'Delivery action': return { title: `${ORDERS[e.order].fulfilment === 'Courier Delivery' ? 'Courier' : SELLERS[ORDERS[e.order].seller].name} is ready to complete delivery`, detail: about(e.order), order: e.order }
+    case 'Claim status': return { title: `Claim ${e.state}`, detail: `Claim ${e.claim} · Order ${CLAIMS[e.claim].order}`, order: CLAIMS[e.claim].order }
+    case 'Review reminder': return { title: 'Review reminder', detail: about(e.order), order: e.order }
+    default: return { title: e.kind, detail: '' }
+  }
+}
+
+function Notifications({ at, onBack, onOrder }: { at: Moment; onBack: () => void; onOrder: (id: OrderId) => void }) {
+  // The Buyer's notifications at the story moment. DEMO_DATA records no read state, so none is marked unread.
   return (
     <>
       <Header title="Notifications" onBack={onBack} />
       <div className="flex-1 overflow-y-auto">
-        <NotificationItem unread title="Pickup verified" detail="Your Addis Atelier order was collected by the assigned courier." time="Now" onClick={onOrder} />
-        <NotificationItem unread title="New message from Addis Atelier" detail="Your order is ready for courier pickup." time="8m" onClick={onChat} />
-        <NotificationItem title="Payment confirmed" detail="Order ADU-24091 was created after provider confirmation." time="Yesterday" onClick={onOrder} />
-        <NotificationItem title="Nura Glow order completed" detail="Your verified order is ready for review." time="3d" onClick={onOrder} />
+        {notificationsAt(BUYER, at).map((n, index) => {
+          const { title, detail, order } = notificationText(n)
+          const time = notificationTime(n)
+          return <NotificationItem key={index} title={title} detail={detail} time={time ? formatAge(time, at.at) : '—'} onClick={() => order && onOrder(order)} />
+        })}
       </div>
     </>
   )
@@ -913,9 +1115,11 @@ function NotificationItem({ unread, title, detail, time, onClick }: { unread?: b
   return <button onClick={onClick} className={`flex w-full gap-3 border-b border-border p-4 text-left ${unread ? 'bg-brand-muted/40' : 'bg-surface'}`}><span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${unread ? 'bg-brand' : 'bg-transparent'}`} /><span className="flex-1"><span className="block text-sm font-semibold">{title}</span><span className="mt-1 block text-xs leading-relaxed text-text-muted">{detail}</span></span><span className="text-[10px] text-text-muted">{time}</span></button>
 }
 
-function ReportPostSheet({ onClose }: { onClose: () => void }) {
+function ReportPostSheet({ postId, onClose }: { postId: ShoppablePostId; onClose: () => void }) {
   const [reason, setReason] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  // The moderation case DEMO_DATA records for this post's report; a report on another post is transient.
+  const caseId = (Object.keys(MODERATION_CASES) as ModerationId[]).find(id => MODERATION_CASES[id].post === postId)
   return (
     <div onClick={onClose} className="absolute inset-0 z-50 flex flex-col justify-end bg-black/45">
       <div onClick={event => event.stopPropagation()} className="rounded-t-3xl bg-surface px-5 pb-7 pt-3 shadow-xl">
@@ -923,15 +1127,15 @@ function ReportPostSheet({ onClose }: { onClose: () => void }) {
         {!submitted ? <>
           <div className="flex items-center justify-between"><div className="font-display text-xl font-semibold">Report Shoppable Post</div><IconButton label="Close" onClick={onClose}>×</IconButton></div>
           <p className="mt-1 text-xs text-text-muted">Select the reason that best describes the issue.</p>
-          <div className="mt-4 flex flex-col gap-2">{['Misleading product information', 'Unsafe or prohibited content', 'Spam or impersonation'].map(value => <button key={value} onClick={() => setReason(value)} className={`rounded-xl border p-3 text-left text-sm font-semibold ${reason === value ? 'border-brand bg-brand-muted' : 'border-border'}`}>{value}</button>)}</div>
+          <div className="mt-4 flex flex-col gap-2">{REPORT_CATEGORIES.map(value => <button key={value} onClick={() => setReason(value)} className={`rounded-xl border p-3 text-left text-sm font-semibold ${reason === value ? 'border-brand bg-brand-muted' : 'border-border'}`}>{value}</button>)}</div>
           <Button disabled={!reason} onClick={() => setSubmitted(true)} style={{ width: '100%', marginTop: 16 }}>Submit Report</Button>
-        </> : <div className="py-5 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success-bg text-success"><CheckIcon /></span><div className="mt-4 font-display text-xl font-semibold">Report submitted</div><p className="mt-1 text-sm text-text-muted">Moderation case MOD-1208 is ready for review.</p><Button variant="tertiary" onClick={onClose} style={{ marginTop: 16 }}>Done</Button></div>}
+        </> : <div className="py-5 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success-bg text-success"><CheckIcon /></span><div className="mt-4 font-display text-xl font-semibold">Report submitted</div>{caseId && <p className="mt-1 text-sm text-text-muted">Moderation case {caseId} is ready for review.</p>}<Button variant="tertiary" onClick={onClose} style={{ marginTop: 16 }}>Done</Button></div>}
       </div>
     </div>
   )
 }
 
-function AddToCartConfirmation({ onClose, onCart }: { onClose: () => void; onCart: () => void }) {
+function AddToCartConfirmation({ product, options, quantity, onClose, onCart }: { product: ProductId; options: readonly string[]; quantity: number; onClose: () => void; onCart: () => void }) {
   return (
     <div onClick={onClose} className="absolute inset-0 z-50 flex flex-col justify-end bg-black/45">
       <div onClick={e => e.stopPropagation()} className="rounded-t-3xl bg-surface px-5 pb-7 pt-3 shadow-xl">
@@ -939,8 +1143,8 @@ function AddToCartConfirmation({ onClose, onCart }: { onClose: () => void; onCar
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-success-bg text-success"><CheckIcon /></span>
           <span className="flex-1">
-            <span className="block font-display text-xl font-semibold">Added to Addis Atelier cart</span>
-            <span className="mt-1 block text-sm text-text-muted">Size M · Quantity 1</span>
+            <span className="block font-display text-xl font-semibold">Added to {SELLERS[PRODUCTS[product].seller].name} cart</span>
+            <span className="mt-1 block text-sm text-text-muted">{[options.join(', '), `Quantity ${quantity}`].filter(Boolean).join(' · ')}</span>
           </span>
           <IconButton label="Close" onClick={onClose}>×</IconButton>
         </div>
@@ -955,26 +1159,31 @@ function AddToCartConfirmation({ onClose, onCart }: { onClose: () => void; onCar
 }
 
 function SellerCart({ onBack, onAllCarts, onCheckout }: { onBack: () => void; onAllCarts: () => void; onCheckout: () => void }) {
-  const [quantity, setQuantity] = useState(1)
+  // The checkout cart; each of DEMO_DATA's carts holds one line.
+  const order = ORDERS[CHECKOUT_CART]
+  const seller = SELLERS[order.seller].name
+  const line = order.lines[0]
+  const product = PRODUCTS[line.product]
+  const [quantity, setQuantity] = useState(line.quantity)
   const [removed, setRemoved] = useState(false)
   return (
     <>
-      <Header title="Addis Atelier cart" onBack={onBack} trailing={<button onClick={onAllCarts} className="text-xs font-semibold text-brand">All carts</button>} />
+      <Header title={`${seller} cart`} onBack={onBack} trailing={<button onClick={onAllCarts} className="text-xs font-semibold text-brand">All carts</button>} />
       {removed ? (
         <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-raised text-text-muted"><IconShop size={24} /></span>
-          <div className="mt-4 font-display text-xl font-semibold">Addis Atelier cart is empty</div>
+          <div className="mt-4 font-display text-xl font-semibold">{seller} cart is empty</div>
           <p className="mt-2 text-sm leading-relaxed text-text-muted">The Product was removed. Your other Seller carts are unchanged.</p>
           <Button variant="secondary" onClick={onBack} style={{ marginTop: 20 }}>Return to Product</Button>
         </div>
       ) : <div className="flex-1 overflow-y-auto p-4">
-        <SellerIdentity initials="AA" name="Addis Atelier" meta="1 item · Seller-specific cart" />
+        <SellerIdentity initials={initials(seller)} name={seller} meta={`${order.lines.length} item · Seller-specific cart`} />
         <div className="mt-4 flex gap-3 border-b border-border pb-5">
-          <img src={PHOTOS.hero} alt={PRODUCT.name} className="h-28 w-24 rounded-xl object-cover" />
+          <Placeholder label={product.name} className="h-28 w-24 rounded-xl" />
           <div className="flex flex-1 flex-col">
-            <div className="text-sm font-semibold leading-snug">{PRODUCT.name}</div>
-            <div className="mt-1 text-xs text-text-muted">Size M · Gold border</div>
-            <div className="mt-2 text-sm font-bold text-brand">{PRODUCT.price}</div>
+            <div className="text-sm font-semibold leading-snug">{product.name}</div>
+            <div className="mt-1 text-xs text-text-muted">{lineOptions(line)}</div>
+            <div className="mt-2 text-sm font-bold text-brand">{formatEtb(product.price)}</div>
             <div className="mt-auto flex items-center justify-between">
               <div className="inline-flex items-center rounded-lg border border-border">
                 <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="h-8 w-8">−</button>
@@ -986,10 +1195,10 @@ function SellerCart({ onBack, onAllCarts, onCheckout }: { onBack: () => void; on
           </div>
         </div>
         <div className="mt-5 rounded-xl bg-surface-raised p-4">
-          <PriceRow label="Products" value={`ETB ${quantity * 2800}`} />
-          <div className="mt-3 border-t border-border pt-3"><PriceRow label="Cart subtotal" value={`ETB ${quantity * 2800}`} strong /></div>
+          <PriceRow label="Products" value={formatEtb(quantity * product.price)} />
+          <div className="mt-3 border-t border-border pt-3"><PriceRow label="Cart subtotal" value={formatEtb(quantity * product.price)} strong /></div>
         </div>
-        <p className="mt-3 text-xs leading-relaxed text-text-muted">Fulfilment and applicable fees are selected during checkout. This checkout creates an order with Addis Atelier only.</p>
+        <p className="mt-3 text-xs leading-relaxed text-text-muted">Fulfilment and applicable fees are selected during checkout. This checkout creates an order with {seller} only.</p>
       </div>}
       {!removed && <div className="border-t border-border bg-surface p-4 pb-6">
         <Button size="lg" onClick={onCheckout} style={{ width: '100%' }}>Checkout this Seller cart</Button>
@@ -999,16 +1208,18 @@ function SellerCart({ onBack, onAllCarts, onCheckout }: { onBack: () => void; on
 }
 
 function MultiCart({ onBack, onCheckout }: { onBack: () => void; onCheckout: () => void }) {
-  const [nuraNotice, setNuraNotice] = useState(false)
+  // The checkout cart goes first; every other Seller cart is reviewed separately.
+  const [notice, setNotice] = useState<OrderId | null>(null)
   return (
     <>
       <Header title="Your carts" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="font-display text-2xl font-semibold">2 Seller carts</div>
+        <div className="font-display text-2xl font-semibold">{DEMO_CARTS.length} Seller cart{DEMO_CARTS.length === 1 ? '' : 's'}</div>
         <p className="mt-1 text-sm text-text-muted">Each seller is checked out and confirmed separately.</p>
-        <CartSummary initials="AA" seller="Addis Atelier" item="Habesha Kemis — Classic White" amount="ETB 2,800" image={PHOTOS.hero} onCheckout={onCheckout} />
-        <CartSummary initials="NG" seller="Nura Glow" item="Honey & Black Seed Skin Set" amount="ETB 980" image={PHOTOS.field} onCheckout={() => setNuraNotice(true)} actionLabel="Review separately" />
-        {nuraNotice && <div className="mt-3 rounded-xl bg-brand-muted p-3 text-xs leading-relaxed text-brand-dark">Nura Glow remains a separate Seller cart. Finish or leave the Addis Atelier checkout before starting this one.</div>}
+        {DEMO_CARTS.map(cart => (cart === CHECKOUT_CART
+          ? <CartSummary key={cart} cart={cart} onCheckout={onCheckout} />
+          : <CartSummary key={cart} cart={cart} onCheckout={() => setNotice(cart)} actionLabel="Review separately" />))}
+        {notice && <div className="mt-3 rounded-xl bg-brand-muted p-3 text-xs leading-relaxed text-brand-dark">{SELLERS[ORDERS[notice].seller].name} remains a separate Seller cart. Finish or leave the {SELLERS[ORDERS[CHECKOUT_CART].seller].name} checkout before starting this one.</div>}
         <div className="mt-5 rounded-xl border border-info/20 bg-info-bg p-3 text-xs leading-relaxed text-info">
           Adulis coordinates your carts, but each checkout creates one distinct Seller Order. Amounts, fulfilment and payment status are never combined across sellers.
         </div>
@@ -1017,16 +1228,18 @@ function MultiCart({ onBack, onCheckout }: { onBack: () => void; onCheckout: () 
   )
 }
 
-function CartSummary({ initials, seller, item, amount, image, onCheckout, actionLabel }: {
-  initials: string; seller: string; item: string; amount: string; image: string; onCheckout: () => void; actionLabel?: string
-}) {
+function CartSummary({ cart, onCheckout, actionLabel }: { cart: OrderId; onCheckout: () => void; actionLabel?: string }) {
+  const order = ORDERS[cart]
+  const seller = SELLERS[order.seller].name
+  const item = order.lines.map(line => PRODUCTS[line.product].name).join(' · ')
+  const quantity = order.lines.reduce((sum, line) => sum + line.quantity, 0)
   return (
     <div className="mt-4 rounded-2xl border border-border bg-surface p-4 shadow-sm">
-      <SellerIdentity initials={initials} name={seller} meta="1 item" />
+      <SellerIdentity initials={initials(seller)} name={seller} meta={`${order.lines.length} item`} />
       <div className="my-4 flex items-center gap-3">
-        <img src={image} alt={item} className="h-16 w-16 rounded-lg object-cover" />
-        <div className="flex-1"><div className="text-sm font-semibold">{item}</div><div className="mt-1 text-xs text-text-muted">Quantity 1</div></div>
-        <div className="text-sm font-bold">{amount}</div>
+        <Placeholder label={item} className="h-16 w-16 rounded-lg" />
+        <div className="flex-1"><div className="text-sm font-semibold">{item}</div><div className="mt-1 text-xs text-text-muted">Quantity {quantity}</div></div>
+        <div className="text-sm font-bold">{formatEtb(cartProducts(cart))}</div>
       </div>
       <Button size="sm" variant="secondary" onClick={onCheckout} style={{ width: '100%' }}>{actionLabel ?? `Checkout ${seller}`}</Button>
     </div>
@@ -1034,68 +1247,80 @@ function CartSummary({ initials, seller, item, amount, image, onCheckout, action
 }
 
 function CheckoutCoordinator({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
+  const seller = SELLERS[ORDERS[CHECKOUT_CART].seller].name
+  const lines = ORDERS[CHECKOUT_CART].lines.length
+  const others = DEMO_CARTS.filter(cart => cart !== CHECKOUT_CART)
   return (
     <>
       <Header title="Checkout" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-muted font-display text-lg font-bold text-brand-dark">AA</div>
-        <div className="mt-4 font-display text-2xl font-semibold">Checkout Addis Atelier</div>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">You are starting one checkout for one Seller cart. Your Nura Glow cart stays saved and unchanged.</p>
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-muted font-display text-lg font-bold text-brand-dark">{initials(seller)}</div>
+        <div className="mt-4 font-display text-2xl font-semibold">Checkout {seller}</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">You are starting one checkout for one Seller cart.{others.map(cart => ` Your ${SELLERS[ORDERS[cart].seller].name} cart stays saved and unchanged.`)}</p>
         <div className="mt-6 rounded-2xl border border-brand/20 bg-brand-muted p-4">
           <div className="text-xs font-semibold uppercase tracking-wider text-brand-dark">Seller Order</div>
-          <div className="mt-2 flex items-center justify-between"><span className="font-semibold">Addis Atelier</span><span className="font-bold">ETB 2,800</span></div>
-          <div className="mt-1 text-xs text-text-secondary">1 product · Fulfilment selected next</div>
+          <div className="mt-2 flex items-center justify-between"><span className="font-semibold">{seller}</span><span className="font-bold">{formatEtb(cartProducts(CHECKOUT_CART))}</span></div>
+          <div className="mt-1 text-xs text-text-secondary">{lines} product{lines === 1 ? '' : 's'} · Fulfilment selected next</div>
         </div>
-        <div className="mt-4 rounded-2xl border border-border p-4 opacity-70">
-          <div className="flex items-center justify-between"><span className="font-semibold">Nura Glow</span><span className="text-xs text-text-muted">Stays in cart</span></div>
-          <div className="mt-1 text-xs text-text-muted">Not part of this checkout</div>
-        </div>
+        {others.map(cart => (
+          <div key={cart} className="mt-4 rounded-2xl border border-border p-4 opacity-70">
+            <div className="flex items-center justify-between"><span className="font-semibold">{SELLERS[ORDERS[cart].seller].name}</span><span className="text-xs text-text-muted">Stays in cart</span></div>
+            <div className="mt-1 text-xs text-text-muted">Not part of this checkout</div>
+          </div>
+        ))}
         <div className="mt-6 flex gap-3 text-xs text-text-muted">
           <StepDot active label="Seller" /><StepLine /><StepDot label="Fulfilment" /><StepLine /><StepDot label="Payment" />
         </div>
       </div>
-      <div className="border-t border-border bg-surface p-4 pb-6"><Button size="lg" onClick={onContinue} style={{ width: '100%' }}>Continue with Addis Atelier</Button></div>
+      <div className="border-t border-border bg-surface p-4 pb-6"><Button size="lg" onClick={onContinue} style={{ width: '100%' }}>Continue with {seller}</Button></div>
     </>
   )
 }
 
-function SellerCheckout({ fulfilment, setFulfilment, onBack, onPay }: {
-  fulfilment: Fulfilment; setFulfilment: (value: Fulfilment) => void; onBack: () => void; onPay: () => void
+function SellerCheckout({ at, fulfilment, setFulfilment, onBack, onPay }: {
+  at: Moment; fulfilment: Fulfilment; setFulfilment: (value: Fulfilment) => void; onBack: () => void; onPay: () => void
 }) {
-  const fee = fulfilment === 'courier' ? 180 : fulfilment === 'seller' ? 120 : 0
-  const surcharge = 14
-  const total = 2800 + fee + surcharge
+  // The options the Seller offers at the story moment, with its own charges. DEMO_DATA quotes no delivery time.
+  const order = ORDERS[CHECKOUT_CART]
+  const seller = SELLERS[order.seller]
+  const buyer = BUYERS[BUYER]
+  const options = fulfilmentOptionsAt(order.seller, at)
+  const courier = options.find(option => option.mode === 'Courier Delivery')
+  const { products, delivery, surcharge, total } = cartTotal(fulfilment, at)
+  const detail: Record<FulfilmentMode, string> = {
+    'Buyer Collection': `Collect from ${seller.name} in ${seller.area}`,
+    'Seller Delivery': 'Arranged and delivered by the seller',
+    'Courier Delivery': 'Seller-approved courier',
+  }
   return (
     <>
-      <Header title="Addis Atelier checkout" onBack={onBack} />
+      <Header title={`${seller.name} checkout`} onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="rounded-xl bg-surface-raised p-3"><SellerIdentity initials="AA" name="Addis Atelier" meta="Seller Order · 1 product" /></div>
+        <div className="rounded-xl bg-surface-raised p-3"><SellerIdentity initials={initials(seller.name)} name={seller.name} meta={`Seller Order · ${order.lines.length} product${order.lines.length === 1 ? '' : 's'}`} /></div>
         <SectionLabel>Fulfilment</SectionLabel>
-        <FulfilmentOption active={fulfilment === 'collection'} onClick={() => setFulfilment('collection')} title="Buyer Collection" detail="Collect from Addis Atelier in Bole" price="No delivery fee" />
-        <FulfilmentOption active={fulfilment === 'seller'} onClick={() => setFulfilment('seller')} title="Seller Delivery" detail="Arranged and delivered by the seller" price="ETB 120" />
-        <FulfilmentOption active={fulfilment === 'courier'} onClick={() => setFulfilment('courier')} title="Courier Delivery" detail="Seller-approved courier · 1–3 business days" price="ETB 180" />
-        {fulfilment === 'courier' && (
+        {options.map(option => <FulfilmentOption key={option.mode} active={fulfilment === FULFILMENT_KEY[option.mode]} onClick={() => setFulfilment(FULFILMENT_KEY[option.mode])} title={option.mode} detail={detail[option.mode]} price={option.charge ? formatEtb(option.charge) : 'No delivery fee'} />)}
+        {fulfilment === 'courier' && courier && (
           <div className="mt-2 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">
-            The ETB 180 Courier Delivery fee is shown now and is separate from the Adulis surcharge.
+            The {formatEtb(courier.charge)} Courier Delivery fee is shown now and is separate from the Adulis surcharge.
           </div>
         )}
         <SectionLabel>Delivery details</SectionLabel>
         <div className="rounded-xl border border-border p-3 text-sm">
-          <div className="font-semibold">Maya Tesfaye</div>
-          <div className="mt-1 text-text-secondary">Bole Medhanialem, Addis Ababa · +251 91 234 5678</div>
+          <div className="font-semibold">{buyer.name}</div>
+          <div className="mt-1 text-text-secondary">{buyer.deliveryArea ?? '—'}, {MARKET.city} · {buyer.phoneMasked ?? '—'}</div>
           <div className="mt-2 text-xs font-semibold text-text-muted">Saved delivery details</div>
         </div>
         <SectionLabel>Payment breakdown</SectionLabel>
         <div className="rounded-xl bg-surface-raised p-4">
-          <PriceRow label="Products" value="ETB 2,800" />
-          <PriceRow label={fulfilment === 'courier' ? 'Courier Delivery' : fulfilment === 'seller' ? 'Seller Delivery' : 'Buyer Collection'} value={fee ? `ETB ${fee}` : 'ETB 0'} />
-          <PriceRow label="Adulis surcharge — 0.5%" value="ETB 14" />
-          <div className="mt-3 border-t border-border pt-3"><PriceRow label="Total" value={`ETB ${total.toLocaleString()}`} strong /></div>
+          <PriceRow label="Products" value={formatEtb(products)} />
+          <PriceRow label={FULFILMENT_MODE[fulfilment]} value={formatEtb(delivery)} />
+          <PriceRow label="Adulis surcharge — 0.5%" value={formatEtb(surcharge)} />
+          <div className="mt-3 border-t border-border pt-3"><PriceRow label="Total" value={formatEtb(total)} strong /></div>
         </div>
         <p className="mt-3 text-xs leading-relaxed text-text-muted">Payment status is established by the payment provider and Adulis backend. The seller does not confirm payment.</p>
       </div>
       <div className="border-t border-border bg-surface p-4 pb-6">
-        <Button size="lg" onClick={onPay} style={{ width: '100%' }}>Continue to payment · ETB {total.toLocaleString()}</Button>
+        <Button size="lg" onClick={onPay} style={{ width: '100%' }}>Continue to payment · {formatEtb(total)}</Button>
       </div>
     </>
   )
@@ -1122,8 +1347,8 @@ function PaymentTransition({ amount, onBack, onContinue }: { amount: number; onB
         <div className="mt-5 font-display text-2xl font-semibold">Continue with payment provider</div>
         <p className="mt-2 text-sm leading-relaxed text-text-secondary">You’ll complete payment on the provider’s secure page, then return to Adulis for confirmation.</p>
         <div className="mt-6 w-full rounded-xl bg-surface-raised p-4 text-left">
-          <PriceRow label="Paying" value="Addis Atelier" />
-          <PriceRow label="Seller Order total" value={`ETB ${amount.toLocaleString()}`} strong />
+          <PriceRow label="Paying" value={SELLERS[ORDERS[CHECKOUT_CART].seller].name} />
+          <PriceRow label="Seller Order total" value={formatEtb(amount)} strong />
         </div>
         <div className="mt-4 text-xs text-text-muted">Adulis does not ask for payment screenshots. Payment truth comes from the provider and backend.</div>
       </div>
@@ -1139,7 +1364,7 @@ function PaymentProcessing({ amount, onPaid, onFailed, onChecking }: { amount: n
       title="Processing payment"
       description="The payment provider is processing your payment. Keep this screen open and do not pay again."
     >
-      <div className="w-full rounded-xl bg-surface-raised p-4 text-left"><PriceRow label="Seller" value="Addis Atelier" /><PriceRow label="Amount" value={`ETB ${amount.toLocaleString()}`} strong /></div>
+      <div className="w-full rounded-xl bg-surface-raised p-4 text-left"><PriceRow label="Seller" value={SELLERS[ORDERS[CHECKOUT_CART].seller].name} /><PriceRow label="Amount" value={formatEtb(amount)} strong /></div>
       <div className="mt-8 w-full border-t border-border pt-4">
         <div className="mb-2 text-xs font-semibold text-text-muted">Prototype payment outcome</div>
         <div className="grid grid-cols-3 gap-2">
@@ -1157,9 +1382,9 @@ function PaymentSuccess({ amount, onDone }: { amount: number; onDone: () => void
     <PaymentStateShell tone="success" title="Payment confirmed" description="The provider confirmed your payment. Your Seller Order has now been created.">
       <div className="w-full rounded-2xl border border-success/20 bg-success-bg p-4 text-left">
         <div className="text-xs font-semibold uppercase tracking-wider text-success">Seller Order confirmed</div>
-        <div className="mt-2 font-display text-xl font-semibold">Addis Atelier</div>
-        <div className="mt-1 text-sm text-text-secondary">Order ADU-24091 · Paid</div>
-        <div className="mt-4 border-t border-success/20 pt-3"><PriceRow label="Paid total" value={`ETB ${amount.toLocaleString()}`} strong /></div>
+        <div className="mt-2 font-display text-xl font-semibold">{SELLERS[ORDERS[CHECKOUT_CART].seller].name}</div>
+        <div className="mt-1 text-sm text-text-secondary">Order {CHECKOUT_CART} · Paid</div>
+        <div className="mt-4 border-t border-success/20 pt-3"><PriceRow label="Paid total" value={formatEtb(amount)} strong /></div>
       </div>
       <Button size="lg" onClick={onDone} style={{ width: '100%', marginTop: 24 }}>Done</Button>
     </PaymentStateShell>
@@ -1172,7 +1397,7 @@ function PaymentFailed({ onRetry, onCart }: { onRetry: () => void; onCart: () =>
       <div className="w-full rounded-xl bg-danger-bg p-4 text-left text-sm text-danger">No charge was confirmed by the payment provider.</div>
       <div className="mt-6 flex w-full flex-col gap-2">
         <Button size="lg" onClick={onRetry}>Try payment again</Button>
-        <Button size="lg" variant="tertiary" onClick={onCart}>Return to Addis Atelier cart</Button>
+        <Button size="lg" variant="tertiary" onClick={onCart}>Return to {SELLERS[ORDERS[CHECKOUT_CART].seller].name} cart</Button>
       </div>
     </PaymentStateShell>
   )
@@ -1241,27 +1466,30 @@ function ProcessingIcon() {
 }
 
 function ResultHeading({ title, count }: { title: string; count: string }) {
-  return <div className="mb-2 mt-4 flex items-center justify-between"><span className="font-display text-lg font-semibold">{title}</span><span className="text-xs text-text-muted">{count} results</span></div>
+  return <div className="mb-2 mt-4 flex items-center justify-between"><span className="font-display text-lg font-semibold">{title}</span><span className="text-xs text-text-muted">{count} result{count === '1' ? '' : 's'}</span></div>
 }
 
-function ProductRow({ onClick }: { onClick: () => void }) {
-  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><img src={PHOTOS.hero} alt={PRODUCT.name} className="h-20 w-20 rounded-lg object-cover" /><span className="flex-1 py-1"><span className="block text-sm font-semibold">{PRODUCT.name}</span><span className="block text-xs text-text-muted">{PRODUCT.seller}</span><span className="mt-2 block text-sm font-bold text-brand">{PRODUCT.price}</span></span></button>
+function ProductRow({ productId, onClick }: { productId: ProductId; onClick: () => void }) {
+  const product = PRODUCTS[productId]
+  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={product.name} className="h-20 w-20 rounded-lg" /><span className="flex-1 py-1"><span className="block text-sm font-semibold">{product.name}</span><span className="block text-xs text-text-muted">{SELLERS[product.seller].name}</span><span className="mt-2 block text-sm font-bold text-brand">{formatEtb(product.price)}</span></span></button>
 }
 
-function PostRow({ onClick }: { onClick: () => void }) {
-  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><img src={PHOTOS.blue} alt="Shoppable post" className="h-20 w-20 rounded-lg object-cover" /><span className="py-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-brand">Shoppable post</span><span className="mt-1 block text-sm font-semibold">Indigo, hand finishing, and warm afternoons</span><span className="text-xs text-text-muted">Nile Loom · 3 products</span></span></button>
+function PostRow({ postId, onClick }: { postId: ShoppablePostId; onClick: () => void }) {
+  const post = SHOPPABLE_POSTS[postId]
+  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={post.title} className="h-20 w-20 rounded-lg" /><span className="py-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-brand">Shoppable post</span><span className="mt-1 block text-sm font-semibold">{post.title}</span><span className="text-xs text-text-muted">{SELLERS[post.seller].name} · {post.tags.length} product{post.tags.length === 1 ? '' : 's'}</span></span></button>
 }
 
-function SellerRow({ onClick, name = 'Addis Atelier', initials = 'AA', category = 'Fashion · Established' }: { onClick: () => void; name?: string; initials?: string; category?: string }) {
-  return <button onClick={onClick} className="flex w-full items-center gap-3 rounded-xl bg-surface-raised p-3 text-left"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials}</span><span className="flex-1"><span className="block text-sm font-semibold">{name}</span><span className="text-xs text-text-muted">{category}</span></span><span className="text-xs font-semibold text-brand">View</span></button>
+function SellerRow({ sellerId, at, onClick }: { sellerId: SellerId; at: Moment; onClick: () => void }) {
+  const seller = SELLERS[sellerId]
+  return <button onClick={onClick} className="flex w-full items-center gap-3 rounded-xl bg-surface-raised p-3 text-left"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials(seller.name)}</span><span className="flex-1"><span className="block text-sm font-semibold">{seller.name}</span><span className="text-xs text-text-muted">{seller.category} · {trustLabel(trustAt(sellerId, at))}</span></span><span className="text-xs font-semibold text-brand">View</span></button>
 }
 
-function ProductCard({ image, name, price, onClick }: { image: string; name: string; price: string; onClick: () => void }) {
-  return <button onClick={onClick} className="overflow-hidden rounded-xl bg-surface text-left"><img src={image} alt={name} className="h-44 w-full rounded-xl object-cover" /><span className="mt-2 block text-xs font-semibold leading-snug">{name}</span><span className="mt-1 block text-xs font-bold text-brand">{price}</span></button>
+function ProductCard({ name, price, onClick }: { name: string; price: string; onClick: () => void }) {
+  return <button onClick={onClick} className="overflow-hidden rounded-xl bg-surface text-left"><Placeholder label={name} className="h-44 w-full rounded-xl text-2xl" /><span className="mt-2 block text-xs font-semibold leading-snug">{name}</span><span className="mt-1 block text-xs font-bold text-brand">{price}</span></button>
 }
 
-function PostTile({ image, onClick, label = '2 products' }: { image: string; onClick: () => void; label?: string }) {
-  return <button onClick={onClick} className="relative overflow-hidden rounded-xl text-left"><img src={image} alt="Shoppable post" className="h-52 w-full object-cover" /><span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white"><TagIcon /> <span className="ml-1">{label}</span></span></button>
+function PostTile({ title, label, onClick }: { title: string; label: string; onClick: () => void }) {
+  return <button onClick={onClick} className="relative overflow-hidden rounded-xl text-left"><Placeholder label={`Shoppable post: ${title}`} initialsOf={title} className="h-52 w-full text-2xl" /><span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white"><TagIcon /> <span className="ml-1">{label}</span></span></button>
 }
 
 function InfoBlock({ title, children }: { title: string; children: ReactNode }) {

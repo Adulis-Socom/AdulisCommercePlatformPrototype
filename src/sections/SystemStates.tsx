@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button } from '../components/ui/Button'
 import { SystemStatePanel, type SystemStateKind } from '../components/ui/Overlay'
+import { ORDERS, ORDER_IDS, PRODUCTS, SELLERS, SURFACE_DEFAULTS, formatEtb, orderTotals, paymentAttempts, sellerProductsAt } from '../demo-data'
 
 type Surface = 'Buyer' | 'Courier' | 'Seller' | 'Operator' | 'Platform'
 
@@ -19,6 +20,16 @@ interface Scenario extends ScenarioState {
 }
 
 const SURFACES: Array<'All' | Surface> = ['All', 'Buyer', 'Courier', 'Seller', 'Operator', 'Platform']
+
+// A scenario that happens to a canonical record names it, read from the canonical module (WO-001): the default checkout
+// Order's payment, the default Seller's out-of-stock Product, the Order whose first payment attempt failed and the Order
+// verified by OTP fallback. A state that never happens to a canonical record names an example instead.
+const ORDER = SURFACE_DEFAULTS.order
+const SELLER = SELLERS[ORDERS[ORDER].seller].name
+const TOTAL = formatEtb(orderTotals(ORDER).total)
+const OUT_OF_STOCK = sellerProductsAt(SURFACE_DEFAULTS.seller).find(id => PRODUCTS[id].availability === 'Out of Stock')!
+const RETRIED_ORDER = ORDER_IDS.find(id => paymentAttempts(id).some(attempt => attempt.status === 'Failed'))!
+const OTP_ORDER = ORDER_IDS.find(id => ORDERS[id].finalHandoff?.method === 'OTP fallback')!
 
 const SCENARIOS: Scenario[] = [
   {
@@ -53,7 +64,7 @@ const SCENARIOS: Scenario[] = [
     surface: 'Buyer',
     kind: 'terminal',
     title: 'Product is out of stock',
-    description: 'Habesha Kemis — Classic White cannot be added to Cart right now.',
+    description: `${PRODUCTS[OUT_OF_STOCK].name} cannot be added to Cart right now.`,
     detail: 'The Product remains visible with its Seller and availability history intact.',
     actionLabel: 'Save for later',
     outcome: {
@@ -75,13 +86,13 @@ const SCENARIOS: Scenario[] = [
     surface: 'Buyer',
     kind: 'processing',
     title: 'Processing payment',
-    description: 'The payment provider is processing ETB 2,994 for Addis Atelier.',
+    description: `The payment provider is processing ${TOTAL} for ${SELLER}.`,
     detail: 'Keep this screen open and do not pay again.',
     actionLabel: 'Simulate confirmation',
     outcome: {
       kind: 'success',
       title: 'Payment confirmed',
-      description: 'The provider confirmed payment and Seller Order ADU-24091 was created.',
+      description: `The provider confirmed payment and Seller Order ${ORDER} was created.`,
     },
   },
   {
@@ -95,7 +106,7 @@ const SCENARIOS: Scenario[] = [
     outcome: {
       kind: 'success',
       title: 'Payment reconciled',
-      description: 'The provider confirmed payment and Seller Order ADU-24091 was created once.',
+      description: 'The provider confirmed payment and Example Order was created once.',
     },
   },
   {
@@ -104,7 +115,7 @@ const SCENARIOS: Scenario[] = [
     kind: 'failed',
     title: 'Payment failed',
     description: 'No charge was confirmed and no Seller Order was created.',
-    detail: 'The Addis Atelier Cart remains saved.',
+    detail: `The ${SELLERS[ORDERS[RETRIED_ORDER].seller].name} Cart remains saved.`,
     actionLabel: 'Try payment again',
     outcome: {
       kind: 'processing',
@@ -117,8 +128,8 @@ const SCENARIOS: Scenario[] = [
     surface: 'Buyer',
     kind: 'success',
     title: 'Payment confirmed',
-    description: 'The provider confirmed payment and Seller Order ADU-24091 was created.',
-    detail: 'Paid · ETB 2,994 · Addis Atelier',
+    description: `The provider confirmed payment and Seller Order ${ORDER} was created.`,
+    detail: `Paid · ${TOTAL} · ${SELLER}`,
   },
   {
     id: 'order-stale',
@@ -175,7 +186,7 @@ const SCENARIOS: Scenario[] = [
     outcome: {
       kind: 'success',
       title: 'OTP verified',
-      description: 'Final handoff is confirmed for Seller Order ADU-24091.',
+      description: `Final handoff is confirmed for Seller Order ${OTP_ORDER}.`,
     },
   },
   {
@@ -198,7 +209,7 @@ const SCENARIOS: Scenario[] = [
     surface: 'Courier',
     kind: 'terminal',
     title: 'Delivery offer expired',
-    description: 'The Addis Atelier offer was not accepted before its response window ended.',
+    description: 'The Example Seller offer was not accepted before its response window ended.',
     detail: 'No delivery was assigned and no compensation was earned.',
     actionLabel: 'View current offers',
     outcome: {
@@ -226,7 +237,7 @@ const SCENARIOS: Scenario[] = [
     surface: 'Seller',
     kind: 'conflict',
     title: 'Seller Order changed elsewhere',
-    description: 'Another Seller Console session updated ADU-24091.',
+    description: 'Another Seller Console session updated Example Order.',
     detail: 'Refresh before taking the next operational action.',
     actionLabel: 'Refresh Seller Order',
     outcome: {
@@ -277,8 +288,8 @@ const SCENARIOS: Scenario[] = [
     surface: 'Platform',
     kind: 'processing',
     title: 'Payment provider incident',
-    description: 'Provider callbacks are delayed for 7 payments while reconciliation remains active.',
-    detail: 'INC-074 · Monitoring · Sellers cannot establish payment status.',
+    description: 'Provider callbacks are delayed while reconciliation remains active.',
+    detail: 'Monitoring · Sellers cannot establish payment status.',
     actionLabel: 'Simulate recovery',
     outcome: {
       kind: 'success',

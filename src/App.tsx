@@ -11,6 +11,8 @@ import SellerConsole from './sections/SellerConsole'
 import OperatorConsole from './sections/OperatorConsole'
 import DemoFlows, { FLOW_DEFINITIONS, type FlowId } from './sections/DemoFlows'
 import SystemStates from './sections/SystemStates'
+import { stageFor } from './demo-data'
+import { StoryProvider } from './StoryClock'
 
 export type SectionKey =
   | '00-guide'
@@ -167,7 +169,9 @@ export default function App() {
 
       {/* Main content */}
       <main className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}`}>
-        <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} />
+        <StoryProvider stage={stageFor(journey?.id, journey?.stage ?? 0)}>
+          <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} />
+        </StoryProvider>
         {journey && flow && flowStage && (
           <div className="flow-guide fixed bottom-5 right-5 z-[500] w-96 rounded-2xl border border-border bg-surface p-4 shadow-xl" role="dialog" aria-label="Guided prototype flow">
             <div className="flex items-start justify-between"><div><div className="font-mono text-[10px] font-bold uppercase tracking-wider text-brand">Flow {flow.id} · Step {journey.stage + 1} of {flow.stages.length}</div><div className="mt-1 font-display text-lg font-semibold">{flowStage.title}</div></div><button onClick={() => setJourney(null)} aria-label="Close guided flow" className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-raised text-text-muted">×</button></div>

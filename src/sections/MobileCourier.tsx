@@ -4,30 +4,76 @@ import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
 import {
   PhoneFrame, BottomNav, IconMap, IconTruck, IconHistory, IconUser, IconChevronRight,
 } from './ShellHelpers'
+import { useStory, useStoryMoment } from '../StoryClock'
+import {
+  BUYERS, COURIERS, COURIER_RELATIONSHIPS, MARKET, ORDERS, ORDER_IDS, PRODUCTS, SELLERS, SURFACE_DEFAULTS,
+  activeDeliveryAt, completedForSellerAt, courierAvailabilityAt, courierCompensationAt, courierHistoryAt, formatClock, formatClockShort, formatDate, formatDayMonth,
+  formatEtb, happenedBefore, initials, minutesBetween, orderStateAt, orderTotals, paidAt, relationshipStatusAt, shortName, stateTime, totalCompletedAt,
+  type CourierId, type Moment, type OrderId, type SellerId, type Timestamp,
+} from '../demo-data'
 
 type TabKey = 'assignments' | 'active' | 'history' | 'account'
 type Availability = 'available' | 'busy' | 'unavailable'
-type Screen = 'tabs' | 'offer' | 'invitation' | 'opportunity' | 'relationships' | 'pickup-scan' | 'pickup-verified' | 'pickup-checkpoint' | 'delivery' | 'delivery-qr' | 'waiting' | 'delivery-verified' | 'delivery-checkpoint'
+type Screen = 'tabs' | 'offer' | 'opportunity' | 'relationships' | 'pickup-scan' | 'pickup-verified' | 'pickup-checkpoint' | 'delivery' | 'delivery-qr' | 'waiting' | 'delivery-verified' | 'delivery-checkpoint'
 type ActiveStage = 'none' | 'accepted' | 'pickup-verified' | 'delivering' | 'waiting' | 'verified'
 type CheckpointState = 'recorded' | 'unavailable'
 
 const TABS = [
-  { key: 'assignments' as TabKey, label: 'Assignments', icon: <IconMap size={22} />, badge: 2 },
+  { key: 'assignments' as TabKey, label: 'Assignments', icon: <IconMap size={22} /> },
   { key: 'active' as TabKey, label: 'Active', icon: <IconTruck size={22} /> },
   { key: 'history' as TabKey, label: 'History', icon: <IconHistory size={22} /> },
   { key: 'account' as TabKey, label: 'Account', icon: <IconUser size={22} /> },
 ]
 
-const DELIVERY = {
-  id: 'DLV-24091',
-  orderId: 'ADU-24091',
-  seller: 'Addis Atelier',
-  buyer: 'Maya T.',
-  sellerZone: 'Bole, Addis Ababa',
-  buyerZone: 'Kazanchis, Addis Ababa',
-  item: 'Habesha Kemis — Classic White',
-  total: 'ETB 2,994',
-  compensation: 'ETB 180',
+/** The Courier's Delivery Offers waiting at the story moment: made, and not yet accepted (rule 6.3). */
+function pendingOffers(courierId: CourierId, at: Moment): OrderId[] {
+  return ORDER_IDS.filter(id => {
+    const offer = ORDERS[id].offer
+    const accepted = stateTime(id, 'Courier Assigned')
+    return offer?.courier === courierId && happenedBefore(offer.offered, at) && !(accepted && happenedBefore(accepted, at))
+  })
+}
+
+/** The active-delivery step for the Order's state at the story moment. */
+function activeStage(orderId: OrderId | undefined, at: Moment): ActiveStage {
+  switch (orderId && orderStateAt(orderId, at)) {
+    case 'Courier Assigned': return 'accepted'
+    case 'Pickup Verified': case 'Out for Delivery': return 'pickup-verified'
+    case 'Delivery Handoff': return 'delivering'
+    case 'Completed': return 'verified'
+    default: return 'none'
+  }
+}
+
+/** Who receives the Order: its authorized recipient once authorized (shown to Couriers as such), otherwise the Buyer. */
+function recipientOf(orderId: OrderId, at: Moment) {
+  const { recipient, buyer } = ORDERS[orderId]
+  return recipient && happenedBefore(recipient.authorized, at)
+    ? { name: `${shortName(recipient.name)} (authorized recipient)`, phone: recipient.phoneMasked }
+    : { name: shortName(BUYERS[buyer].name), phone: BUYERS[buyer].phoneMasked ?? '—' }
+}
+
+/** The Buyer's delivery area, as the Courier sees it. */
+function deliveryArea(orderId: OrderId) {
+  return `${BUYERS[ORDERS[orderId].buyer].deliveryArea ?? '—'}, ${MARKET.city}`
+}
+
+function orderItems(orderId: OrderId) {
+  return ORDERS[orderId].lines.map(line => PRODUCTS[line.product].name).join(', ')
+}
+
+/** The compensation for this delivery: the Seller's terms when the Delivery Offer was made (rule 6.8). */
+function compensationFor(orderId: OrderId) {
+  const order = ORDERS[orderId]
+  const when = order.offer?.offered ?? stateTime(orderId, 'Courier Assigned') ?? stateTime(orderId, 'Completed') ?? paidAt(orderId)
+  const amount = courierCompensationAt(order.seller, { at: when })
+  return amount === undefined ? '—' : formatEtb(amount)
+}
+
+/** 'Today · HH:MM', 'Yesterday' or the day and month, relative to the story moment. */
+function dayLabel(time: Timestamp, at: Moment) {
+  const days = minutesBetween(time.slice(0, 10), at.at.slice(0, 10)) / (24 * 60)
+  return days === 0 ? `Today · ${formatClock(time)}` : days === 1 ? 'Yesterday' : formatDayMonth(time)
 }
 
 export default function MobileCourier({ demoTarget }: { demoTarget?: string }) {
@@ -39,61 +85,74 @@ export default function MobileCourier({ demoTarget }: { demoTarget?: string }) {
       : demoTarget === 'delivery-qr'
         ? 'delivery-qr'
         : 'tabs'
-  const initialStage: ActiveStage = demoTarget === 'delivery' || demoTarget === 'delivery-qr'
-    ? 'delivering'
-    : demoTarget === 'active' || demoTarget === 'pickup-scan'
-      ? 'accepted'
-      : 'none'
+  // The Courier, story moment and delivery of the guided-flow step: its focus Order, else the Courier's active
+  // delivery. The moment moves on as the Courier verifies the pickup and the final handoff.
+  const { focus } = useStory()
+  const courierId = focus?.courier ?? SURFACE_DEFAULTS.courier
+  const [at, advanceTo] = useStoryMoment()
+  const [orderId, setOrderId] = useState<OrderId | undefined>(() => focus?.order ?? activeDeliveryAt(courierId, at))
+  const [offerId, setOfferId] = useState<OrderId | undefined>()
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
-  const [availability, setAvailability] = useState<Availability>('available')
+  const [availability, setAvailability] = useState<Availability>(courierAvailabilityAt(courierId, at).toLowerCase() as Availability)
   const [screen, setScreen] = useState<Screen>(initialScreen)
-  const [stage, setStage] = useState<ActiveStage>(initialStage)
-  const [pickupCheckpoint, setPickupCheckpoint] = useState<CheckpointState>('recorded')
-  const [deliveryCheckpoint, setDeliveryCheckpoint] = useState<CheckpointState>('recorded')
+  const [stage, setStage] = useState<ActiveStage>(activeStage(orderId, at))
+  const [pickupCheckpoint, setPickupCheckpoint] = useState<CheckpointState>((orderId && ORDERS[orderId].pickup?.location) || 'recorded')
+  const [deliveryCheckpoint, setDeliveryCheckpoint] = useState<CheckpointState>((orderId && ORDERS[orderId].finalHandoff?.location) || 'recorded')
+  const offers = pendingOffers(courierId, at)
+  // The Sellers whose pool the Courier has applied to, awaiting their decision.
+  const opportunities = COURIER_RELATIONSHIPS.filter(r => r.courier === courierId && relationshipStatusAt(r, at) === 'Application pending').map(r => r.seller)
+  const [opportunity, setOpportunity] = useState<SellerId | undefined>(opportunities[0])
 
   const selectTab = (tab: TabKey) => {
     setActiveTab(tab)
     setScreen('tabs')
   }
+  const openOpportunity = (seller: SellerId) => { setOpportunity(seller); setScreen('opportunity') }
 
   return (
-    <PhoneFrame label="07 — COURIER MODE · DANIEL K.">
+    <PhoneFrame label={`07 — COURIER MODE · ${COURIERS[courierId].name.toUpperCase()}`} clock={formatClockShort(at.at)}>
       <div className="relative flex flex-1 flex-col overflow-hidden">
         {screen === 'tabs' && (
           <>
-            <CourierHeader tab={activeTab} availability={availability} onAvailability={setAvailability} />
+            <CourierHeader courierId={courierId} tab={activeTab} availability={availability} onAvailability={setAvailability} />
             <div className="flex-1 overflow-y-auto">
-              {activeTab === 'assignments' && <CourierHome hasActive={stage !== 'none' && stage !== 'verified'} availability={availability} onOffer={() => setScreen('offer')} onInvitation={() => setScreen('invitation')} onOpportunity={() => setScreen('opportunity')} />}
-              {activeTab === 'active' && <ActiveAssignment stage={stage} onAssignments={() => selectTab('assignments')} onScan={() => setScreen('pickup-scan')} onDelivery={() => setScreen('delivery')} onWaiting={() => setScreen('waiting')} />}
-              {activeTab === 'history' && <HistoryTab />}
-              {activeTab === 'account' && <AccountTab availability={availability} onAvailability={setAvailability} onRelationships={() => setScreen('relationships')} onInvitation={() => setScreen('invitation')} onOpportunity={() => setScreen('opportunity')} />}
+              {activeTab === 'assignments' && <CourierHome activeOrder={stage !== 'none' && stage !== 'verified' ? orderId : undefined} offers={offers} opportunities={opportunities} availability={availability} onOffer={id => { setOfferId(id); setScreen('offer') }} onOpportunity={openOpportunity} />}
+              {activeTab === 'active' && <ActiveAssignment orderId={orderId} at={at} stage={stage} onAssignments={() => selectTab('assignments')} onScan={() => setScreen('pickup-scan')} onDelivery={() => setScreen('delivery')} onWaiting={() => setScreen('waiting')} />}
+              {activeTab === 'history' && <HistoryTab courierId={courierId} at={at} />}
+              {activeTab === 'account' && <AccountTab courierId={courierId} at={at} availability={availability} onAvailability={setAvailability} onRelationships={() => setScreen('relationships')} opportunity={opportunities[0]} onOpportunity={openOpportunity} />}
             </div>
-            <BottomNav items={TABS} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-courier)" />
+            <BottomNav items={TABS.map(tab => (tab.key === 'assignments' ? { ...tab, badge: offers.length } : tab))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-courier)" />
           </>
         )}
-        {screen === 'offer' && <OfferDetail hasActive={stage !== 'none' && stage !== 'verified'} onBack={() => setScreen('tabs')} onAccept={() => { setStage('accepted'); setActiveTab('active'); setScreen('tabs') }} />}
-        {screen === 'invitation' && <SellerInvitation onBack={() => setScreen('tabs')} />}
-        {screen === 'opportunity' && <CourierOpportunity onBack={() => setScreen('tabs')} />}
-        {screen === 'relationships' && <SellerRelationships onBack={() => setScreen('tabs')} />}
-        {screen === 'pickup-scan' && <PickupScanner onBack={() => setScreen('tabs')} onScan={() => setScreen('pickup-verified')} />}
-        {screen === 'pickup-verified' && <PickupVerified onContinue={() => setScreen('pickup-checkpoint')} />}
-        {screen === 'pickup-checkpoint' && <CheckpointStatus type="Pickup" state={pickupCheckpoint} setState={setPickupCheckpoint} onContinue={() => { setStage('pickup-verified'); setScreen('delivery') }} />}
-        {screen === 'delivery' && <DeliveryDetail onBack={() => setScreen('tabs')} onComplete={() => { setStage('delivering'); setScreen('delivery-qr') }} />}
-        {screen === 'delivery-qr' && <DeliveryQr onBack={() => setScreen('delivery')} onDisplay={() => { setStage('waiting'); setScreen('waiting') }} />}
-        {screen === 'waiting' && <WaitingForRecipient onBack={() => setScreen('tabs')} onVerified={() => setScreen('delivery-verified')} />}
-        {screen === 'delivery-verified' && <DeliveryVerified onContinue={() => setScreen('delivery-checkpoint')} />}
+        {screen === 'offer' && offerId && <OfferDetail orderId={offerId} hasActive={stage !== 'none' && stage !== 'verified'} onBack={() => setScreen('tabs')} onAccept={() => { setOrderId(offerId); setStage('accepted'); setActiveTab('active'); setScreen('tabs') }} />}
+        {orderId && <>
+          {screen === 'pickup-scan' && <PickupScanner onBack={() => setScreen('tabs')} onScan={() => { const t = stateTime(orderId, 'Pickup Verified'); if (t) advanceTo(t); setScreen('pickup-verified') }} />}
+          {screen === 'pickup-verified' && <PickupVerified orderId={orderId} at={at} onContinue={() => setScreen('pickup-checkpoint')} />}
+          {screen === 'pickup-checkpoint' && <CheckpointStatus type="Pickup" state={pickupCheckpoint} setState={setPickupCheckpoint} onContinue={() => { const t = stateTime(orderId, 'Out for Delivery'); if (t) advanceTo(t); setStage('pickup-verified'); setScreen('delivery') }} />}
+          {screen === 'delivery' && <DeliveryDetail orderId={orderId} at={at} pickupCheckpoint={pickupCheckpoint} onBack={() => setScreen('tabs')} onComplete={() => { const t = stateTime(orderId, 'Delivery Handoff'); if (t) advanceTo(t); setStage('delivering'); setScreen('delivery-qr') }} />}
+          {screen === 'delivery-qr' && <DeliveryQr onBack={() => setScreen('delivery')} onDisplay={() => { setStage('waiting'); setScreen('waiting') }} />}
+          {screen === 'waiting' && <WaitingForRecipient orderId={orderId} at={at} onBack={() => setScreen('tabs')} onVerified={() => {
+            // The verified scan completes the Order; the Courier is then no longer busy with it (rule 6.3).
+            const t = stateTime(orderId, 'Completed')
+            if (t) { advanceTo(t); setAvailability(courierAvailabilityAt(courierId, { at: t, sequence: 1 }).toLowerCase() as Availability) }
+            setScreen('delivery-verified')
+          }} />}
+          {screen === 'delivery-verified' && <DeliveryVerified orderId={orderId} at={at} onContinue={() => setScreen('delivery-checkpoint')} />}
+        </>}
+        {screen === 'opportunity' && opportunity && <CourierOpportunity sellerId={opportunity} courierId={courierId} at={at} onBack={() => setScreen('tabs')} />}
+        {screen === 'relationships' && <SellerRelationships courierId={courierId} at={at} onBack={() => setScreen('tabs')} />}
         {screen === 'delivery-checkpoint' && <CheckpointStatus type="Delivery" state={deliveryCheckpoint} setState={setDeliveryCheckpoint} onContinue={() => { setStage('verified'); setActiveTab('history'); setScreen('tabs') }} />}
       </div>
     </PhoneFrame>
   )
 }
 
-function CourierHeader({ tab, availability, onAvailability }: { tab: TabKey; availability: Availability; onAvailability: (value: Availability) => void }) {
-  const titles: Record<TabKey, string> = { assignments: 'Courier Home', active: 'Active Delivery', history: 'History', account: 'Daniel K.' }
+function CourierHeader({ courierId, tab, availability, onAvailability }: { courierId: CourierId; tab: TabKey; availability: Availability; onAvailability: (value: Availability) => void }) {
+  const titles: Record<TabKey, string> = { assignments: 'Courier Home', active: 'Active Delivery', history: 'History', account: COURIERS[courierId].name }
   const [open, setOpen] = useState(false)
   return (
     <div className="relative flex h-13 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-4">
-      <div><div className="font-display text-lg font-semibold">{titles[tab]}</div>{tab === 'assignments' && <div className="text-[10px] text-text-muted">Addis Ababa</div>}</div>
+      <div><div className="font-display text-lg font-semibold">{titles[tab]}</div>{tab === 'assignments' && <div className="text-[10px] text-text-muted">{MARKET.city}</div>}</div>
       <button onClick={() => setOpen(!open)} className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${availability === 'available' ? 'bg-courier-muted text-courier' : availability === 'busy' ? 'bg-warning-bg text-warning' : 'bg-surface-raised text-text-muted'}`}>
         <span className={`h-2 w-2 rounded-full ${availability === 'available' ? 'bg-courier' : availability === 'busy' ? 'bg-warning' : 'bg-text-muted'}`} />{availabilityLabel(availability)}⌄
       </button>
@@ -115,18 +174,20 @@ function ScreenHeader({ title, onBack }: { title: string; onBack: () => void }) 
   )
 }
 
-function CourierHome({ hasActive, availability, onOffer, onInvitation, onOpportunity }: {
-  hasActive: boolean; availability: Availability; onOffer: () => void; onInvitation: () => void; onOpportunity: () => void
+function CourierHome({ activeOrder, offers, opportunities, availability, onOffer, onOpportunity }: {
+  activeOrder?: OrderId; offers: OrderId[]; opportunities: SellerId[]; availability: Availability; onOffer: (id: OrderId) => void; onOpportunity: (seller: SellerId) => void
 }) {
+  // DEMO_DATA records no Seller invitations for Couriers, so only the Courier's pending applications are opportunities.
   return (
     <div className="p-4">
-      {hasActive && <div className="mb-4 rounded-2xl bg-courier-muted p-4"><div className="text-xs font-semibold uppercase tracking-wider text-courier">Active delivery</div><div className="mt-1 font-display text-lg font-semibold">{DELIVERY.id} · {DELIVERY.seller}</div><div className="mt-1 text-xs text-text-secondary">Only one accepted delivery can be active at a time.</div></div>}
+      {activeOrder && <div className="mb-4 rounded-2xl bg-courier-muted p-4"><div className="text-xs font-semibold uppercase tracking-wider text-courier">Active delivery</div><div className="mt-1 font-display text-lg font-semibold">{activeOrder} · {SELLERS[ORDERS[activeOrder].seller].name}</div><div className="mt-1 text-xs text-text-secondary">Only one accepted delivery can be active at a time.</div></div>}
       {availability !== 'available' && <div className="mb-4 rounded-xl bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">Set availability to Available to receive new delivery offers.</div>}
-      <div className="flex items-center justify-between"><SectionTitle>Delivery offers</SectionTitle><span className="text-xs text-text-muted">1 available</span></div>
-      <OfferCard seller={DELIVERY.seller} item={DELIVERY.item} pickup="Bole" delivery="Kazanchis" compensation={DELIVERY.compensation} disabled={hasActive || availability !== 'available'} onClick={onOffer} />
+      <div className="flex items-center justify-between"><SectionTitle>Delivery offers</SectionTitle><span className="text-xs text-text-muted">{offers.length} available</span></div>
+      {offers.length === 0 && <p className="text-sm text-text-muted">No delivery offers</p>}
+      {offers.map(id => <OfferCard key={id} seller={SELLERS[ORDERS[id].seller].name} item={orderItems(id)} pickup={SELLERS[ORDERS[id].seller].area} delivery={BUYERS[ORDERS[id].buyer].deliveryArea ?? '—'} compensation={compensationFor(id)} disabled={!!activeOrder || availability !== 'available'} onClick={() => onOffer(id)} />)}
       <SectionTitle>Seller opportunities</SectionTitle>
-      <button onClick={onInvitation} className="flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-muted text-xs font-bold text-brand-dark">BL</span><span className="flex-1"><span className="block text-sm font-semibold">Buna Lane invited you</span><span className="text-xs text-text-muted">Seller Pool invitation · Coffee deliveries</span></span><IconChevronRight size={16} /></button>
-      <button onClick={onOpportunity} className="mt-2 flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-courier-muted text-xs font-bold text-courier">OP</span><span className="flex-1"><span className="block text-sm font-semibold">Courier opportunity</span><span className="text-xs text-text-muted">Apply to deliver for Nura Glow</span></span><IconChevronRight size={16} /></button>
+      {opportunities.length === 0 && <p className="text-sm text-text-muted">No seller opportunities</p>}
+      {opportunities.map((seller, index) => <button key={seller} onClick={() => onOpportunity(seller)} className={`${index ? 'mt-2 ' : ''}flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left`}><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-courier-muted text-xs font-bold text-courier">OP</span><span className="flex-1"><span className="block text-sm font-semibold">Courier opportunity</span><span className="text-xs text-text-muted">Apply to deliver for {SELLERS[seller].name}</span></span><IconChevronRight size={16} /></button>)}
     </div>
   )
 }
@@ -143,14 +204,15 @@ function OfferCard({ seller, item, pickup, delivery, compensation, disabled, onC
   )
 }
 
-function OfferDetail({ hasActive, onBack, onAccept }: { hasActive: boolean; onBack: () => void; onAccept: () => void }) {
+function OfferDetail({ orderId, hasActive, onBack, onAccept }: { orderId: OrderId; hasActive: boolean; onBack: () => void; onAccept: () => void }) {
+  // DEMO_DATA gives Orders no pickup window, so that row isn't shown.
   return (
     <>
       <ScreenHeader title="Delivery Offer" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="rounded-2xl bg-courier-muted p-4"><div className="text-xs font-semibold uppercase tracking-wider text-courier">Compensation</div><div className="mt-1 font-display text-3xl font-semibold">ETB 180</div><div className="mt-1 text-xs text-text-secondary">Fixed for this delivery</div></div>
+        <div className="rounded-2xl bg-courier-muted p-4"><div className="text-xs font-semibold uppercase tracking-wider text-courier">Compensation</div><div className="mt-1 font-display text-3xl font-semibold">{compensationFor(orderId)}</div><div className="mt-1 text-xs text-text-secondary">Fixed for this delivery</div></div>
         <SectionTitle>Assignment</SectionTitle>
-        <InfoCard rows={[['Seller Order', DELIVERY.orderId], ['Payment status', 'Paid · provider confirmed'], ['Seller', DELIVERY.seller], ['Package', `${DELIVERY.item} · sealed`], ['Pickup window', 'Today · 10:00–11:00'], ['Delivery area', 'Kazanchis'], ['Expected work', 'One pickup · one handoff']]} />
+        <InfoCard rows={[['Seller Order', orderId], ['Payment status', 'Paid · provider confirmed'], ['Seller', SELLERS[ORDERS[orderId].seller].name], ['Package', `${orderItems(orderId)} · sealed`], ['Delivery area', BUYERS[ORDERS[orderId].buyer].deliveryArea ?? '—'], ['Expected work', 'One pickup · one handoff']]} />
         <SectionTitle>Pickup instructions</SectionTitle>
         <div className="rounded-xl bg-surface-raised p-3 text-sm leading-relaxed text-text-secondary">Ask the seller to display the Seller Pickup QR after they hand you the sealed package. Scan it before leaving.</div>
         <SectionTitle>Delivery instructions</SectionTitle>
@@ -162,26 +224,29 @@ function OfferDetail({ hasActive, onBack, onAccept }: { hasActive: boolean; onBa
   )
 }
 
-function ActiveAssignment({ stage, onAssignments, onScan, onDelivery, onWaiting }: {
-  stage: ActiveStage; onAssignments: () => void; onScan: () => void; onDelivery: () => void; onWaiting: () => void
+function ActiveAssignment({ orderId, at, stage, onAssignments, onScan, onDelivery, onWaiting }: {
+  orderId?: OrderId; at: Moment; stage: ActiveStage; onAssignments: () => void; onScan: () => void; onDelivery: () => void; onWaiting: () => void
 }) {
-  if (stage === 'none' || stage === 'verified') {
+  if (!orderId || stage === 'none' || stage === 'verified') {
     return <EmptyActive onAssignments={onAssignments} completed={stage === 'verified'} />
   }
   const status = stage === 'accepted' ? 'Go to Pickup' : stage === 'pickup-verified' ? 'Pickup Verified' : stage === 'waiting' ? 'Waiting for Recipient' : 'Delivering'
+  const order = ORDERS[orderId]
+  const seller = SELLERS[order.seller]
+  const packages = order.lines.reduce((sum, line) => sum + line.quantity, 0)
   return (
     <div className="p-4">
-      <div className="rounded-2xl bg-courier-muted p-4"><div className="text-xs font-semibold uppercase tracking-wider text-courier">One active delivery</div><div className="mt-1 font-display text-xl font-semibold">{status}</div><div className="mt-1 text-xs text-text-secondary">{DELIVERY.orderId} · {DELIVERY.id} · {DELIVERY.compensation}</div></div>
+      <div className="rounded-2xl bg-courier-muted p-4"><div className="text-xs font-semibold uppercase tracking-wider text-courier">One active delivery</div><div className="mt-1 font-display text-xl font-semibold">{status}</div><div className="mt-1 text-xs text-text-secondary">{orderId} · {compensationFor(orderId)}</div></div>
       <SectionTitle>{stage === 'accepted' ? 'Pickup instructions' : 'Delivery detail'}</SectionTitle>
       {stage === 'accepted' ? (
         <>
-          <InfoCard rows={[['Seller', DELIVERY.seller], ['Pickup area', DELIVERY.sellerZone], ['Package', '1 sealed item'], ['Pickup window', '10:00–11:00']]} />
+          <InfoCard rows={[['Seller', seller.name], ['Pickup area', `${seller.area}, ${MARKET.city}`], ['Package', `${packages} sealed item${packages === 1 ? '' : 's'}`]]} />
           <div className="mt-3 rounded-xl bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">Receive the package, then scan the Pickup QR displayed by the seller.</div>
           <Button onClick={onScan} style={{ width: '100%', marginTop: 16 }}>Scan Seller Pickup QR</Button>
         </>
       ) : (
         <>
-          <InfoCard rows={[['Seller Order', DELIVERY.orderId], ['Recipient', DELIVERY.buyer], ['Delivery area', DELIVERY.buyerZone], ['Handoff', 'Buyer or delegated recipient'], ['Package', DELIVERY.item], ['Paid total', DELIVERY.total]]} />
+          <InfoCard rows={[['Seller Order', orderId], ['Recipient', recipientOf(orderId, at).name], ['Delivery area', deliveryArea(orderId)], ['Handoff', 'Buyer or delegated recipient'], ['Package', orderItems(orderId)], ['Paid total', formatEtb(orderTotals(orderId).total)]]} />
           <div className="mt-3 rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary">Delivery progress uses checkpoints only. No continuous GPS or live route is shown.</div>
           <Button onClick={stage === 'waiting' ? onWaiting : onDelivery} style={{ width: '100%', marginTop: 16 }}>{stage === 'waiting' ? 'Return to Waiting Screen' : 'Open Delivery Detail'}</Button>
         </>
@@ -214,10 +279,11 @@ function PickupScanner({ onBack, onScan }: { onBack: () => void; onScan: () => v
   )
 }
 
-function PickupVerified({ onContinue }: { onContinue: () => void }) {
+function PickupVerified({ orderId, at, onContinue }: { orderId: OrderId; at: Moment; onContinue: () => void }) {
+  const verified = stateTime(orderId, 'Pickup Verified')
   return (
-    <StatusScreen title="Pickup Verified" description={`The Seller Pickup QR matched ${DELIVERY.orderId}. Package custody is now assigned to you.`}>
-      <div className="w-full rounded-xl bg-success-bg p-4 text-left"><InfoRow label="Seller" value={DELIVERY.seller} /><InfoRow label="Verified" value="Today · 10:14" /><InfoRow label="Package" value={DELIVERY.item} /></div>
+    <StatusScreen title="Pickup Verified" description={`The Seller Pickup QR matched ${orderId}. Package custody is now assigned to you.`}>
+      <div className="w-full rounded-xl bg-success-bg p-4 text-left"><InfoRow label="Seller" value={SELLERS[ORDERS[orderId].seller].name} /><InfoRow label="Verified" value={verified ? dayLabel(verified, at) : '—'} /><InfoRow label="Package" value={orderItems(orderId)} /></div>
       <Button size="lg" onClick={onContinue} style={{ width: '100%', marginTop: 24 }}>Continue to Pickup Checkpoint</Button>
     </StatusScreen>
   )
@@ -240,21 +306,24 @@ function CheckpointStatus({ type, state, setState, onContinue }: { type: 'Pickup
   )
 }
 
-function DeliveryDetail({ onBack, onComplete }: { onBack: () => void; onComplete: () => void }) {
+function DeliveryDetail({ orderId, at, pickupCheckpoint, onBack, onComplete }: { orderId: OrderId; at: Moment; pickupCheckpoint: CheckpointState; onBack: () => void; onComplete: () => void }) {
+  // The Order's states so far (rule 4.4) with DEMO_DATA's times; the checkpoint shows the pickup's location result.
+  const time = (state: 'Courier Assigned' | 'Pickup Verified') => { const t = stateTime(orderId, state); return t && formatClock(t) }
   const events: TimelineEvent[] = [
-    { id: 'accepted', label: 'Delivery Accepted', status: 'completed', timestamp: '09:42' },
-    { id: 'pickup', label: 'Pickup Verified', status: 'completed', timestamp: '10:14' },
-    { id: 'checkpoint', label: 'Pickup Checkpoint', status: 'completed', timestamp: '10:14', detail: 'Location recorded' },
-    { id: 'delivery', label: 'Delivery in Progress', status: 'active' },
-    { id: 'handoff', label: 'Recipient Handoff', status: 'pending' },
+    { id: 'accepted', label: 'Courier Assigned', status: 'completed', timestamp: time('Courier Assigned') },
+    { id: 'pickup', label: 'Pickup Verified', status: 'completed', timestamp: time('Pickup Verified') },
+    { id: 'checkpoint', label: 'Pickup Checkpoint', status: 'completed', timestamp: time('Pickup Verified'), detail: `Location ${pickupCheckpoint}` },
+    { id: 'delivery', label: 'Out for Delivery', status: 'active' },
+    { id: 'handoff', label: 'Delivery Handoff', status: 'pending' },
   ]
+  const recipient = recipientOf(orderId, at)
   return (
     <>
       <ScreenHeader title="Delivery Detail" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="rounded-2xl bg-courier-muted p-4"><div className="text-xs font-semibold uppercase tracking-wider text-courier">Active assignment</div><div className="mt-1 font-display text-xl font-semibold">{DELIVERY.id}</div><div className="mt-1 text-xs text-text-secondary">{DELIVERY.buyerZone} · {DELIVERY.compensation}</div></div>
+        <div className="rounded-2xl bg-courier-muted p-4"><div className="text-xs font-semibold uppercase tracking-wider text-courier">Active assignment</div><div className="mt-1 font-display text-xl font-semibold">{orderId}</div><div className="mt-1 text-xs text-text-secondary">{deliveryArea(orderId)} · {compensationFor(orderId)}</div></div>
         <SectionTitle>Recipient</SectionTitle>
-        <InfoCard rows={[['Seller Order', DELIVERY.orderId], ['Name', DELIVERY.buyer], ['Handoff', 'Buyer or delegated recipient'], ['Area', DELIVERY.buyerZone], ['Contact', '+251 91 ••• ••78']]} />
+        <InfoCard rows={[['Seller Order', orderId], ['Name', recipient.name], ['Handoff', 'Buyer or delegated recipient'], ['Area', deliveryArea(orderId)], ['Contact', recipient.phone]]} />
         <SectionTitle>Operational progress</SectionTitle>
         <OrderTimeline events={events} />
         <div className="mt-4 rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary">Use the recipient details and checkpoint statuses to complete this single delivery. No live map is provided.</div>
@@ -279,59 +348,45 @@ function DeliveryQr({ onBack, onDisplay }: { onBack: () => void; onDisplay: () =
   )
 }
 
-function WaitingForRecipient({ onBack, onVerified }: { onBack: () => void; onVerified: () => void }) {
+function WaitingForRecipient({ orderId, at, onBack, onVerified }: { orderId: OrderId; at: Moment; onBack: () => void; onVerified: () => void }) {
   return (
     <>
       <ScreenHeader title="Waiting for Recipient" onBack={onBack} />
       <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
         <span className="flex h-16 w-16 items-center justify-center rounded-full bg-courier-muted text-courier"><WaitingIcon /></span>
         <div className="mt-5 font-display text-2xl font-semibold">Waiting for recipient scan</div>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">Keep the Delivery QR visible. Maya or the delegated recipient scans it from their Adulis app.</p>
-        <div className="mt-5 w-full rounded-xl bg-surface-raised p-4 text-left"><InfoRow label="Seller Order" value={DELIVERY.orderId} /><InfoRow label="Delivery" value={DELIVERY.id} /><InfoRow label="Recipient" value={DELIVERY.buyer} /><InfoRow label="Status" value="Awaiting scan" /></div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">Keep the Delivery QR visible. {BUYERS[ORDERS[orderId].buyer].name.split(' ')[0]} or the delegated recipient scans it from their Adulis app.</p>
+        <div className="mt-5 w-full rounded-xl bg-surface-raised p-4 text-left"><InfoRow label="Seller Order" value={orderId} /><InfoRow label="Recipient" value={recipientOf(orderId, at).name} /><InfoRow label="Status" value="Awaiting scan" /></div>
       </div>
       <div className="p-4 pb-6"><Button onClick={onVerified} size="lg" style={{ width: '100%' }}>Simulate Recipient Scan</Button></div>
     </>
   )
 }
 
-function DeliveryVerified({ onContinue }: { onContinue: () => void }) {
+function DeliveryVerified({ orderId, at, onContinue }: { orderId: OrderId; at: Moment; onContinue: () => void }) {
+  // The verified final scan completes the Order: DEMO_DATA's Completed time.
+  const verified = stateTime(orderId, 'Completed')
   return (
     <StatusScreen title="Delivery Verified" description="The recipient scanned your Delivery QR. Final handoff is successful.">
-      <div className="w-full rounded-xl bg-success-bg p-4 text-left"><InfoRow label="Seller Order" value={DELIVERY.orderId} /><InfoRow label="Recipient" value={DELIVERY.buyer} /><InfoRow label="Verified" value="Today · 11:06" /><InfoRow label="Compensation" value={DELIVERY.compensation} /></div>
+      <div className="w-full rounded-xl bg-success-bg p-4 text-left"><InfoRow label="Seller Order" value={orderId} /><InfoRow label="Recipient" value={recipientOf(orderId, at).name} /><InfoRow label="Verified" value={verified ? dayLabel(verified, at) : '—'} /><InfoRow label="Compensation" value={compensationFor(orderId)} /></div>
       <Button size="lg" onClick={onContinue} style={{ width: '100%', marginTop: 24 }}>Continue to Delivery Checkpoint</Button>
     </StatusScreen>
   )
 }
 
-function SellerInvitation({ onBack }: { onBack: () => void }) {
-  const [accepted, setAccepted] = useState(false)
-  return (
-    <>
-      <ScreenHeader title="Seller Pool Invitation" onBack={onBack} />
-      <div className="flex-1 overflow-y-auto p-5">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-muted font-display text-xl font-bold text-brand-dark">BL</div>
-        <div className="mt-4 font-display text-2xl font-semibold">Buna Lane invited you</div>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">Join Buna Lane’s approved Seller Courier Pool to receive delivery offers when you are available.</p>
-        <SectionTitle>Relationship details</SectionTitle>
-        <InfoCard rows={[['Seller', 'Buna Lane'], ['Typical area', 'Bole · Kazanchis'], ['Package type', 'Coffee and small goods'], ['Typical compensation', 'ETB 110–160'], ['Relationship', 'Invitation pending']]} />
-        <div className="mt-4 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Joining a pool does not guarantee work. Each delivery is a separate fixed offer that you may accept or decline.</div>
-        {accepted && <div className="mt-4 rounded-xl bg-success-bg p-3 text-sm font-semibold text-success">Invitation accepted · Relationship approved</div>}
-      </div>
-      <div className="border-t border-border p-4 pb-6"><Button size="lg" disabled={accepted} onClick={() => setAccepted(true)} style={{ width: '100%' }}>{accepted ? 'Added to Seller Pool' : 'Accept Invitation'}</Button></div>
-    </>
-  )
-}
-
-function CourierOpportunity({ onBack }: { onBack: () => void }) {
-  const [applied, setApplied] = useState(false)
+function CourierOpportunity({ sellerId, courierId, at, onBack }: { sellerId: SellerId; courierId: CourierId; at: Moment; onBack: () => void }) {
+  // The Courier's application to this Seller's pool; DEMO_DATA records only the Seller's area for it.
+  const relationship = COURIER_RELATIONSHIPS.find(r => r.seller === sellerId && r.courier === courierId)
+  const [applied, setApplied] = useState(!!relationship && relationshipStatusAt(relationship, at) === 'Application pending')
+  const seller = SELLERS[sellerId].name
   return (
     <>
       <ScreenHeader title="Courier Opportunity" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="font-display text-2xl font-semibold">Deliver for Nura Glow</div>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">Apply to join Nura Glow’s approved courier pool for small beauty and personal-care deliveries.</p>
+        <div className="font-display text-2xl font-semibold">Deliver for {seller}</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">Apply to join {seller}’s approved courier pool.</p>
         <SectionTitle>Opportunity</SectionTitle>
-        <InfoCard rows={[['Seller area', 'Sar Bet'], ['Common delivery areas', 'Old Airport · Mexico'], ['Package size', 'Small'], ['Typical completed work', '2–4 deliveries weekly'], ['Typical compensation', 'ETB 120–170 per offer']]} />
+        <InfoCard rows={[['Seller area', SELLERS[sellerId].area]]} />
         <div className="mt-4 rounded-xl bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">Compensation is shown as a fixed amount on every delivery offer before acceptance.</div>
         {applied && <div className="mt-4 rounded-xl bg-success-bg p-3 text-sm font-semibold text-success">Application sent · Seller review pending</div>}
       </div>
@@ -340,15 +395,21 @@ function CourierOpportunity({ onBack }: { onBack: () => void }) {
   )
 }
 
-function SellerRelationships({ onBack }: { onBack: () => void }) {
+/** The Courier's approved Seller relationships at the story moment. */
+function approvedRelationships(courierId: CourierId, at: Moment) {
+  return COURIER_RELATIONSHIPS.filter(r => r.courier === courierId && relationshipStatusAt(r, at) === 'Approved')
+}
+
+function SellerRelationships({ courierId, at, onBack }: { courierId: CourierId; at: Moment; onBack: () => void }) {
   return (
     <>
       <ScreenHeader title="Seller Relationships" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
         <p className="text-sm text-text-secondary">You can belong to multiple approved Seller Courier Pools.</p>
-        <Relationship seller="Addis Atelier" initials="AA" since="Approved · 8 months" work="126 completed deliveries" />
-        <Relationship seller="Lalibela Craft" initials="LC" since="Approved · 3 months" work="34 completed deliveries" />
-        <Relationship seller="Buna Lane" initials="BL" since="Approved today" work="No completed work yet" />
+        {approvedRelationships(courierId, at).map(r => {
+          const completed = completedForSellerAt(courierId, r.seller, at)
+          return <Relationship key={r.seller} seller={SELLERS[r.seller].name} initials={initials(SELLERS[r.seller].name)} since={`Approved · ${formatDate(typeof r.approved === 'string' ? r.approved : r.approved.at)}`} work={completed ? `${completed} completed ${completed === 1 ? 'delivery' : 'deliveries'}` : 'No completed work yet'} />
+        })}
       </div>
     </>
   )
@@ -358,14 +419,14 @@ function Relationship({ seller, initials, since, work }: { seller: string; initi
   return <div className="mt-4 flex items-center gap-3 rounded-xl border border-border p-4"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-muted text-xs font-bold text-brand-dark">{initials}</span><span><span className="block text-sm font-semibold">{seller}</span><span className="text-xs text-success">{since}</span><span className="mt-1 block text-xs text-text-muted">{work}</span></span></div>
 }
 
-function HistoryTab() {
+function HistoryTab({ courierId, at }: { courierId: CourierId; at: Moment }) {
+  // Total completed deliveries across Sellers (rule 7.2) and DEMO_DATA's recorded deliveries, most recent first.
+  // DEMO_DATA defines no verified-handoff rate, so none is shown.
   return (
     <div className="p-4">
-      <div className="grid grid-cols-2 gap-3"><Metric label="Completed" value="218" /><Metric label="Verified handoff" value="99%" /></div>
+      <div className="grid grid-cols-2 gap-3"><Metric label="Completed" value={String(totalCompletedAt(courierId, at))} /></div>
       <SectionTitle>Recent deliveries</SectionTitle>
-      <HistoryRow id="DLV-24083" seller="Addis Atelier" date="Today · 08:52" amount="ETB 160" />
-      <HistoryRow id="DLV-24079" seller="Lalibela Craft" date="Yesterday" amount="ETB 145" />
-      <HistoryRow id="DLV-24072" seller="Addis Atelier" date="12 Sep" amount="ETB 180" />
+      {courierHistoryAt(courierId, at).map(id => <HistoryRow key={id} id={id} seller={SELLERS[ORDERS[id].seller].name} date={dayLabel(stateTime(id, 'Completed')!, at)} amount={compensationFor(id)} />)}
       <p className="mt-5 text-xs leading-relaxed text-text-muted">History shows completed work and the compensation attached to each delivery.</p>
     </div>
   )
@@ -375,20 +436,23 @@ function HistoryRow({ id, seller, date, amount }: { id: string; seller: string; 
   return <div className="flex items-center justify-between border-b border-border py-4"><span><span className="block text-sm font-semibold">{seller}</span><span className="text-xs text-text-muted">{id} · {date}</span></span><span className="text-sm font-bold text-courier">{amount}</span></div>
 }
 
-function AccountTab({ availability, onAvailability, onRelationships, onInvitation, onOpportunity }: {
-  availability: Availability; onAvailability: (value: Availability) => void; onRelationships: () => void; onInvitation: () => void; onOpportunity: () => void
+function AccountTab({ courierId, at, availability, onAvailability, onRelationships, opportunity, onOpportunity }: {
+  courierId: CourierId; at: Moment; availability: Availability; onAvailability: (value: Availability) => void; onRelationships: () => void; opportunity?: SellerId; onOpportunity: (seller: SellerId) => void
 }) {
+  // DEMO_DATA records no Courier account status, verified-handoff rate or Seller invitations, so none is shown.
+  const courier = COURIERS[courierId]
+  const completed = totalCompletedAt(courierId, at)
+  const pools = approvedRelationships(courierId, at).length
   return (
     <div className="p-4">
-      <div className="flex items-center gap-3"><span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-courier-muted font-display text-xl font-bold text-courier">DK</span><span><span className="block font-display text-xl font-semibold">Daniel K.</span><span className="text-xs text-text-muted">Courier profile · Addis Ababa</span><span className="mt-1 block text-xs font-semibold text-success">Approved</span></span></div>
+      <div className="flex items-center gap-3"><span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-courier-muted font-display text-xl font-bold text-courier">{initials(courier.name)}</span><span><span className="block font-display text-xl font-semibold">{courier.name}</span><span className="text-xs text-text-muted">Courier profile · {MARKET.city}</span></span></div>
       <SectionTitle>Availability</SectionTitle>
       <div className="grid grid-cols-3 gap-2">{(['available', 'busy', 'unavailable'] as Availability[]).map(value => <button key={value} onClick={() => onAvailability(value)} className={`rounded-xl border px-2 py-3 text-xs font-semibold ${availability === value ? 'border-courier bg-courier-muted text-courier' : 'border-border text-text-muted'}`}>{availabilityLabel(value)}</button>)}</div>
       <SectionTitle>Profile</SectionTitle>
-      <InfoCard rows={[['Completed work', '218 deliveries'], ['Verified handoff', '99%'], ['Primary area', 'Central Addis Ababa'], ['Vehicle', 'Motorcycle']]} />
+      <InfoCard rows={[['Completed work', `${completed} ${completed === 1 ? 'delivery' : 'deliveries'}`], ['Primary area', courier.usualAreas.join(' · ')], ['Vehicle', courier.vehicle]]} />
       <SectionTitle>Seller network</SectionTitle>
-      <MenuButton label="Approved Seller Relationships" detail="3 approved pools" onClick={onRelationships} />
-      <MenuButton label="Seller Invitations" detail="1 pending invitation" onClick={onInvitation} />
-      <MenuButton label="Opportunities" detail="Apply to approved Seller Pools" onClick={onOpportunity} />
+      <MenuButton label="Approved Seller Relationships" detail={`${pools} approved pool${pools === 1 ? '' : 's'}`} onClick={onRelationships} />
+      {opportunity && <MenuButton label="Opportunities" detail="Apply to approved Seller Pools" onClick={() => onOpportunity(opportunity)} />}
     </div>
   )
 }

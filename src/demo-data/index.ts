@@ -1,0 +1,25 @@
+// The prototype's only source of demo facts (WO-001; docs/DEMO_DATA.md is the authority). Surfaces import from here.
+//   records/   canonical business entities, exactly as DEMO_DATA defines them
+//   derived.ts values computed from the records at a point on the story timeline
+//   scenario/  prototype orchestration: guided-flow steps and surface defaults (not business data)
+export * from './types.ts'
+export * from './time.ts'
+export * from './money.ts'
+export * from './display.ts'
+export * from './records/market.ts'
+export * from './records/sellers.ts'
+export * from './records/products.ts'
+export * from './records/posts.ts'
+export * from './records/buyers.ts'
+export * from './records/couriers.ts'
+export * from './records/orders.ts'
+export * from './records/reviews.ts'
+export * from './records/claims.ts'
+export * from './records/conversations.ts'
+export * from './records/operations.ts'
+export * from './records/notifications.ts'
+export * from './records/insights.ts'
+export * from './records/channels.ts'
+export * from './derived.ts'
+export * from './scenario/flows.ts'
+export * from './scenario/defaults.ts'

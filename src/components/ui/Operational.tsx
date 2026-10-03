@@ -255,7 +255,8 @@ export function AuditEntry({ entry }: { entry: AuditEntryData }) {
 /* ── Work Queue Row ── */
 export interface WorkQueueItem {
   id: string
-  priority: 'urgent' | 'high' | 'normal' | 'low'
+  /** Absent when the case has no priority; shown as '—'. */
+  priority?: 'urgent' | 'high' | 'normal' | 'low'
   queue: string
   caseRef: string
   subject: string
@@ -275,7 +276,7 @@ const PRIORITY_STYLES = {
 export function WorkQueueRow({ item, onClaim, onOpen }: {
   item: WorkQueueItem; onClaim?: (id: string) => void; onOpen?: (id: string) => void
 }) {
-  const ps = PRIORITY_STYLES[item.priority]
+  const ps = PRIORITY_STYLES[item.priority ?? 'low']
   return (
     <div style={{
       display: 'grid',
@@ -291,7 +292,7 @@ export function WorkQueueRow({ item, onClaim, onOpen }: {
       {/* Priority */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: ps.dot, flexShrink: 0 }}/>
-        <span style={{ fontSize: 11, fontWeight: 600, color: ps.color, fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>{item.priority}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: ps.color, fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>{item.priority ?? '—'}</span>
       </div>
       {/* Queue */}
       <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>{item.queue}</div>

@@ -1,5 +1,7 @@
 import { Fragment, useId, useState, FormEvent } from 'react'
 import { AdulisLogo } from '../App'
+import { useStory } from '../StoryClock'
+import { PRODUCTS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS, formatClockShort, formatEtb, forYouAt, initials, sellerProductsAt, trustAt, trustLabel } from '../demo-data'
 
 /* ─── Page routing ─── */
 type PageKey =
@@ -194,6 +196,7 @@ function WebFooter({ navigate }: { navigate: (p: PageKey) => void }) {
 /* ─── Mobile phone-frame wrapper ─── */
 function MobileFrame({ page, navigate }: { page: PageKey; navigate: (p: PageKey) => void }) {
   const [mobileMenu, setMobileMenu] = useState(false)
+  const { moment } = useStory()
 
   return (
     <div className="website-phone-stage flex justify-center items-start py-8" style={{ background: 'var(--color-background)', flex: 1 }}>
@@ -207,7 +210,7 @@ function MobileFrame({ page, navigate }: { page: PageKey; navigate: (p: PageKey)
       >
         {/* status bar */}
         <div className="flex items-center justify-between px-6 flex-shrink-0" style={{ height: 44 }}>
-          <span className="text-xs font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)' }}>9:41</span>
+          <span className="text-xs font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)' }}>{formatClockShort(moment.at)}</span>
         </div>
 
         {/* mobile header */}
@@ -509,20 +512,21 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
   )
 }
 
-/* ── Illustrations ── */
+/* ── Illustrations — canonical demo records (src/demo-data) with neutral placeholders in place of pictures ── */
 function ProductPostCard() {
+  const { moment } = useStory()
+  const product = PRODUCTS[SURFACE_DEFAULTS.product]
   return (
     <div style={{ width: 180, background: 'var(--color-surface)', borderRadius: 20, boxShadow: 'var(--shadow-lg)', border: '1px solid var(--color-border)', overflow: 'hidden', flexShrink: 0 }}>
       <div style={{ height: 200, background: 'linear-gradient(135deg, #F0DDD1 0%, #D97B45 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <span style={{ fontSize: 36 }}>👗</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'rgba(255,255,255,0.8)', letterSpacing: '0.1em' }}>PRODUCT POST</span>
       </div>
       <div style={{ padding: 14 }}>
-        <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>Habesha Kemis</p>
-        <p style={{ fontSize: 11, color: 'var(--color-brand)', fontFamily: 'var(--font-mono)', margin: '0 0 8px' }}>ETB 2,800</p>
+        <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>{product.name}</p>
+        <p style={{ fontSize: 11, color: 'var(--color-brand)', fontFamily: 'var(--font-mono)', margin: '0 0 8px' }}>{formatEtb(product.price)}</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
-          <span style={{ fontSize: 9, background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>In Stock</span>
-          <span style={{ fontSize: 9, background: 'var(--color-brand-muted)', color: 'var(--color-brand)', padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>Established</span>
+          <span style={{ fontSize: 9, background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>{product.availability}</span>
+          <span style={{ fontSize: 9, background: 'var(--color-brand-muted)', color: 'var(--color-brand)', padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>{trustLabel(trustAt(product.seller, moment))}</span>
         </div>
         <div style={{ height: 28, background: 'var(--color-brand)', borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <span style={{ fontSize: 11, color: '#fff', fontWeight: 600 }}>Add to Cart</span>
@@ -533,10 +537,11 @@ function ProductPostCard() {
 }
 
 function ShoppablePostCard() {
+  const post = SHOPPABLE_POSTS[SURFACE_DEFAULTS.post]
+  const tagged = PRODUCTS[post.tags[0]]
   return (
     <div style={{ width: 180, background: 'var(--color-surface)', borderRadius: 20, boxShadow: 'var(--shadow-lg)', border: '1px solid var(--color-border)', overflow: 'hidden', flexShrink: 0, marginTop: 32 }}>
       <div style={{ height: 200, background: 'linear-gradient(135deg, #C2622D 0%, #943F1A 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, position: 'relative' }}>
-        <span style={{ fontSize: 36 }}>🛋️</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'rgba(255,255,255,0.8)', letterSpacing: '0.1em' }}>SHOPPABLE POST</span>
         {/* hotspot dot */}
         <div style={{ position: 'absolute', top: 70, right: 40, width: 20, height: 20, background: 'rgba(255,255,255,0.95)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
@@ -544,12 +549,12 @@ function ShoppablePostCard() {
         </div>
       </div>
       <div style={{ padding: 14 }}>
-        <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 8px' }}>Addis Atelier · Living room styling</p>
+        <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 8px' }}>{SELLERS[post.seller].name} · {post.title}</p>
         <div style={{ background: 'var(--color-surface-raised)', borderRadius: 10, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 28, height: 28, background: 'var(--color-brand-muted)', borderRadius: 6 }} />
           <div>
-            <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>Woven Cushion Set</p>
-            <p style={{ fontSize: 10, color: 'var(--color-brand)', fontFamily: 'var(--font-mono)', margin: 0 }}>ETB 980</p>
+            <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{tagged.name}</p>
+            <p style={{ fontSize: 10, color: 'var(--color-brand)', fontFamily: 'var(--font-mono)', margin: 0 }}>{formatEtb(tagged.price)}</p>
           </div>
         </div>
       </div>
@@ -558,17 +563,18 @@ function ShoppablePostCard() {
 }
 
 function FeedIllustration() {
-  const posts = [
-    { bg: '#F0DDD1', label: 'New arrivals · Spring 2026', seller: 'Addis Atelier', tags: 3 },
-    { bg: '#D5E8D8', label: 'Home collection update', seller: 'Buna Market', tags: 1 },
-  ]
+  // The first two posts of For You at the story moment.
+  const { moment } = useStory()
+  const backgrounds = ['#F0DDD1', '#D5E8D8']
+  const posts = forYouAt(moment).slice(0, 2).map((id, i) => {
+    const post = SHOPPABLE_POSTS[id]
+    return { bg: backgrounds[i], label: post.title, seller: SELLERS[post.seller].name, tags: post.tags.length }
+  })
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
       {posts.map((p, i) => (
         <div key={i} style={{ width: 280, background: 'var(--color-surface)', borderRadius: 20, border: '1px solid var(--color-border)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-          <div style={{ height: 180, background: p.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: 48 }}>{i === 0 ? '👗' : '☕'}</span>
-          </div>
+          <div style={{ height: 180, background: p.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }} />
           <div style={{ padding: '12px 14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <div style={{ width: 22, height: 22, background: 'var(--color-brand-muted)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'var(--color-brand)' }}>
@@ -578,7 +584,7 @@ function FeedIllustration() {
             </div>
             <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '0 0 10px' }}>{p.label}</p>
             <div style={{ height: 28, background: 'var(--color-brand)', borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, color: '#fff', fontWeight: 600 }}>{p.tags} tagged products</span>
+              <span style={{ fontSize: 11, color: '#fff', fontWeight: 600 }}>{p.tags} tagged product{p.tags === 1 ? '' : 's'}</span>
             </div>
           </div>
         </div>
@@ -588,26 +594,26 @@ function FeedIllustration() {
 }
 
 function StorefrontIllustration() {
+  // A Storefront header and its first four Products at the story moment.
+  const { moment } = useStory()
+  const seller = SELLERS[SURFACE_DEFAULTS.seller]
+  const backgrounds = ['#F0DDD1', '#E8D5C8', '#D8C9BE', '#EDE5DE']
+  const products = sellerProductsAt(SURFACE_DEFAULTS.seller, moment).slice(0, 4).map((id, i) => ({ label: PRODUCTS[id].name, price: formatEtb(PRODUCTS[id].price), bg: backgrounds[i] }))
   return (
     <div style={{ width: 300, background: 'var(--color-surface)', borderRadius: 20, border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-md)', overflow: 'hidden' }}>
       {/* header */}
       <div style={{ background: 'var(--color-brand-muted)', padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 44, height: 44, background: 'var(--color-brand)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#fff' }}>AA</div>
+          <div style={{ width: 44, height: 44, background: 'var(--color-brand)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#fff' }}>{initials(seller.name)}</div>
           <div>
-            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>Addis Atelier</p>
-            <span style={{ fontSize: 10, background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>✓ Established</span>
+            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{seller.name}</p>
+            <span style={{ fontSize: 10, background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>✓ {trustLabel(trustAt(SURFACE_DEFAULTS.seller, moment))}</span>
           </div>
         </div>
       </div>
       {/* products */}
       <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {[
-          { label: 'Habesha Kemis', price: 'ETB 2,800', bg: '#F0DDD1' },
-          { label: 'Tibeb Scarf', price: 'ETB 650', bg: '#E8D5C8' },
-          { label: 'Cotton Dress', price: 'ETB 1,900', bg: '#D8C9BE' },
-          { label: 'Netela Wrap', price: 'ETB 480', bg: '#EDE5DE' },
-        ].map(p => (
+        {products.map(p => (
           <div key={p.label} style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--color-border)' }}>
             <div style={{ height: 70, background: p.bg }} />
             <div style={{ padding: '8px 8px 6px' }}>
@@ -1438,7 +1444,7 @@ function LegalPage({ title }: { title: string }) {
         Legal
       </span>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 8px', lineHeight: 1.2 }}>{title}</h1>
-      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '0 0 40px', fontFamily: 'var(--font-mono)' }}>Last updated: September 2026 · Version 1.0 (draft)</p>
+      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '0 0 40px', fontFamily: 'var(--font-mono)' }}>Prototype draft — not final legal text</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
         {items.map(s => (
           <div key={s.heading} style={{ paddingBottom: 32, borderBottom: '1px solid var(--color-border)' }}>
@@ -1746,7 +1752,7 @@ function MobileWaitlist() {
   return (
     <div style={{ padding: '32px 20px' }}>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 8px' }}>Join the Seller Waitlist</h1>
-      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: '0 0 24px', lineHeight: 1.65 }}>We review every application. Full application at adulis.com on desktop.</p>
+      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: '0 0 24px', lineHeight: 1.65 }}>We review every application. Full application on desktop.</p>
       <form onSubmit={e => { e.preventDefault(); setSubmitted(true) }} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Field label="Your Name" value={name} onChange={setName} required />
         <Field label="Email" value={email} onChange={setEmail} required type="email" />

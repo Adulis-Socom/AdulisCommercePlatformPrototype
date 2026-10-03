@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../components/ui/Button'
-import { StatusBadge, TrustBadge, AvailabilityBadge } from '../components/ui/Badge'
+import { StatusBadge, TrustBadge, AvailabilityBadge, type TrustLevel } from '../components/ui/Badge'
 import {
   TextInput, PhoneInput, SearchInput, Textarea,
   Select, QuantityInput, PriceInput, OTPInput,
@@ -10,6 +10,8 @@ import {
   ProductCard, ShoppablePostCard, SellerCard, OrderCard,
   CourierCard, ReviewCard, TrustCard, ClaimCard,
   NotificationCard, StarRating, Price,
+  type ProductCardData, type ShoppablePostCardData, type SellerCardData, type OrderCardData, type CourierCardData,
+  type ReviewCardData, type ClaimCardData, type NotificationData,
 } from '../components/ui/Card'
 import {
   MobileBottomNav, Tabs, StorefrontTabs, Breadcrumbs,
@@ -27,7 +29,59 @@ import {
 import {
   DataTable, MetricCard, OrderTimeline, AuditEntry,
   WorkQueueRow, ApprovalBlock, EvidenceBlock,
+  type AuditEntryData, type TimelineEvent, type WorkQueueItem,
 } from '../components/ui/Operational'
+import {
+  AUDIT_LOG, BUYERS, CLAIMS, CLAIM_IDS, CONVERSATIONS, COURIERS, DECISIONS, DEFAULT_SNAPSHOT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET,
+  MODERATION_CASES, OPERATORS, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, SELLERS, SHOPPABLE_POSTS, SUPPORT_CASES, SURFACE_DEFAULTS,
+  TRUST_APPEALS, VERIFICATION_CASES,
+  buyerVisibleSellers, claimStateAt, claimSubmitted, courierCardAt, formatAge, formatClock, formatClock12, formatDate, formatDayMonth,
+  formatEtb, happenedBefore, isForYouEligibleAt, isPubliclyEligibleAt, notificationTime, notificationsAt, ordersAt, orderStateAt,
+  orderTotals, paidAt, productQualityAt, restrictionAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt,
+  sellerServiceAt, shortName, stateTime, trustAt,
+  type ClaimId, type ClaimState, type Moment, type NotificationRecord, type OrderId, type OrderState, type ProductId, type ReviewId,
+  type SellerId, type ShoppablePostId, type Timestamp,
+} from '../demo-data'
+
+/* ─── Canonical samples ───
+   The showcase illustrates its components with DEMO_DATA records read from the canonical module (WO-001): the surface
+   defaults and the records related to them, as they are at the 10:25 snapshot. A component state that no record has at
+   10:25 (a restricted post, a pending Founder decision) shows the canonical record that reaches it, at its documented
+   time. Toasts, banners and handoff results report canonical events. */
+const AT = DEFAULT_SNAPSHOT
+const SELLER = SURFACE_DEFAULTS.seller
+const ORDER = SURFACE_DEFAULTS.order
+const COURIER = COURIERS[SURFACE_DEFAULTS.courier].name
+/** The default Seller's card for the default Courier: completed for this Seller and the current terms. */
+const COURIER_CARD = courierCardAt(SELLER, SURFACE_DEFAULTS.courier, AT)
+/** The default Buyer's Orders, and the ones she pays for on the story day. */
+const BUYER_ORDERS = ordersAt({ buyer: SURFACE_DEFAULTS.buyer }, AT)
+const TODAYS_ORDERS = BUYER_ORDERS.filter(id => paidAt(id).slice(0, 10) === AT.at.slice(0, 10))
+/** The default Shoppable Post's tagged Products, and the default Seller's low-stock Product. */
+const POST_PRODUCTS = SHOPPABLE_POSTS[SURFACE_DEFAULTS.post].tags
+const LOW_STOCK = sellerProductsAt(SELLER, AT).find(id => PRODUCTS[id].availability === 'Low Stock')!
+const CLAIM_DEADLINE = CLAIMS[SURFACE_DEFAULTS.claim].responseDeadline!
+const DELIVERED = stateTime(ORDER, 'Completed')!
+
+const keysOf = <T extends string>(record: Readonly<Record<T, unknown>>) => Object.keys(record) as T[]
+
+const CLAIM_BADGE: Record<ClaimState, string> = { 'Open': 'open', 'Under Review': 'under-review', 'Resolved': 'resolved' }
+
+/** The existing badge variant for an Order state, labelled with the state's own name. */
+function stateBadge(state: OrderState): { status: string; customLabel?: string } {
+  const variant: Partial<Record<OrderState, string>> = { 'Paid': 'paid', 'Preparing': 'preparing', 'Courier Assigned': 'assigned', 'Pickup Verified': 'pickup-verified', 'Completed': 'completed' }
+  if (variant[state]) return { status: variant[state]! }
+  return { status: state.startsWith('Ready') ? 'ready' : 'in-delivery', customLabel: state }
+}
+
+/** The Trust badge variant for the Seller's Trust level. */
+function trustBadge(seller: SellerId): TrustLevel {
+  return trustAt(seller, AT)!.toLowerCase() as TrustLevel
+}
+
+function itemCount(order: OrderId) {
+  return ORDERS[order].lines.reduce((sum, line) => sum + line.quantity, 0)
+}
 
 /* ═══════════════════════════════════════════════
    02 — COMPONENT SYSTEM SHOWCASE
@@ -195,7 +249,7 @@ function ButtonShowcase() {
         </Row>
         <Label>Checkout</Label>
         <Row>
-          <Button variant="primary" size="lg">Pay ETB 2,642.25</Button>
+          <Button variant="primary" size="lg">Pay {formatEtb(orderTotals(ORDER).total)}</Button>
           <Button variant="tertiary">Back</Button>
         </Row>
         <Label>Order actions</Label>
@@ -231,18 +285,18 @@ function InputShowcase() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         <ShowSection title="Text Input">
-          <TextInput label="Business name" placeholder="e.g. Addis Atelier" />
+          <TextInput label="Business name" placeholder={`e.g. ${SELLERS[SELLER].name}`} />
           <div style={{ marginTop: 16 }}>
-            <TextInput label="Filled" value="Addis Atelier" onChange={() => {}} />
+            <TextInput label="Filled" value={SELLERS[SELLER].name} onChange={() => {}} />
           </div>
           <div style={{ marginTop: 16 }}>
             <TextInput label="With error" value="bad" error="Business name must be at least 3 characters" />
           </div>
           <div style={{ marginTop: 16 }}>
-            <TextInput label="Disabled" value="Addis Atelier" state="disabled" />
+            <TextInput label="Disabled" value={SELLERS[SELLER].name} state="disabled" />
           </div>
           <div style={{ marginTop: 16 }}>
-            <TextInput label="Read-only" value="ADU-24091" state="readonly" />
+            <TextInput label="Read-only" value={ORDER} state="readonly" />
           </div>
         </ShowSection>
 
@@ -376,13 +430,13 @@ function BadgeShowcase() {
 
       <ShowSection title="In context — Order row">
         <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden' }}>
-          {['paid','preparing','pickup-verified','in-delivery','completed','cancelled'].map((status, i) => (
-            <div key={status} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: i < 5 ? '1px solid var(--color-border)' : 'none' }}>
+          {BUYER_ORDERS.map((id, i) => (
+            <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: i < BUYER_ORDERS.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
               <div>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>ADU-2409{i + 1}</span>
-                <span style={{ fontSize: 12, color: 'var(--color-text-muted)', marginLeft: 10 }}>Maya Tesfaye · 2 items</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{id}</span>
+                <span style={{ fontSize: 12, color: 'var(--color-text-muted)', marginLeft: 10 }}>{BUYERS[ORDERS[id].buyer].name} · {itemCount(id)} item{itemCount(id) === 1 ? '' : 's'}</span>
               </div>
-              <StatusBadge status={status} size="md" showDot />
+              <StatusBadge {...stateBadge(orderStateAt(id, AT)!)} size="md" showDot />
             </div>
           ))}
         </div>
@@ -398,45 +452,91 @@ function BadgeShowcase() {
 function CardShowcase() {
   const [selectedCourier, setSelectedCourier] = useState<string | null>(null)
 
-  const product = {
-    id: '1', name: 'Linen Overshirt', price: 2450, imageColor: '#D4C5B0',
-    seller: 'Addis Atelier', sellerTrust: 'established' as const,
-    available: true, rating: 4, reviewCount: 23,
+  const productCard = (id: ProductId, imageColor: string): ProductCardData => {
+    const product = PRODUCTS[id], quality = productQualityAt(id, AT)
+    return {
+      id, name: product.name, price: product.price / 100, imageColor,
+      seller: SELLERS[product.seller].name, sellerTrust: trustBadge(product.seller),
+      available: product.availability !== 'Out of Stock', lowStock: product.availability === 'Low Stock',
+      rating: quality?.average, reviewCount: quality?.ratings,
+    }
+  }
+  const [lead, second, third] = POST_PRODUCTS
+
+  // The default post; the default Seller's post without a tagged Product (not For You eligible); and the reported post,
+  // just after its restriction.
+  const postCard = (id: ShoppablePostId, imageColor: string, at: Moment = AT): ShoppablePostCardData => {
+    const post = SHOPPABLE_POSTS[id]
+    return {
+      id, caption: post.caption, imageColor, seller: SELLERS[post.seller].name, taggedProductCount: post.tags.length,
+      status: restrictionAt(id, at) ? 'restricted' : isForYouEligibleAt(id, at) ? 'published' : 'fyp-ineligible',
+    }
+  }
+  const untaggedPost = sellerPostsAt(SELLER, AT).find(id => SHOPPABLE_POSTS[id].tags.length === 0)!
+  const restriction = Object.values(MODERATION_CASES).find(m => m.action.kind === 'Restrict')!
+
+  const sellerCard = (id: SellerId, imageColor: string): SellerCardData => {
+    const seller = SELLERS[id]
+    return {
+      id, name: seller.name, category: seller.category, trust: trustBadge(id), location: MARKET.city, imageColor,
+      productCount: sellerProductsAt(id, AT).length, rating: sellerServiceAt(id, AT)?.average, bio: seller.bio,
+    }
+  }
+  const sellerColors = ['#C2622D', '#E8A090', '#6090C0']
+
+  const orderCard = (id: OrderId): OrderCardData => ({
+    ref: id, status: stateBadge(orderStateAt(id, AT)!).status, sellerName: SELLERS[ORDERS[id].seller].name,
+    itemCount: itemCount(id), total: orderTotals(id).total / 100, fulfilment: ORDERS[id].fulfilment,
+    timestamp: `Today ${formatClock12(paidAt(id))}`,
+  })
+
+  const courier: CourierCardData = {
+    name: COURIER_CARD.name, status: COURIER_CARD.availability.toLowerCase() as CourierCardData['status'],
+    deliveries: COURIER_CARD.completedForSeller,
+    compensation: COURIER_CARD.compensation === undefined ? undefined : COURIER_CARD.compensation / 100,
   }
 
-  const post = {
-    id: '1', caption: 'Autumn Layers — a curated look built around this season\'s essential linen pieces.', imageColor: '#C8B89A',
-    seller: 'Addis Atelier', taggedProductCount: 3, status: 'published' as const,
+  // Every review belongs to a completed Seller Order (rule 11.1).
+  const reviewCard = (id: ReviewId): ReviewCardData => {
+    const review = REVIEWS[id], [quality] = review.productQuality, written = review.written
+    return {
+      reviewer: shortName(BUYERS[ORDERS[review.order].buyer].name), sellerServiceRating: review.sellerService,
+      productQualityRating: quality.rating, text: review.text, productName: PRODUCTS[quality.product].name,
+      date: formatDate(typeof written === 'string' ? written : written.at), verified: true,
+    }
   }
 
-  const postNoProducts = {
-    id: '2', caption: 'Behind the scenes at our new collection shoot. More soon.', imageColor: '#B8A898',
-    seller: 'Addis Atelier', taggedProductCount: 0, status: 'fyp-ineligible' as const,
+  const claims = CLAIM_IDS.filter(id => claimStateAt(id, AT) !== null).sort((a, b) => claimSubmitted(b).localeCompare(claimSubmitted(a)))
+  const claimCard = (id: ClaimId): ClaimCardData => {
+    const claim = CLAIMS[id], order = ORDERS[claim.order]
+    return {
+      id, orderRef: claim.order, issue: claim.issue, status: CLAIM_BADGE[claimStateAt(id, AT)!],
+      sellerName: SELLERS[order.seller].name, buyerName: BUYERS[order.buyer].name, date: formatDate(claimSubmitted(id)),
+    }
   }
+  const unresolved = claims.filter(id => ORDERS[CLAIMS[id].order].seller === SELLER && claimStateAt(id, AT) !== 'Resolved').length
+  const newSeller = buyerVisibleSellers().find(id => trustAt(id, AT) === 'NEW')!
+  const completedOrders = sellerCompletedOrdersAt(SELLER, AT)
 
-  const seller = {
-    id: '1', name: 'Addis Atelier', category: 'Fashion', trust: 'established' as const,
-    location: 'Addis Ababa', imageColor: '#C2622D', productCount: 12, rating: 4,
-    bio: 'Contemporary Ethiopian fashion. Clean lines, natural fibres.',
+  // The default Seller's notifications. DEMO_DATA records no read state.
+  const notificationCard = (n: NotificationRecord): NotificationData => {
+    const time = notificationTime(n)
+    const age = time ? formatAge(time, AT.at) : '—'
+    const e = n.event
+    switch (e.kind) {
+      case 'New Paid Order': {
+        const items = itemCount(e.order)
+        return { type: 'order', title: 'New paid order', body: `${e.order} · ${SELLERS[ORDERS[e.order].seller].name} — ${items} item${items === 1 ? '' : 's'} · ${formatEtb(orderTotals(e.order).total)}`, time: age, action: 'View order' }
+      }
+      case 'Claim': return { type: 'claim', title: 'Claim opened', body: `${BUYERS[ORDERS[CLAIMS[e.claim].order].buyer].name} opened a claim on order ${CLAIMS[e.claim].order}.`, time: age, action: 'View claim' }
+      case 'Buyer message': {
+        const conversation = CONVERSATIONS[e.conversation]
+        return { type: 'message', title: 'Buyer message', body: `${shortName(BUYERS[conversation.buyer].name)} · ${conversation.messages[e.messageIndex].text}`, time: age, action: 'Reply' }
+      }
+      case 'Low stock': return { type: 'stock', title: 'Low-stock alert', body: `${PRODUCTS[e.product].name} · ${PRODUCTS[e.product].stock} remaining`, time: age, action: 'Review' }
+      default: return { type: 'system', title: e.kind, body: '', time: age }
+    }
   }
-
-  const order = { ref: 'ADU-24091', status: 'preparing', sellerName: 'Addis Atelier', itemCount: 2, total: 4550, fulfilment: 'Courier Delivery', timestamp: 'Today 10:23 AM' }
-
-  const couriers = [
-    { name: 'Daniel K.', status: 'available' as const, deliveries: 142, compensation: 180 },
-    { name: 'Biruk T.', status: 'busy' as const, deliveries: 89, compensation: 160 },
-    { name: 'Hana M.', status: 'unavailable' as const, deliveries: 57, compensation: 150 },
-  ]
-
-  const review = { reviewer: 'Maya T.', sellerServiceRating: 5, productQualityRating: 4, text: 'Fast delivery, exactly as described. Will order again.', productName: 'Linen Overshirt', date: 'Sep 28, 2024', verified: true }
-
-  const claim = { id: '1', orderRef: 'ADU-24091', issue: 'Item not received', status: 'under-review', sellerName: 'Addis Atelier', buyerName: 'Maya Tesfaye', date: 'Sep 30, 2024', urgent: true }
-
-  const notifs = [
-    { type: 'order' as const, title: 'New paid order', body: 'ADU-24093 · Nura Glow — 1 item · ETB 1,350', time: '2 min ago', unread: true, action: 'View order' },
-    { type: 'delivery' as const, title: 'Pickup verified', body: 'Daniel K. collected order ADU-24091 from you.', time: '1h ago' },
-    { type: 'claim' as const, title: 'Claim opened', body: 'Maya Tesfaye opened a claim on order ADU-24091.', time: '3h ago', unread: true, action: 'View claim' },
-  ]
 
   return (
     <div>
@@ -444,69 +544,61 @@ function CardShowcase() {
 
       <ShowSection title="Product Card">
         <Row gap={16}>
-          <ProductCard product={product} onSave={() => {}} />
-          <ProductCard product={{ ...product, name: 'Wide-Leg Trousers', price: 2100, available: true, lowStock: true, imageColor: '#A8958A' }} onSave={() => {}} />
-          <ProductCard product={{ ...product, name: 'Structured Shoulder Bag', price: 3150, available: false, imageColor: '#8A7A6A' }} />
-          <ProductCard product={product} compact />
+          <ProductCard product={productCard(lead, '#D4C5B0')} onSave={() => {}} />
+          <ProductCard product={productCard(second, '#A8958A')} onSave={() => {}} />
+          <ProductCard product={productCard(third, '#8A7A6A')} />
+          <ProductCard product={productCard(lead, '#D4C5B0')} compact />
         </Row>
       </ShowSection>
 
       <ShowSection title="Shoppable Post Card">
         <Row gap={16}>
-          <ShoppablePostCard post={post} />
-          <ShoppablePostCard post={postNoProducts} />
-          <ShoppablePostCard post={{ ...post, id: '3', status: 'restricted', taggedProductCount: 2, imageColor: '#C0B0A0', caption: 'Restricted content.' }} />
+          <ShoppablePostCard post={postCard(SURFACE_DEFAULTS.post, '#C8B89A')} />
+          <ShoppablePostCard post={postCard(untaggedPost, '#B8A898')} />
+          <ShoppablePostCard post={postCard(restriction.post, '#C0B0A0', { at: restriction.action.at, sequence: 1 })} />
         </Row>
       </ShowSection>
 
       <ShowSection title="Seller Card">
         <Row gap={16}>
-          <SellerCard seller={seller} />
-          <SellerCard seller={{ ...seller, id: '2', name: 'Nura Glow', category: 'Cosmetics', trust: 'trusted', imageColor: '#E8A090', bio: 'Skin-first Ethiopian beauty.' }} />
-          <SellerCard seller={{ ...seller, id: '3', name: 'Volt House', category: 'Electronics', trust: 'new', imageColor: '#6090C0', bio: 'Tech essentials.' }} />
+          {buyerVisibleSellers().map((id, i) => <SellerCard key={id} seller={sellerCard(id, sellerColors[i])} />)}
         </Row>
       </ShowSection>
 
       <ShowSection title="Order Card">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-          <OrderCard order={order} />
-          <OrderCard order={{ ...order, ref: 'ADU-24092', status: 'in-delivery', total: 980, sellerName: 'Nura Glow', itemCount: 1, fulfilment: 'Courier Delivery' }} />
-          <OrderCard order={{ ...order, ref: 'ADU-24093', status: 'completed', total: 3800, sellerName: 'Volt House', itemCount: 1 }} />
+          {TODAYS_ORDERS.map(id => <OrderCard key={id} order={orderCard(id)} />)}
         </div>
       </ShowSection>
 
       <ShowSection title="Courier Card">
         <Row gap={12}>
-          {couriers.map(c => (
-            <CourierCard key={c.name} courier={c} selected={selectedCourier === c.name} onSelect={() => setSelectedCourier(c.name)} />
-          ))}
+          <CourierCard courier={courier} selected={selectedCourier === courier.name} onSelect={() => setSelectedCourier(courier.name)} />
         </Row>
       </ShowSection>
 
       <ShowSection title="Review Card">
         <Row gap={12}>
-          <ReviewCard review={review} />
-          <ReviewCard review={{ ...review, reviewer: 'Ayana K.', sellerServiceRating: 3, productQualityRating: 4, text: 'Good product, delivery took longer than expected.', verified: false }} />
+          {reviewsAt({ seller: SELLER }, AT).map(id => <ReviewCard key={id} review={reviewCard(id)} />)}
         </Row>
       </ShowSection>
 
       <ShowSection title="Trust Card">
         <Row gap={12}>
-          <TrustCard level="trusted" sellerName="Addis Atelier" summary="180 completed orders · 4.8 seller rating · 0 unresolved claims" />
-          <TrustCard level="new" sellerName="Volt House" summary="New seller. Building first track record." />
+          <TrustCard level={trustBadge(SELLER)} sellerName={SELLERS[SELLER].name} summary={`${completedOrders} completed order${completedOrders === 1 ? '' : 's'} · ${sellerServiceAt(SELLER, AT)?.average} seller rating · ${unresolved} unresolved claim${unresolved === 1 ? '' : 's'}`} />
+          <TrustCard level={trustBadge(newSeller)} sellerName={SELLERS[newSeller].name} summary="New seller. Building first track record." />
         </Row>
       </ShowSection>
 
       <ShowSection title="Claim Card">
         <Row gap={12}>
-          <ClaimCard claim={claim} />
-          <ClaimCard claim={{ ...claim, id: '2', issue: 'Wrong item received', status: 'open', urgent: false, orderRef: 'ADU-24092' }} />
+          {claims.map(id => <ClaimCard key={id} claim={claimCard(id)} />)}
         </Row>
       </ShowSection>
 
       <ShowSection title="Notification Cards">
         <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden', maxWidth: 400 }}>
-          {notifs.map((n, i) => <NotificationCard key={i} notif={n} />)}
+          {notificationsAt(SELLER, AT).map((n, i) => <NotificationCard key={i} notif={notificationCard(n)} />)}
         </div>
       </ShowSection>
     </div>
@@ -554,9 +646,9 @@ function NavigationShowcase() {
       <ShowSection title="Storefront Tabs">
         <StorefrontTabs
           tabs={[
-            { key: 'shop', label: 'Shop', count: 12 },
-            { key: 'posts', label: 'Posts', count: 7 },
-            { key: 'reviews', label: 'Reviews', count: 34 },
+            { key: 'shop', label: 'Shop', count: sellerProductsAt(SELLER, AT).length },
+            { key: 'posts', label: 'Posts', count: sellerPostsAt(SELLER, AT).filter(id => isPubliclyEligibleAt(id, AT)).length },
+            { key: 'reviews', label: 'Reviews', count: sellerServiceAt(SELLER, AT)?.ratings },
             { key: 'about', label: 'About' },
           ]}
           active={storeTab}
@@ -572,7 +664,7 @@ function NavigationShowcase() {
       </ShowSection>
 
       <ShowSection title="Breadcrumbs">
-        <Breadcrumbs items={[{ label: 'Seller Console', path: '/' }, { label: 'Products', path: '/products' }, { label: 'Linen Overshirt' }]} />
+        <Breadcrumbs items={[{ label: 'Seller Console', path: '/' }, { label: 'Products', path: '/products' }, { label: PRODUCTS[SURFACE_DEFAULTS.product].name }]} />
       </ShowSection>
 
       <ShowSection title="Filter Chips">
@@ -606,10 +698,10 @@ function OverlayShowcase() {
 
       <ShowSection title="Toasts">
         <Row gap={12} wrap>
-          <Toast message="Order ADU-24091 marked as ready." variant="success" />
+          <Toast message={`Order ${ORDER} marked as ready.`} variant="success" />
           <Toast message="Payment failed. Please try again." variant="error" onDismiss={() => {}} />
-          <Toast message="Daniel K. has been assigned to this order." variant="info" />
-          <Toast message="Low stock: Linen Overshirt has 2 remaining." variant="warning" />
+          <Toast message={`${COURIER} has been assigned to this order.`} variant="info" />
+          <Toast message={`Low stock: ${PRODUCTS[LOW_STOCK].name} has ${PRODUCTS[LOW_STOCK].stock} remaining.`} variant="warning" />
         </Row>
       </ShowSection>
 
@@ -617,8 +709,8 @@ function OverlayShowcase() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Banner variant="info">Seller Console may be slower than usual. We're investigating.</Banner>
           <Banner variant="warning" onDismiss={() => {}}>Your store profile is incomplete. <strong>Complete your profile</strong> to enable all features.</Banner>
-          <Banner variant="error">Claim ADU-C-0024 requires your response within 24 hours.</Banner>
-          <Banner variant="success">Pickup verified. Daniel K. has collected order ADU-24091.</Banner>
+          <Banner variant="error">Claim {SURFACE_DEFAULTS.claim} requires your response by {formatDayMonth(CLAIM_DEADLINE)} {formatClock(CLAIM_DEADLINE)}.</Banner>
+          <Banner variant="success">Pickup verified. {COURIER} has collected order {ORDER}.</Banner>
         </div>
       </ShowSection>
 
@@ -628,10 +720,10 @@ function OverlayShowcase() {
           open={modalOpen} onClose={() => setModalOpen(false)} title="Assign Courier"
           footer={<><Button variant="tertiary" onClick={() => setModalOpen(false)}>Cancel</Button><Button variant="primary">Confirm Assignment</Button></>}
         >
-          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: '0 0 16px' }}>Assigning Daniel K. to order ADU-24091. He will receive a delivery offer notification.</p>
+          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: '0 0 16px' }}>Assigning {COURIER} to order {ORDER}. He will receive a delivery offer notification.</p>
           <div style={{ background: 'var(--color-surface-raised)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>Daniel K.</div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>Compensation: ETB 180 · 142 completed deliveries</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{COURIER}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>Compensation: {COURIER_CARD.compensation === undefined ? '—' : formatEtb(COURIER_CARD.compensation)} · {COURIER_CARD.completedForSeller} completed {COURIER_CARD.completedForSeller === 1 ? 'delivery' : 'deliveries'}</div>
           </div>
         </Modal>
       </ShowSection>
@@ -640,7 +732,7 @@ function OverlayShowcase() {
         <Button variant="secondary" onClick={() => setSheetOpen(true)}>Open Bottom Sheet</Button>
         <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="Products in this post" snapPoint="half">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {['Linen Overshirt — ETB 2,450', 'Wide-Leg Trousers — ETB 2,100', 'Structured Shoulder Bag — ETB 3,150'].map((p, i) => (
+            {POST_PRODUCTS.map(id => `${PRODUCTS[id].name} — ${formatEtb(PRODUCTS[id].price)}`).map((p, i) => (
               <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-md)', background: 'var(--color-surface-raised)' }} />
                 <div style={{ flex: 1, fontSize: 14, color: 'var(--color-text-primary)', fontWeight: 500 }}>{p}</div>
@@ -655,7 +747,7 @@ function OverlayShowcase() {
         <Button variant="destructive" onClick={() => setConfirmOpen(true)}>Delete product</Button>
         <Confirmation
           open={confirmOpen} onClose={() => setConfirmOpen(false)} onConfirm={() => {}}
-          title="Delete Linen Overshirt?"
+          title={`Delete ${PRODUCTS[SURFACE_DEFAULTS.product].name}?`}
           message="This product will be removed from your catalogue. Any published Shoppable Posts that reference it will become tag-less for this product. This action cannot be undone."
           confirmLabel="Delete product" variant="destructive"
         />
@@ -729,13 +821,13 @@ function HandoffShowcase() {
           <QRDisplay
             title="Pickup QR"
             subtitle="Show this to the courier when they arrive to collect the order."
-            context="Pickup — ADU-24091"
+            context={`Pickup — ${ORDER}`}
             expiresIn={90}
           />
           <QRDisplay
             title="Delivery QR"
             subtitle="Show this to the buyer or delegated recipient to complete delivery."
-            context="Delivery — ADU-24091"
+            context={`Delivery — ${ORDER}`}
             expiresIn={120}
           />
         </div>
@@ -761,9 +853,9 @@ function HandoffShowcase() {
           ))}
         </div>
         <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', background: 'var(--color-surface)', maxWidth: 380, overflow: 'hidden' }}>
-          {handoffState === 'qr' && <QRDisplay title="Delivery QR" subtitle="Show to buyer to confirm delivery." context="Delivery — ADU-24091" expiresIn={90} />}
+          {handoffState === 'qr' && <QRDisplay title="Delivery QR" subtitle="Show to buyer to confirm delivery." context={`Delivery — ${ORDER}`} expiresIn={90} />}
           {handoffState === 'verifying' && <VerifyingState message="Verifying delivery…" />}
-          {handoffState === 'success' && <VerificationSuccess title="Delivery Confirmed" subtitle="Order ADU-24091 has been delivered to Maya Tesfaye." detail="Verified 10:34 AM · 30 Sep 2024" onContinue={() => setHandoffState('qr')} />}
+          {handoffState === 'success' && <VerificationSuccess title="Delivery Confirmed" subtitle={`Order ${ORDER} has been delivered to ${BUYERS[ORDERS[ORDER].buyer].name}.`} detail={`Verified ${formatClock12(DELIVERED)} · ${formatDate(DELIVERED)}`} onContinue={() => setHandoffState('qr')} />}
           {handoffState === 'failed' && <VerificationFailed message="The QR code could not be verified. Please try again or use the verification code." onRetry={() => setHandoffState('verifying')} onFallback={() => {}} />}
         </div>
       </ShowSection>
@@ -776,48 +868,76 @@ function HandoffShowcase() {
 ═══════════════════════════════════════════════ */
 
 function OperationalShowcase() {
-  const tableRows = [
-    { id: '1', ref: 'ADU-24091', buyer: 'Maya T.', status: 'preparing', total: 'ETB 4,550', fulfilment: 'Courier', time: '10:23 AM' },
-    { id: '2', ref: 'ADU-24092', buyer: 'Ayana K.', status: 'paid', total: 'ETB 980', fulfilment: 'Collection', time: '09:14 AM' },
-    { id: '3', ref: 'ADU-24093', buyer: 'Biruk L.', status: 'completed', total: 'ETB 3,800', fulfilment: 'Courier', time: 'Yesterday' },
-  ]
+  // The default Buyer's Orders of the story day.
+  const tableRows = TODAYS_ORDERS.map(id => ({
+    id, ref: id, buyer: shortName(BUYERS[ORDERS[id].buyer].name), state: orderStateAt(id, AT)!,
+    total: formatEtb(orderTotals(id).total), fulfilment: ORDERS[id].fulfilment, time: formatClock12(paidAt(id)),
+  }))
 
   const columns = [
     { key: 'ref', header: 'Order', width: '120px', render: (r: typeof tableRows[0]) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--color-brand)' }}>{r.ref}</span> },
     { key: 'buyer', header: 'Buyer', width: '120px', render: (r: typeof tableRows[0]) => <span style={{ fontSize: 13 }}>{r.buyer}</span> },
-    { key: 'status', header: 'Status', width: '140px', render: (r: typeof tableRows[0]) => <StatusBadge status={r.status} size="sm" /> },
+    { key: 'status', header: 'Status', width: '140px', render: (r: typeof tableRows[0]) => <StatusBadge {...stateBadge(r.state)} size="sm" /> },
     { key: 'total', header: 'Total', width: '120px', render: (r: typeof tableRows[0]) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600 }}>{r.total}</span> },
     { key: 'fulfilment', header: 'Fulfilment', render: (r: typeof tableRows[0]) => <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{r.fulfilment}</span> },
     { key: 'time', header: 'Time', width: '100px', render: (r: typeof tableRows[0]) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-muted)' }}>{r.time}</span> },
   ]
 
+  // The default Seller's figures. DEMO_DATA gives no fulfilment-time average and no period-on-period changes.
+  const today = AT.at.slice(0, 10)
+  const openClaims = CLAIM_IDS.filter(id => ORDERS[CLAIMS[id].order].seller === SELLER && ['Open', 'Under Review'].includes(claimStateAt(id, AT) ?? '')).length
+  const gmv = INSIGHTS_7D[SELLER]?.gmv
   const metrics = [
-    { label: 'Paid Orders (today)', value: '24', change: 12, trend: 'up' as const, icon: '📦', color: 'var(--color-success)' },
-    { label: 'GMV (7 days)', value: 'ETB 142K', change: 8, trend: 'up' as const, icon: '💰' },
-    { label: 'Avg. Fulfilment Time', value: '3.2h', change: 5, trend: 'down' as const, icon: '⏱️' },
-    { label: 'Open Claims', value: '3', changeLabel: '1 urgent', trend: 'neutral' as const, icon: '⚠️', color: 'var(--color-warning)' },
+    { label: 'Paid Orders (today)', value: String(ordersAt({ seller: SELLER }, AT).filter(id => paidAt(id).slice(0, 10) === today).length), changeLabel: '—', trend: 'neutral' as const, icon: '📦', color: 'var(--color-success)' },
+    { label: 'GMV (7 days)', value: gmv === undefined ? '—' : formatEtb(gmv), changeLabel: '—', trend: 'neutral' as const, icon: '💰' },
+    { label: 'Avg. Fulfilment Time', value: '—', changeLabel: '—', trend: 'neutral' as const, icon: '⏱️' },
+    { label: 'Open Claims', value: String(openClaims), changeLabel: '—', trend: 'neutral' as const, icon: '⚠️', color: 'var(--color-warning)' },
   ]
 
-  const timeline = [
-    { id: '1', label: 'Paid', timestamp: '10:14 AM', status: 'completed' as const },
-    { id: '2', label: 'Preparing', timestamp: '10:23 AM', status: 'completed' as const, detail: 'Addis Atelier confirmed preparation' },
-    { id: '3', label: 'Ready for Courier', timestamp: '11:05 AM', status: 'active' as const },
-    { id: '4', label: 'Courier Assigned', status: 'pending' as const },
-    { id: '5', label: 'Pickup Verified', status: 'pending' as const },
-    { id: '6', label: 'Out for Delivery', status: 'pending' as const },
-    { id: '7', label: 'Delivery Verified', status: 'pending' as const },
-    { id: '8', label: 'Completed', status: 'pending' as const },
+  // The default Order's timeline.
+  const states = ORDER_TIMELINES[ORDERS[ORDER].fulfilment]
+  const current = states.indexOf(orderStateAt(ORDER, AT)!)
+  const timeline: TimelineEvent[] = states.map((state, index) => {
+    const time = stateTime(ORDER, state)
+    return {
+      id: state, label: state, timestamp: time && index <= current ? formatClock12(time) : undefined,
+      status: index < current || (index === current && state === 'Completed') ? 'completed' : index === current ? 'active' : 'pending',
+    }
+  })
+
+  // The audit log, newest first.
+  const auditEntries: AuditEntryData[] = AUDIT_LOG.filter(entry => happenedBefore(entry.at, AT)).reverse().map((entry, i) => ({
+    id: String(i + 1), actor: entry.actor, action: entry.action, target: entry.target, reason: entry.reason,
+    timestamp: `${formatDate(entry.at)}, ${formatClock12(entry.at)}`, result: entry.result === 'Succeeded' ? 'success' : 'failure', market: MARKET.id,
+  }))
+
+  // The Operator queue, in DEMO_DATA's order. DEMO_DATA gives the cases no priority, and none is assigned at 10:25.
+  const open = (opened: Timestamp, closed?: Timestamp) => happenedBefore(opened, AT) && !(closed && happenedBefore(closed, AT))
+  const item = (queue: string, caseRef: string, subject: string, opened: Timestamp, state: string): WorkQueueItem =>
+    ({ id: caseRef, queue, caseRef, subject, market: MARKET.id, age: formatAge(opened, AT.at), state })
+  const workItems: WorkQueueItem[] = [
+    ...CLAIM_IDS.filter(id => claimStateAt(id, AT) && claimStateAt(id, AT) !== 'Resolved').map(id => item('Claims', id, `${CLAIMS[id].issue} · ${CLAIMS[id].order}`, claimSubmitted(id), CLAIM_BADGE[claimStateAt(id, AT)!])),
+    ...keysOf(MODERATION_CASES).filter(id => open(MODERATION_CASES[id].reported, MODERATION_CASES[id].action.at)).map(id => item('Moderation', id, `Reported Shoppable Post · ${MODERATION_CASES[id].post}`, MODERATION_CASES[id].reported, 'open')),
+    ...keysOf(SUPPORT_CASES).filter(id => open(SUPPORT_CASES[id].raised, SUPPORT_CASES[id].resolved.at)).map(id => item('Support', id, `Seller support request · ${SUPPORT_CASES[id].order}`, SUPPORT_CASES[id].raised, 'open')),
+    ...keysOf(VERIFICATION_CASES).filter(id => open(VERIFICATION_CASES[id].submitted)).map(id => item('Verification', id, `${VERIFICATION_CASES[id].kind} · ${shortName(BUYERS[VERIFICATION_CASES[id].buyer].name)}`, VERIFICATION_CASES[id].submitted, 'open')),
+    ...keysOf(TRUST_APPEALS).filter(id => open(TRUST_APPEALS[id].submitted)).map(id => item('Trust Appeals', id, `Seller Trust appeal · ${SELLERS[TRUST_APPEALS[id].seller].handle}`, TRUST_APPEALS[id].submitted, 'open')),
+    ...keysOf(HANDOFF_REVIEWS).filter(id => open(HANDOFF_REVIEWS[id].escalated.at)).map(id => item('Manual Handoff', id, `Failed final handoff · ${HANDOFF_REVIEWS[id].order}`, HANDOFF_REVIEWS[id].escalated.at, 'open')),
   ]
 
-  const auditEntries = [
-    { id: '1', actor: 'admin@adulis.com', action: 'Restricted Shoppable Post', target: 'POST-8847', reason: 'Prohibited product category', timestamp: '30 Sep 2024, 10:14 AM', result: 'success' as const, market: 'ETH' },
-    { id: '2', actor: 'ops@adulis.com', action: 'Approved Manual Verification', target: 'ADU-24088', reason: 'QR scan failed, evidence confirmed', timestamp: '30 Sep 2024, 09:52 AM', result: 'success' as const, market: 'ETH' },
-  ]
+  // The Founder decision as proposed: no decision is pending at 10:25.
+  const [decisionId] = keysOf(DECISIONS)
+  const decision = DECISIONS[decisionId]
 
-  const workItems = [
-    { id: '1', priority: 'urgent' as const, queue: 'Claims', caseRef: 'CLM-0044', subject: 'ADU-24091 — Item not received', market: 'ETH', age: '14h', state: 'open' },
-    { id: '2', priority: 'high' as const, queue: 'Moderation', caseRef: 'MOD-0192', subject: 'Shoppable Post reported — POST-8847', market: 'ETH', age: '2h', assignedTo: 'ops@adulis', state: 'under-review' },
-    { id: '3', priority: 'normal' as const, queue: 'Verification', caseRef: 'VER-0088', subject: 'Account recovery — Volt House', market: 'ETH', age: '1h', state: 'pending' },
+  // The default Claim's evidence: its Order's handoff records and the Buyer's photos.
+  const claim = CLAIMS[SURFACE_DEFAULTS.claim], claimOrder = ORDERS[claim.order]
+  const pickedUp = stateTime(claim.order, 'Pickup Verified'), delivered = stateTime(claim.order, 'Completed')
+  const when = (time: Timestamp) => `${formatDayMonth(time)}, ${formatClock12(time)}`
+  const evidence = [
+    ...(claimOrder.pickup?.method === 'QR' && pickedUp ? [{ type: 'qr', description: 'Pickup QR scan', source: `Courier App — ${claimOrder.courier ? COURIERS[claimOrder.courier].name : '—'}`, timestamp: when(pickedUp), verified: true }] : []),
+    ...(claimOrder.pickup?.location === 'recorded' && pickedUp ? [{ type: 'location', description: 'Pickup location checkpoint', source: 'Courier App', timestamp: when(pickedUp), verified: true }] : []),
+    ...(claimOrder.finalHandoff?.method === 'QR' && delivered ? [{ type: 'qr', description: 'Delivery QR scan', source: `Buyer App — ${shortName(BUYERS[claimOrder.buyer].name)}`, timestamp: when(delivered), verified: true }] : []),
+    ...(claimOrder.finalHandoff?.location && delivered ? [{ type: 'location', description: claimOrder.finalHandoff.location === 'recorded' ? 'Delivery location checkpoint' : 'Delivery location unavailable', source: 'Courier App', timestamp: when(delivered), verified: claimOrder.finalHandoff.location === 'recorded' ? true : undefined }] : []),
+    ...Array.from({ length: claim.evidencePhotos }, () => ({ type: 'attachment', description: 'Buyer submitted photo', source: 'Claim evidence', timestamp: when(claimSubmitted(SURFACE_DEFAULTS.claim)) })),
   ]
 
   return (
@@ -852,9 +972,9 @@ function OperationalShowcase() {
       <ShowSection title="Approval Block">
         <div style={{ maxWidth: 560 }}>
           <ApprovalBlock
-            title="Remove Seller — Volt House"
-            description="Proposal to remove Volt House from the platform following 3 unresolved claims and repeated policy violations. Requires second founder approval."
-            proposedBy="CEO" proposedAt="30 Sep 2024 · 09:48 AM"
+            title={decisionId}
+            description={decision.text}
+            proposedBy={OPERATORS[decision.proposedBy].role} proposedAt={`${formatDate(decision.proposed)} · ${formatClock12(decision.proposed)}`}
             status="pending"
             onApprove={() => {}} onReturn={() => {}}
           />
@@ -863,12 +983,7 @@ function OperationalShowcase() {
 
       <ShowSection title="Evidence Block">
         <div style={{ maxWidth: 560 }}>
-          <EvidenceBlock items={[
-            { type: 'qr', description: 'Pickup QR scan', source: 'Courier App — Daniel K.', timestamp: '30 Sep, 11:05 AM', verified: true },
-            { type: 'location', description: 'Pickup location checkpoint', source: 'Courier App', timestamp: '30 Sep, 11:06 AM', verified: true },
-            { type: 'chat', description: 'Buyer chat — "package looks fine"', source: 'Adulis Chat', timestamp: '30 Sep, 12:14 PM', verified: undefined },
-            { type: 'attachment', description: 'Buyer submitted photo', source: 'Claim evidence', timestamp: '30 Sep, 2:30 PM', verified: false },
-          ]} />
+          <EvidenceBlock items={evidence} />
         </div>
       </ShowSection>
 
