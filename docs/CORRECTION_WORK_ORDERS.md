@@ -2,7 +2,7 @@
 
 **Purpose.** This holds the approved implementation work orders for the prototype, listed in the order they are to be executed. Implement only what an approved work order covers.
 
-**Status.** Execution order approved — 2026-10-02 (WO-001 to WO-011). Bodies drafted on 2026-10-02 from the approved documents, then updated the same day with the approved work-order decisions and the final decisions. APPROVED FOR IMPLEMENTATION: WO-001 to WO-011. PENDING DECISION: none. None is implemented.
+**Status.** Execution order approved — 2026-10-02 (WO-001 to WO-011), and amended on 2026-10-04 to add WO-006A between WO-006 and WO-007. Bodies drafted on 2026-10-02 from the approved documents, then updated the same day with the approved work-order decisions and the final decisions. On 2026-10-04, approved amendments discovered during WO-002 extended WO-004 and WO-006 and added WO-006A, and a cleanup the same day made WO-006A PENDING DECISION. APPROVED FOR IMPLEMENTATION: WO-001 to WO-006 and WO-007 to WO-011. PENDING DECISION: WO-006A. Implementation progress is recorded separately, under Implementation progress.
 
 ## Execution order
 
@@ -20,7 +20,26 @@ The work orders below are listed in execution order. The sequence was set on 202
 >
 > So Claude must solve that foundation before populating your Sellers.
 
-Because execution is sequential, a work order that is PENDING DECISION holds back every work order after it until its decisions are recorded. No work order is pending, so execution can start with WO-001 and continue in order.
+On 2026-10-04 the sequence was amended to add WO-006A after WO-006 and before WO-007, without renumbering any existing work order. WO-006A records an explicit approved amendment discovered during WO-002. The execution order is now WO-001, WO-002, WO-003, WO-004, WO-005, WO-006, WO-006A, WO-007, WO-008, WO-009, WO-010 and WO-011.
+
+Because execution is sequential, a work order that is PENDING DECISION holds back every work order after it until its decisions are recorded. WO-006A is PENDING DECISION and stays in the sequence. WO-003 to WO-006 come before it and aren't blocked by its decision; WO-007 to WO-011 can't start until WO-006A is complete.
+
+## Implementation progress
+
+Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-04:
+
+- WO-001 — IMPLEMENTED AND MERGED
+- WO-002 — IMPLEMENTED AND MERGED
+- WO-003 — NOT STARTED
+- WO-004 — NOT STARTED
+- WO-005 — NOT STARTED
+- WO-006 — NOT STARTED
+- WO-006A — NOT STARTED / BLOCKED ON CANONICAL BUYER COLLECTION SCENARIO
+- WO-007 — NOT STARTED
+- WO-008 — NOT STARTED
+- WO-009 — NOT STARTED
+- WO-010 — NOT STARTED
+- WO-011 — NOT STARTED
 
 ## Work-order conventions
 
@@ -30,7 +49,7 @@ These apply to every work order below.
 
 - **APPROVED FOR IMPLEMENTATION:** every requirement derives from the approved documents. It can run once its dependencies are complete.
 - **PENDING DECISION:** at least one requirement needs a decision the approved documents don't make. The missing decisions are listed under STATUS. Record each answer in the authoritative document (the rules, the specification or DEMO_DATA.md) first; the work order is then updated and can become APPROVED FOR IMPLEMENTATION.
-- No work order is IMPLEMENTED.
+- Approval status is separate from implementation progress, which is recorded under Implementation progress.
 
 **Sources.** Requirements cite their source: **R** with a canonical rule number, **§** with a specification section, **DD** with a DEMO_DATA.md section in italics. Conflicts follow "Document authority and precedence" in ADULIS_CANONICAL_RULES.md. The current code is never a source of requirements. Where WHY THIS WORK ORDER EXISTS mentions what the 2026-10-02 technical audit observed, that's context only.
 
@@ -359,13 +378,14 @@ Each work order below is derived from the approved documents, with sources cited
 - Hotspot → lightweight Product preview or Product list bottom sheet → Product Post Detail (§7, §13).
 - Vertical scroll or swipe, image-led, with no video feed (§7, §58).
 - Nearby's saved area for Maya, and manual area selection (R2.9–2.10, R2.14).
+- Active-discount presentation on the Buyer-facing surfaces within its scope, including Product Post Detail (requirements 13–17).
 
 **OUT OF SCOPE.**
 
 - Marketplace Search (§8).
 - The Shop tab, whose content the specification doesn't define.
 - Saved and Collections screens (§9), beyond the Save action.
-- Product Post Detail itself.
+- Product Post Detail itself, apart from its active-discount presentation (requirements 15–16).
 - Everything §60 rules out.
 
 **IMPLEMENTATION REQUIREMENTS.**
@@ -382,6 +402,20 @@ Each work order below is derived from the approved documents, with sources cited
 10. More opens an action sheet with Not Interested, Report and other already-approved contextual actions only. Report offers the six §7 categories. A guest who chooses Report is asked to authenticate first, then continues into the Report flow where practical (R3.7, §7).
 11. Save adds the item to Maya's default Saved Collection, `COL-MAYA-SAVED`, and Follow Seller reflects DD's follows. A guest is asked to sign in for both (R3.7). Share uses handles only, never a URL (DD *Buyer*, DD *Sellers*).
 12. Hotspots are never the only way to find tagged Products: the "In this post" list is always available (§57).
+13. Where Buyer-facing discovery or Product presentation handled by WO-004 displays a Product with an active canonical discount, the Buyer UI must display the canonical active discounted price consistently. Where appropriate, show both: current discounted price and regular/original price using the existing design system (DD *Discounts*).
+14. WO-004 owns Buyer-facing discount PRESENTATION. It does not own Checkout calculation. Do not invent discount values. Use src/demo-data / DEMO_DATA only.
+15. WO-004 owns consistent active-discount presentation on Buyer-facing surfaces within its scope, including:
+    - Buyer Home / discovery presentation;
+    - Discounts channel;
+    - Product cards touched by WO-004;
+    - Product Post Detail.
+16. When a Product has an active canonical discount: Product Post Detail must display the canonical active discounted price. Where appropriate, it must also display the regular/original price using the existing design system. Do not invent discount values. Use canonical DEMO_DATA / src/demo-data values. This remains PRESENTATION behavior (DD *Discounts*).
+17. WO-006 continues to own:
+    - Cart effective price;
+    - Checkout effective price;
+    - subtotal calculation;
+    - surcharge calculation;
+    - payment-summary correctness.
 
 **DATA REQUIREMENTS.**
 
@@ -408,7 +442,7 @@ Each work order below is derived from the approved documents, with sources cited
 
 **ACCEPTANCE CRITERIA.**
 
-1. Requirements 1–12 hold.
+1. Requirements 1–17 hold.
 2. Each channel matches DD at each documented time.
 3. A guest who chooses Report is asked to authenticate, and a Report is submitted only when signed in.
 4. The standard checks pass.
@@ -535,6 +569,14 @@ Each work order below is derived from the approved documents, with sources cited
 7. Flow D produces two Paid Orders, at 10:05 and 10:07, each with its own payment (DD *Story timeline*).
 8. There are no Seller Confirm or Accept Payment controls and no payment-screenshot upload (R5.2, R5.4, §16).
 9. Each Order's timeline starts at Paid and follows its mode's states (R4.4–4.7).
+10. When a Product has an active canonical discount and participates in Cart/Checkout (DD *Discounts*):
+    - Cart must use the canonical effective Product price;
+    - Checkout must use the same effective price;
+    - Product subtotal must use that price;
+    - the 0.5% Buyer surcharge must use the actual Product subtotal according to the existing canonical surcharge rules (R5.6–5.8);
+    - payment summary must reconcile with Checkout;
+    - regular price must not silently replace the active discounted price during the transaction.
+11. WO-006 owns discount TRANSACTIONAL correctness. Do not change the existing historical Orders whose approved totals predate or do not use the active discounts (DD *Seller Orders*).
 
 **DATA REQUIREMENTS.**
 
@@ -562,12 +604,107 @@ Each work order below is derived from the approved documents, with sources cited
 
 1. Flow C finishes with `ADU-24091` Paid at ETB 2,642.25.
 2. Flow D finishes with two separate Paid Orders, `ADU-24091` and `ADU-24092`, at DD's totals, after the failed attempt and the retry.
-3. Requirements 1–9 hold.
+3. Requirements 1–11 hold.
 4. The standard checks pass.
 
 **REQUIRED COMMANDS.** The standard commands.
 
 **COMPLETION REPORT FORMAT.** The standard report, plus screenshots of each price breakdown and of the failed and retried payment.
+
+### WO-006A — Buyer Final Handoff Verification
+
+**STATUS.** PENDING DECISION. Missing decision:
+
+1. **A canonical Maya Buyer Collection scenario.** A canonical Maya Buyer Collection scenario must be approved in DEMO_DATA before WO-006A is executed. The approved canonical dataset currently has Buyer Collection Orders for Samuel A., not Maya, and the Buyer app's primary signed-in demo Buyer is Maya (DD *Seller Orders*, DD *Buyer*). Do not use another Buyer's Order in Maya's Buyer app:
+   - `ADU-23952` must not be used as Maya's Order;
+   - `ADU-24041` must not be used as Maya's Order;
+   - another Buyer's Order must never be exposed in Maya's Buyer app.
+
+   Before WO-006A implementation, an approved Buyer Collection scenario must define: Buyer; Order ID; Seller; Product(s); fulfilment mode; relevant timestamps; Collection QR handoff; OTP fallback context; completion state; any affected canonical aggregates. None of these values is set here.
+
+WO-003 to WO-006 are not blocked by this decision. WO-006A stays in the execution order while PENDING DECISION.
+
+**OBJECTIVE.** Complete the Buyer/delegate side of the canonical final-Handoff flows in the Buyer app. The current prototype Buyer scanner is Courier-specific and does not support the approved Seller Delivery and Buyer Collection final handoffs.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- R8.7 requires all three physical fulfilment modes to be capable of reaching a verified final Handoff and Order completion. R8.2, R8.8 and R8.9 set who displays each final QR, which the Buyer or an authorized delegate scans, and §19 adds the Buyer's scanner and its verification-code fallback.
+- DD *Seller Orders* and DD *Story timeline* record the canonical final Handoffs, including the delegated recipient for `ADU-24092` (DD *Buyer*).
+- It records an explicit approved amendment discovered during WO-002 (2026-10-04).
+
+**DEPENDENCIES.**
+
+- Execution position: after WO-006, before WO-007, so WO-001 to WO-006 are complete when it starts. Existing work orders WO-007 to WO-011 aren't renumbered.
+- A canonical Maya Buyer Collection scenario approved in DEMO_DATA.md: not yet approved (see STATUS).
+
+**IN SCOPE.**
+
+- The Buyer/delegate side of the final Handoff in the Buyer app, for Courier Delivery, Seller Delivery and Buyer Collection (R8.7–8.10, §12, §19).
+- The QR scan as the primary method and OTP as the fallback, for each mode (R8.3–8.4, R8.10).
+- Buyer instructions specific to each mode (requirements 1–3).
+
+**OUT OF SCOPE.**
+
+- Manual Verification as Buyer or Seller functionality: it stays Operator-only emergency recovery (R8.5–8.6, §46).
+- Everything TECHNICAL CONSTRAINTS rules out.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. **Courier Delivery:** Courier displays Delivery QR → Buyer or authorized delegate scans → verification → Delivery Handoff → Completed. Buyer instructions must refer to the Courier (R4.4, R8.2, §19).
+2. **Seller Delivery:** Seller or authorized Seller delivery actor displays Delivery QR → Buyer or authorized delegate scans → verification → Delivery Handoff → Completed. Buyer instructions must refer to the Seller/delivery actor, not the Courier (R4.5, R8.8, §19).
+3. **Buyer Collection:** Seller displays Collection QR → Buyer or authorized delegate scans → verification → Collection Handoff → Completed. Buyer instructions must refer to the Seller/collection handoff (R4.6, R8.9, §19).
+4. For all supported final Handoff modes: QR is primary. OTP is fallback. Manual Verification is Operator-only emergency recovery (R8.3–8.6, R8.10, §19).
+5. Do not instruct the Buyer to obtain the OTP from the Courier. Use approved canonical recipient/OTP information from DEMO_DATA. For the current primary Buyer scenario, wording may state: "Enter the verification code sent to your phone." Where an approved delegated-recipient scenario applies, use the approved recipient data rather than inventing a new OTP-routing policy (R10.1–10.2; DD *Buyer*).
+
+**DATA REQUIREMENTS.**
+
+- DD *Buyer* (Maya, and Liya Tesfaye as the delegated recipient for `ADU-24092` only), DD *Seller Orders* (each Order's state history, and who displays and who scans each final QR) and DD *Story timeline*.
+- For Buyer Collection, the canonical Maya Buyer Collection scenario once DEMO_DATA.md records it (see STATUS). Another Buyer's Order is never exposed in Maya's Buyer app.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- The existing Buyer app layout and components.
+- The §56 Handoff states: Ready, QR Active, Verifying, Verified, Failed and OTP fallback.
+- §57 accessibility, at 390 px and 360 px (§4).
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+- WO-006A must not:
+  - add live/background GPS;
+  - add Courier pickup behavior to Seller Delivery;
+  - add Courier-specific states to Seller Delivery or Buyer Collection;
+  - change Seller-side handoff direction;
+  - introduce a new payment flow;
+  - redesign unrelated Buyer navigation;
+  - resolve production Account architecture.
+- Reuse existing QR/OTP/Handoff primitives where possible.
+
+**VALIDATION.**
+
+- WO-006A must verify:
+  - Courier Delivery instructions are Courier-specific;
+  - Seller Delivery instructions are Seller-specific;
+  - Buyer Collection instructions are collection-specific;
+  - Buyer/delegate scans the giver's displayed QR;
+  - QR can complete the appropriate Handoff;
+  - OTP fallback can complete the same Handoff;
+  - no screen tells the Buyer to get an OTP from the Courier unless that is explicitly supported;
+  - Manual Verification remains Operator-only;
+  - canonical Order state reaches Completed correctly;
+  - delegated-recipient behavior remains consistent with DEMO_DATA;
+  - no unrelated Buyer behavior changes.
+- Use the standard type-check, build, canonical checkers, source scan and visual/smoke gates.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–5 hold.
+2. Every item WO-006A must verify (VALIDATION) is verified, with evidence.
+3. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus the canonical checkers, the source scan and the visual/smoke gates.
+
+**COMPLETION REPORT FORMAT.** The standard report.
 
 ### WO-007 — Full Responsive Layout Repair
 
@@ -582,7 +719,7 @@ Each work order below is derived from the approved documents, with sources cited
 
 **DEPENDENCIES.**
 
-- WO-001 to WO-006, so the repair follows the content and structure changes.
+- WO-001 to WO-006A in execution order, so the repair follows the content and structure changes. WO-007 must start only after the Buyer final-Handoff implementation (WO-006A) is complete.
 
 **IN SCOPE.**
 
@@ -870,9 +1007,9 @@ Each work order below is derived from the approved documents, with sources cited
 
 ### WO-011 — Full Prototype Regression Test
 
-**STATUS.** APPROVED FOR IMPLEMENTATION. It runs last and can't start until WO-001 to WO-010 are complete.
+**STATUS.** APPROVED FOR IMPLEMENTATION. It runs last and can't start until WO-001 to WO-010, including WO-006A, are complete.
 
-**OBJECTIVE.** After WO-001 to WO-010, verify the whole prototype against the approved documents and report every defect, without fixing any.
+**OBJECTIVE.** After WO-001 to WO-010, including WO-006A, verify the whole prototype against the approved documents and report every defect, without fixing any.
 
 **WHY THIS WORK ORDER EXISTS.**
 
@@ -881,7 +1018,7 @@ Each work order below is derived from the approved documents, with sources cited
 
 **DEPENDENCIES.**
 
-- WO-001 to WO-010, all complete.
+- WO-001 to WO-010, including WO-006A, all complete.
 
 **IN SCOPE.**
 
@@ -889,6 +1026,7 @@ Each work order below is derived from the approved documents, with sources cited
 - All 116 canonical rules (R1.1 to R18.2), each checked on the surfaces it governs.
 - §60: nothing deferred is presented as current MVP.
 - Flows A–L (§59) with DD's exact record mappings, at their documented times (DD *Demo flows and the records they use*).
+- WO-006A's Buyer final Handoffs, regression-tested as part of the completed prototype.
 - DD consistency on every surface (R18.1).
 - The §4 audit widths, and §57 accessibility including visible keyboard focus.
 - Type-check and build.
@@ -944,6 +1082,8 @@ Each work order below is derived from the approved documents, with sources cited
 - 2026-10-02: Bodies drafted for all 11 work orders from the approved rules, specification and DEMO_DATA.md, each with the 14 required sections, and work-order conventions added. WO-001, WO-008 and WO-011 are APPROVED FOR IMPLEMENTATION. WO-002 to WO-007, WO-009 and WO-010 are PENDING DECISION, each with its missing decisions listed. None is implemented.
 - 2026-10-02: Approved work-order decisions applied after the rules (2.14, 3.6–3.9, 5.9, 12.5–12.6, 14.6, 16.6–16.9), the specification (sections 4, 7, 12, 22, 31, 36, 38, 39, 43 and 50) and DEMO_DATA.md were updated. WO-005, WO-006, WO-007, WO-009 and WO-010 are now APPROVED FOR IMPLEMENTATION. WO-002 (posts needing action), WO-003 (guest Report; the temporary Cart at sign-in) and WO-004 (guest Report) stay PENDING DECISION. None is implemented.
 - 2026-10-02: Final work-order decisions applied after the rules (3.7 changed; 3.10–3.12 added), the specification (sections 4, 7, 12 and 29) and DEMO_DATA.md were updated. WO-002, WO-003 and WO-004 are now APPROVED FOR IMPLEMENTATION, so all eleven are. WO-001, WO-007 and WO-011 were updated to match. None is implemented.
+- 2026-10-04: Approved amendments discovered during WO-002 recorded. WO-004 gains requirements 13 and 14: it owns Buyer-facing discount presentation, not Checkout calculation. WO-006 gains requirements 10 and 11: it owns discounted Cart/Checkout (transactional) correctness, and the existing historical Orders don't change. New WO-006A — Buyer Final Handoff Verification is APPROVED FOR IMPLEMENTATION and runs after WO-006 and before WO-007; no existing work order is renumbered. The acceptance criteria of WO-004 and WO-006 now cover their new requirements, and the status line and execution order were updated to match. No other work order and no canonical demo record changed. WO-004, WO-006 and WO-006A are not implemented.
+- 2026-10-04: Post-WO-002 cleanup. Implementation progress added as its own section, separate from approval status: WO-001 and WO-002 are implemented and merged; WO-003 to WO-011, including WO-006A, are not started. Dependencies on WO-006A made explicit: WO-007 depends on WO-001 to WO-006A, and WO-011 on WO-001 to WO-010 including WO-006A, which it regression-tests. WO-006A is now PENDING DECISION until a canonical Maya Buyer Collection scenario is approved in DEMO_DATA.md; `ADU-23952` and `ADU-24041` must not be used as Maya's Orders, and WO-003 to WO-006 aren't blocked. Product Post Detail discount presentation is assigned to WO-004 (requirements 15–17); WO-006 still owns transactional discount correctness. The status line, the Statuses convention and the execution-order note were updated to match. No canonical demo record changed, and no work order was implemented in this pass.
 
 ## Related documents
 
