@@ -9,7 +9,7 @@ import type { ClaimState, CourierAvailability, FulfilmentMode, OrderState, Trust
 import { SELLERS, VOLT_HOUSE_PREPUBLICATION } from './records/sellers.ts'
 import type { SellerId } from './records/sellers.ts'
 import { PRODUCTS, PRODUCT_IDS } from './records/products.ts'
-import type { ProductId } from './records/products.ts'
+import type { ProductId, ProductRecord } from './records/products.ts'
 import { SHOPPABLE_POSTS, SHOPPABLE_POST_IDS } from './records/posts.ts'
 import type { ShoppablePostId } from './records/posts.ts'
 import { BUYERS } from './records/buyers.ts'
@@ -33,6 +33,11 @@ import { FOLLOWING_ORDER, FOR_YOU_ORDER, NEARBY_PROXIMITY } from './records/chan
 const byId = <T extends string>(ids: readonly T[]) => [...ids].sort()
 
 // ---------- Sellers ----------
+
+/** The three primary showcase Sellers, the only ones with Seller surfaces (Nile Loom is operations-only). */
+export function showcaseSellers(): SellerId[] {
+  return (Object.keys(SELLERS) as SellerId[]).filter(id => SELLERS[id].showcase)
+}
 
 /** The Seller's Trust level at `at` (the last change before it), or undefined before it was admitted. */
 export function trustAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): TrustLevel | undefined {
@@ -91,6 +96,11 @@ export function sellerPostsAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): 
   return byId(SHOPPABLE_POST_IDS.filter(id => SHOPPABLE_POSTS[id].seller === seller && happenedBefore(SHOPPABLE_POSTS[id].created, at)))
 }
 
+/** The Seller's Pre-publication Setup Snapshot, a historical replay; DEMO_DATA records one for Volt House only. */
+export function prepublicationSnapshotFor(seller: SellerId): typeof VOLT_HOUSE_PREPUBLICATION | undefined {
+  return VOLT_HOUSE_PREPUBLICATION.seller === seller ? VOLT_HOUSE_PREPUBLICATION : undefined
+}
+
 /** The Volt House Pre-publication Setup Snapshot's cards, with their details composed from the records. */
 export function prepublicationCards(): { card: string; state: string; detail: string }[] {
   const seller = SELLERS[VOLT_HOUSE_PREPUBLICATION.seller]
@@ -109,6 +119,17 @@ export function prepublicationCards(): { card: string; state: string; detail: st
 
 export function productExistsAt(product: ProductId, at: Moment = DEFAULT_SNAPSHOT): boolean {
   return happenedBefore(PRODUCTS[product].created, at)
+}
+
+/** The Product's active demo discount (DEMO_DATA › Discounts). It applies to new Orders only, never retroactively. */
+export function activeDiscount(product: ProductId): ProductRecord['discount'] {
+  const discount = PRODUCTS[product].discount
+  return discount?.status === 'Active' ? discount : undefined
+}
+
+/** The price a new Order pays now: the active discounted price, otherwise the regular price. */
+export function currentPrice(product: ProductId): Santim {
+  return activeDiscount(product)?.price ?? PRODUCTS[product].price
 }
 
 /** Product Quality at `at`: the 10:25 count plus Reviews written since; null when the Product has no ratings yet. */
@@ -145,9 +166,17 @@ export function isForYouEligibleAt(post: ShoppablePostId, at: Moment = DEFAULT_S
   return isPubliclyEligibleAt(post, at) && hasAvailableTagAt(post, at)
 }
 
-/** Seller Console Home › Shoppable Posts needing action (specification §29): published, tagged, no tagged Product available. */
+/**
+ * Seller Console Home › Shoppable Posts needing action (specification §29): published, tagged, no tagged Product
+ * available. A restricted or removed post is a moderation problem, listed only under Moderation issues.
+ */
 export function postsNeedingAttentionAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
-  return sellerPostsAt(seller, at).filter(id => isPublishedAt(id, at) && SHOPPABLE_POSTS[id].tags.length > 0 && !hasAvailableTagAt(id, at))
+  return sellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at) && SHOPPABLE_POSTS[id].tags.length > 0 && !hasAvailableTagAt(id, at))
+}
+
+/** Seller Console Home › Moderation issues (specification §29): the Seller's posts restricted by a moderation action. */
+export function moderationIssuesAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
+  return sellerPostsAt(seller, at).filter(id => restrictionAt(id, at))
 }
 
 export function forYouAt(at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
@@ -166,7 +195,7 @@ export function nearbyAt(area: string, at: Moment = DEFAULT_SNAPSHOT): Shoppable
 
 /** The Sellers Buyers can see: the primary showcase Sellers (Nile Loom is operations-only). */
 export function buyerVisibleSellers(): SellerId[] {
-  return (Object.keys(SELLERS) as SellerId[]).filter(id => SELLERS[id].showcase)
+  return showcaseSellers()
 }
 
 /** The Products Buyers can see at `at`, in ID order. */
@@ -181,9 +210,9 @@ export function buyerVisiblePostsAt(at: Moment = DEFAULT_SNAPSHOT): ShoppablePos
 
 /** Discounts (rule 2.11): Products with an active discount, largest discount first, then the larger ETB saving. */
 export function discountsAt(at: Moment = DEFAULT_SNAPSHOT): ProductId[] {
-  const saving = (id: ProductId) => PRODUCTS[id].price - (PRODUCTS[id].discount?.price ?? PRODUCTS[id].price)
-  return byId(PRODUCT_IDS.filter(id => PRODUCTS[id].discount?.status === 'Active' && productExistsAt(id, at)))
-    .sort((a, b) => (PRODUCTS[b].discount?.percent ?? 0) - (PRODUCTS[a].discount?.percent ?? 0) || saving(b) - saving(a))
+  const saving = (id: ProductId) => PRODUCTS[id].price - currentPrice(id)
+  return byId(PRODUCT_IDS.filter(id => activeDiscount(id) && productExistsAt(id, at)))
+    .sort((a, b) => (activeDiscount(b)?.percent ?? 0) - (activeDiscount(a)?.percent ?? 0) || saving(b) - saving(a))
 }
 
 /** Locally Made (rules 2.12–2.13): marked Products, the available ones in ID order, then those out of stock. */
@@ -216,6 +245,26 @@ export function paidAt(order: OrderId): Timestamp {
   const paid = ORDERS[order].history[0]
   if (paid.state !== 'Paid' || !paid.at) throw new Error(`${order} has no Paid time`)
   return paid.at
+}
+
+/** The fulfilment mode's Ready state: Ready for Courier, Ready for Seller Delivery or Ready for Collection. */
+export function readyStateFor(mode: FulfilmentMode): OrderState {
+  const ready = ORDER_TIMELINES[mode].find(state => state.startsWith('Ready'))
+  if (!ready) throw new Error(`${mode} has no Ready state`)
+  return ready
+}
+
+/**
+ * The Order's preparation deadline, a fictional record-specific demo timestamp (never Adulis-wide policy), with the
+ * Ready time once the Order reached its mode's Ready state by `at`, and whether that met the deadline.
+ */
+export function preparationAt(order: OrderId, at: Moment = DEFAULT_SNAPSHOT): { due: Timestamp; ready?: { state: OrderState; at: Timestamp }; met?: boolean } | undefined {
+  const due = ORDERS[order].prepareBy
+  if (!due) return undefined
+  const state = readyStateFor(ORDERS[order].fulfilment)
+  const readyAt = stateTime(order, state)
+  if (!readyAt || !happenedBefore(readyAt, at)) return { due }
+  return { due, ready: { state, at: readyAt }, met: !happenedBefore(due, { at: readyAt }) }
 }
 
 /** The time the Order reached `state`, when DEMO_DATA records one. */
@@ -263,6 +312,14 @@ export function lineOptions(line: OrderLine): string {
 /** The Buyer's or Seller's Orders that exist (have been paid) at `at`, in ID order. */
 export function ordersAt(filter: { buyer?: BuyerId; seller?: SellerId }, at: Moment = DEFAULT_SNAPSHOT): OrderId[] {
   return byId(ORDER_IDS.filter(id => (!filter.buyer || ORDERS[id].buyer === filter.buyer) && (!filter.seller || ORDERS[id].seller === filter.seller) && orderStateAt(id, at) !== null))
+}
+
+/**
+ * Seller Console Home › Orders requiring preparation (specification §29): the Seller's Orders that are Paid or
+ * Preparing at `at`. An Order needs preparation until it reaches its mode's Ready state.
+ */
+export function ordersRequiringPreparationAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): OrderId[] {
+  return ordersAt({ seller }, at).filter(id => { const state = orderStateAt(id, at); return state === 'Paid' || state === 'Preparing' })
 }
 
 function completedAfterSnapshot(order: OrderId, at: Moment): boolean {

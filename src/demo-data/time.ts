@@ -108,6 +108,11 @@ export function formatMonthYear(value: Timestamp | CalendarDate): string {
   return `${MONTHS[p.month - 1]} ${p.year}`
 }
 
+/** 'March 2026' for a month, '10 September 2026' for a day: a calendar date at its own precision. */
+export function formatCalendarDate(value: CalendarDate): string {
+  return parts(value).day === undefined ? formatMonthYear(value) : formatLongDate(value)
+}
+
 /** 'Oct 2026' */
 export function formatMonthShortYear(value: Timestamp | CalendarDate): string {
   const p = parts(value)

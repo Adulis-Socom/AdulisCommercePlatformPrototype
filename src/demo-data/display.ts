@@ -29,6 +29,11 @@ export function formatCompactCount(count: number): string {
   return count >= 1000 ? `${Math.round(count / 100) / 10}k` : String(count)
 }
 
+/** '8.99° N, 38.79° E': a fictional map pin to two decimal places (about 1 km), as DEMO_DATA writes it. */
+export function formatPin(pin: { readonly lat: number; readonly lon: number }): string {
+  return `${pin.lat.toFixed(2)}° N, ${pin.lon.toFixed(2)}° E`
+}
+
 /** 'Buyer Collection (free) · Courier Delivery ETB 180': a Seller's fulfilment options and charges on one line. */
 export function describeFulfilment(options: readonly FulfilmentOption[]): string {
   return options.map(option => (option.charge ? `${option.mode} ${formatEtb(option.charge)}` : `${option.mode} (free)`)).join(' · ')
