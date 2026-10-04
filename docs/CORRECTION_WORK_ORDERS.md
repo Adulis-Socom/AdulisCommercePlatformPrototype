@@ -534,10 +534,13 @@ Each work order below is derived from the approved documents, with sources cited
 - Secure payment, including Nura Glow's failed first attempt and its retry;
 - Paid Seller Orders.
 
+It also provides a deterministic Checkout testing environment on the three demo Sellers, without redesigning the Checkout architecture: session-only Scenario A (one Seller), Scenario B2 (two Sellers) and Scenario B3 (three Sellers, with sequential payments and partial completion).
+
 **WHY THIS WORK ORDER EXISTS.**
 
 - §13–§17, §51, §52, §56 and Flows C and D in §59 define checkout, together with R4.1–4.7, R5.1–5.9 and R6.9. DD *Seller Orders* holds `ADU-24091`, `ADU-24092` and the payment attempts.
 - The audit found a flat ETB 14 surcharge and Order identifiers that collided across surfaces.
+- The original Figma correction list's Checkout order, Correction Work Order 03 "Complete Checkout Test Data and Flows", asked for a deterministic Checkout testing environment. On 2026-10-04 its scenarios were reconciled with DD as session-only test runs on valid, in-stock Products. That list's numbering isn't this document's: the Checkout work is WO-006, and WO-003 remains Guest Buyer Authentication States.
 
 **DEPENDENCIES.**
 
@@ -548,6 +551,7 @@ Each work order below is derived from the approved documents, with sources cited
 - **Flow C:** For You → `SHP-AA-001` → hotspot `PRD-AA-001` → Size M, Natural → Add to Cart → Checkout → Courier Delivery → price breakdown → payment → `ADU-24091` Paid, ETB 2,642.25.
 - **Flow D:** `PRD-AA-001` ×1 and `PRD-NG-001` ×1 → two Seller carts → Checkout coordinator → separate Seller Orders `ADU-24091` and `ADU-24092`. Nura Glow's first attempt, `PAY-24092-01`, fails at 10:06, and the retry, `PAY-24092-02`, is Paid at 10:07.
 - The Buyer screens Seller-specific Cart, Multi-cart summary, Checkout, Gateway transition, Payment Processing and Payment Success (§12, §14–§16), plus the payment Failed and Retry states (§16, §56).
+- Session-only Checkout test runs: Scenario A (one Seller), Scenario B2 (two Sellers) and Scenario B3 (three Sellers), with sequential payments, partial completion, a paid example of each fulfilment mode and a prototype-only scenario control (requirements 12–23).
 
 **OUT OF SCOPE.**
 
@@ -555,6 +559,9 @@ Each work order below is derived from the approved documents, with sources cited
 - `ADU-24093`'s purchase through Search, which isn't a guided flow.
 - Fulfilment and handoff (Flows G and H).
 - Any real payment provider.
+- Redesigning the Checkout architecture.
+- The Collection QR final handoff, which belongs to WO-006A: a Buyer Collection test stops at its Checkout/payment outcome.
+- Recording test runs in DD: like the guest's temporary Cart, they're session state (R3.12).
 
 **IMPLEMENTATION REQUIREMENTS.**
 
@@ -577,39 +584,70 @@ Each work order below is derived from the approved documents, with sources cited
     - payment summary must reconcile with Checkout;
     - regular price must not silently replace the active discounted price during the transaction.
 11. WO-006 owns discount TRANSACTIONAL correctness. Do not change the existing historical Orders whose approved totals predate or do not use the active discounts (DD *Seller Orders*).
+12. Scenarios A, B2 and B3 are deterministic, session-only Checkout test runs on the three demo Sellers. Their carts, Seller Orders and payment attempts are transient prototype session state, like the guest's temporary Cart (R3.12): they never become DD records and change no canonical stock, totals or metrics. Flows C and D still produce `ADU-24091` and `ADU-24092` exactly as DD records them.
+13. `TEST-*` Orders must not appear in normal canonical Buyer Orders history, Seller Console Orders, Seller Insights, Courier statistics, Reviews, Claims or DEMO_DATA aggregates, unless a later approved work order explicitly requires a test-mode view. They exist only within the active Checkout testing scenario. Resetting the prototype or the test scenario removes them.
+14. Test Seller Orders use scenario-scoped transient references, and no reference is reused between different scenarios: Scenario A `TEST-A-01`; Scenario B2 `TEST-B2-01` and `TEST-B2-02`; Scenario B3 `TEST-B3-01`, `TEST-B3-02` and `TEST-B3-03`. These are prototype-session references only, labelled as prototype test Orders. They are not production IDs and are not DEMO_DATA Orders, and they never use `ADU-` numbers.
+15. Payment attempt identity stays separate from Seller Order identity: each attempt is referenced `TESTPAY-`, then its Order's scenario and number, then the attempt number. For Order `TEST-B3-02` in the partial-completion run: first attempt `TESTPAY-B3-02-01`, FAILED; retry `TESTPAY-B3-02-02`, SUCCESS. A payment retry must remain attached to the same Seller Order. Do not create a second Seller Order merely because payment failed (R5.9).
+16. Scenario A, one Seller: Maya's Addis Atelier cart holds the Linen Overshirt (`PRD-AA-001`) M/Natural ×1 and the Wide-Leg Trousers (`PRD-AA-002`) M/Charcoal ×1. Product → Add to Cart → Addis Atelier Cart → Checkout → choose fulfilment → payment → Paid Seller Order `TEST-A-01`, paid by `TESTPAY-A-01-01`. Make all buttons functional. Either of Addis Atelier's fulfilment options can be chosen and paid (DD *Sellers*):
+    - Courier Delivery: Products 4,550.00 + Courier Delivery 180.00 + Adulis surcharge 22.75 = 4,752.75;
+    - Buyer Collection: Products 4,550.00 + Buyer Collection (free) + Adulis surcharge 22.75 = 4,572.75.
+17. Scenario B2 — Two-Seller Checkout: Your Carts shows ADDIS ATELIER (Linen Overshirt M/Natural ×1, ETB 2,450) and NURA GLOW (Hydrating Face Cream 50 ml ×1, ETB 1,350; Lip Tint Rose ×1, ETB 750), with the same canonical Products, variants, prices and fulfilment as the corresponding carts in Scenario B3. The two Seller carts produce two independent Seller Orders and two independent payment operations. Do not create one marketplace-wide Order (R4.1–4.3, §14):
+    - `TEST-B2-01`, Addis Atelier, Courier Delivery: 2,450.00 + 180.00 + 12.25 = 2,642.25, paid by `TESTPAY-B2-01-01`;
+    - `TEST-B2-02`, Nura Glow, Seller Delivery: 2,100.00 + 120.00 + 10.50 = 2,230.50, paid by `TESTPAY-B2-02-01`.
+18. Scenario B3 — Three-Seller Checkout: Your Carts shows ADDIS ATELIER (Linen Overshirt (`PRD-AA-001`) M/Natural ×1, ETB 2,450), NURA GLOW (Hydrating Face Cream (`PRD-NG-001`) 50 ml ×1, ETB 1,350; Lip Tint (`PRD-NG-002`) Rose ×1, ETB 750) and VOLT HOUSE (Phone Stand (`PRD-VH-003`) Grey ×1, ETB 650). The Buyer may coordinate Checkout from one multi-cart UI, but each Seller produces a separate Seller Order. Do not produce one marketplace-wide Order (R4.1–4.3, §14):
+    - `TEST-B3-01`, Addis Atelier, Courier Delivery: 2,450.00 + 180.00 + 12.25 = 2,642.25;
+    - `TEST-B3-02`, Nura Glow, Seller Delivery: 2,100.00 + 120.00 + 10.50 = 2,230.50;
+    - `TEST-B3-03`, Volt House, Seller Delivery: 650.00 + 100.00 + 3.25 = 753.25.
+19. Scenario B3 prototypes multiple payments in sequence clearly: Seller Order 1 → Payment → Success, then "1 of 3 orders paid"; Seller Order 2 → Payment → Success, then "2 of 3 orders paid"; Seller Order 3 → Payment → Success; finally "Your orders are confirmed", showing the 3 separate Order references.
+20. Scenario B3 also prototypes partial completion: Order 1 — PAID, Order 2 — PAYMENT FAILED, Order 3 — NOT YET PAID, with Retry Order 2: `TESTPAY-B3-02-01` failed, and the retry `TESTPAY-B3-02-02` succeeds on the same Order, `TEST-B3-02` (R5.9). Do not roll back already successful independent Seller Orders merely because another Seller payment failed (R4.3).
+21. Each fulfilment mode has a testable Checkout/payment example (§15): Buyer Collection and Courier Delivery in Scenario A; Courier Delivery for `TEST-B2-01` and `TEST-B3-01`; Seller Delivery for `TEST-B2-02`, `TEST-B3-02` and `TEST-B3-03`. Courier Delivery shows the Products subtotal, the Courier Delivery charge, the Adulis 0.5% surcharge and the Total. Buyer Collection shows its approved fulfilment charge according to DD (free), and Seller Delivery uses the Seller's approved DD charge (Nura Glow ETB 120.00, Volt House ETB 100.00). Volt House offers Courier Delivery only from 16:30. Do not invent prices or charges (DD *Sellers*).
+22. WO-006 may test Buyer Collection → price breakdown → payment → payment success using a `TEST-*` Order. This doesn't create a canonical Buyer Collection Order in DD and doesn't resolve WO-006A: the pending canonical Maya Buyer Collection scenario is required only before WO-006A implements the normal Buyer-app final Collection Handoff. WO-006 stops the Buyer Collection test after the Checkout/payment outcome and doesn't simulate the Collection QR final handoff.
+23. A prototype-only control labelled "PROTOTYPE NAVIGATION — NOT PRODUCTION UI" (§61) loads the Scenario A, Scenario B2 or Scenario B3 carts and, for Scenario B3, picks "All payments succeed" or "Order 2 payment fails". It's listed among the Prototype Guide's prototype-only controls (§2) and is never a Buyer feature.
 
 **DATA REQUIREMENTS.**
 
 - DD *Products* (prices and variants), DD *Sellers* (fulfilment options and charges), DD *Buyer* (delivery address detail), and DD *Seller Orders* (`ADU-24091`, `ADU-24092`, and the payment references and attempts).
+- The test runs use only DD *Products* (`PRD-AA-001`, `PRD-AA-002`, `PRD-NG-001`, `PRD-NG-002` and `PRD-VH-003`, with their variants and prices) and DD *Sellers* (fulfilment options and charges).
 
 **VISUAL / UX REQUIREMENTS.**
 
 - The existing checkout layouts.
 - §56 states: Processing, Failed with a Retry action, and Paid.
 - §57 accessibility, at 390 px and 360 px (§4).
+- The test runs reuse the existing Seller-specific Cart, Your carts, Checkout and payment screens.
 
 **TECHNICAL CONSTRAINTS.**
 
 - The standard constraints.
 - Prices, totals and payment attempts come from the WO-001 module; no screen computes its own surcharge.
 - No test framework.
+- Test runs compute their totals with the WO-001 module's money rules (the surcharge is 0.5% of the Products subtotal, R5.6–5.8) and keep their carts, Orders and payment attempts in session state; resetting the prototype or the test scenario clears them (R3.12).
 
 **VALIDATION.**
 
 - Type-check and build pass.
 - Run Flows C and D in the browser and compare every amount, identifier, attempt and time with DD.
 - Check that the surcharge is separate and that all wording is per Seller.
+- From the prototype-only control, run Scenario A with each Addis Atelier fulfilment option, Scenario B2 and both Scenario B3 outcomes, and compare every item, amount, reference, attempt and progress message with requirements 12–23.
+- Choose each fulfilment mode: Buyer Collection, Seller Delivery and Courier Delivery each complete payment on a `TEST-*` Order, and the Buyer Collection test stops at its payment outcome.
+- Check that no `TEST-*` Order appears in Buyer Orders history, Seller Console Orders, Seller Insights, Courier statistics, Reviews or Claims, and that resetting the prototype or the test scenario removes every test run while `ADU-24091` and `ADU-24092` stay unchanged.
 
 **ACCEPTANCE CRITERIA.**
 
 1. Flow C finishes with `ADU-24091` Paid at ETB 2,642.25.
 2. Flow D finishes with two separate Paid Orders, `ADU-24091` and `ADU-24092`, at DD's totals, after the failed attempt and the retry.
-3. Requirements 1–11 hold.
-4. The standard checks pass.
+3. Single-Seller Checkout is fully clickable.
+4. Two-Seller Checkout is testable.
+5. Three-Seller Checkout is testable.
+6. Seller Orders stay independent.
+7. Sequential payment progress is understandable.
+8. Payment failure in one Seller Order does not rewrite successful payments.
+9. Requirements 1–23 hold.
+10. The standard checks pass.
 
 **REQUIRED COMMANDS.** The standard commands.
 
-**COMPLETION REPORT FORMAT.** The standard report, plus screenshots of each price breakdown and of the failed and retried payment.
+**COMPLETION REPORT FORMAT.** The standard report, plus screenshots of each price breakdown, of the failed and retried payment, and of Scenario B3's payment progress and partial completion.
 
 ### WO-006A — Buyer Final Handoff Verification
 
@@ -1084,6 +1122,8 @@ WO-003 to WO-006 are not blocked by this decision. WO-006A stays in the executio
 - 2026-10-02: Final work-order decisions applied after the rules (3.7 changed; 3.10–3.12 added), the specification (sections 4, 7, 12 and 29) and DEMO_DATA.md were updated. WO-002, WO-003 and WO-004 are now APPROVED FOR IMPLEMENTATION, so all eleven are. WO-001, WO-007 and WO-011 were updated to match. None is implemented.
 - 2026-10-04: Approved amendments discovered during WO-002 recorded. WO-004 gains requirements 13 and 14: it owns Buyer-facing discount presentation, not Checkout calculation. WO-006 gains requirements 10 and 11: it owns discounted Cart/Checkout (transactional) correctness, and the existing historical Orders don't change. New WO-006A — Buyer Final Handoff Verification is APPROVED FOR IMPLEMENTATION and runs after WO-006 and before WO-007; no existing work order is renumbered. The acceptance criteria of WO-004 and WO-006 now cover their new requirements, and the status line and execution order were updated to match. No other work order and no canonical demo record changed. WO-004, WO-006 and WO-006A are not implemented.
 - 2026-10-04: Post-WO-002 cleanup. Implementation progress added as its own section, separate from approval status: WO-001 and WO-002 are implemented and merged; WO-003 to WO-011, including WO-006A, are not started. Dependencies on WO-006A made explicit: WO-007 depends on WO-001 to WO-006A, and WO-011 on WO-001 to WO-010 including WO-006A, which it regression-tests. WO-006A is now PENDING DECISION until a canonical Maya Buyer Collection scenario is approved in DEMO_DATA.md; `ADU-23952` and `ADU-24041` must not be used as Maya's Orders, and WO-003 to WO-006 aren't blocked. Product Post Detail discount presentation is assigned to WO-004 (requirements 15–17); WO-006 still owns transactional discount correctness. The status line, the Statuses convention and the execution-order note were updated to match. No canonical demo record changed, and no work order was implemented in this pass.
+- 2026-10-04: WO-006 extended with the Checkout testing environment from the original Figma correction list's Correction Work Order 03, reconciled with DEMO_DATA.md as approved: session-only Scenario A (Addis Atelier: Linen Overshirt M/Natural and Wide-Leg Trousers M/Charcoal) and Scenario B (Addis Atelier, Nura Glow and Volt House, with sequential payments and partial completion); `TEST-` references; fixed fulfilment modes, with Buyer Collection selectable but not paid; and a prototype-only scenario control. These are requirements 12–19 and acceptance criteria 3–8. The original Overshirt M/Sand, Trousers M/Black and Compact Power Bank were replaced, because DEMO_DATA.md has no such variants and the Power Bank is out of stock. Flows C and D, every other work order and every canonical demo record are unchanged. WO-006 stays APPROVED FOR IMPLEMENTATION, in sequence and not started.
+- 2026-10-04: WO-006 documentation correction. The Checkout work is confirmed as WO-006, not WO-003, which remains Guest Buyer Authentication States; WHY now says so. Scenario B is renamed Scenario B3 (three Sellers), and the new Scenario B2 adds explicit two-Seller coverage with Scenario B3's Addis Atelier and Nura Glow carts. Test Orders use scenario-scoped references (`TEST-A-01`, `TEST-B2-01`, `TEST-B2-02`, `TEST-B3-01` to `TEST-B3-03`), and payment attempts have their own `TESTPAY-` references, with a retry staying on the same Seller Order. Buyer Collection can now be paid on a test Order (Scenario A), stopping at the payment outcome, without creating a DEMO_DATA Order or resolving WO-006A. Test Orders stay out of canonical Orders, Insights, statistics, Reviews, Claims and aggregates. These are requirements 12–23. No guest-cart Order reference is resolved, and WO-003 is unchanged. No canonical demo record changed; WO-006 stays APPROVED FOR IMPLEMENTATION and not started.
 
 ## Related documents
 
