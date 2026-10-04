@@ -63,8 +63,12 @@ pnpm on Node 22 (versions pinned in `.mise.toml`).
   - Only `SystemStates.tsx` and `DemoFlows.tsx` use Tailwind responsive variants.
   - Operator Console is intentionally desktop-only (`min-width: 1180px` inside a horizontally scrolling `main`).
 - **Invalid colour gotcha.** Appending hex alpha to a CSS variable (`` `${'var(--x)'}20` ``) produces invalid CSS that the browser drops.
-  - Operator Console tints, the `Button` focus indicator and the `Input` focus glow are affected, and the approved visuals render *without* them. Fixing them changes the look, so get sign-off first.
+  - Operator Console tints and the `Input` focus glow are affected, and the approved visuals render *without* them. Fixing them changes the look, so get sign-off first.
   - For translucent token colours, use Tailwind opacity modifiers (`border-brand/20`, already used) or `color-mix()` inline.
+- **Keyboard focus.** Every control, the shared `Button` included, shows the global `:focus-visible` outline from `index.css`: 3 px of the info blue (`--color-info`), offset 2 px.
+  - It appears for keyboard focus only, not on mouse or touch activation. Don't suppress it with an inline `outline: none`, and don't bring back the old hex-alpha focus shadow.
+  - On a dark or photo surface where the blue lacks contrast, use the light inverse token instead: `outlineColor: 'var(--color-text-inverse)'`, as on the Buyer entry screen.
+  - This is accessibility behaviour, not a brand-colour rule.
 
 ## Repo notes
 
