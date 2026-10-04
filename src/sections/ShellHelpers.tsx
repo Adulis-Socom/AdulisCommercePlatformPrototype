@@ -1,6 +1,6 @@
 /** Shared structural primitives for Adulis product shell prototypes. */
 
-import { useState, ReactNode } from 'react'
+import { useRef, useState, ReactNode } from 'react'
 import { initials } from '../demo-data'
 
 /* ─── Phone Frame ─── */
@@ -170,14 +170,27 @@ export function TabBar({
 }
 
 /* ─── Desktop top-bar ─── */
-export function ConsoleTopBar({
+export interface SellerOption<T extends string> {
+  id: T
+  name: string
+  detail: string
+}
+
+/** With `sellerOptions` and `onSelectSeller`, the Seller selector's chevron opens a menu of those Sellers. */
+export function ConsoleTopBar<T extends string>({
   sellerName,
   sellerSelector,
   dark,
+  sellerOptions,
+  selectedSeller,
+  onSelectSeller,
 }: {
   sellerName?: string
   sellerSelector?: boolean
   dark?: boolean
+  sellerOptions?: readonly SellerOption<T>[]
+  selectedSeller?: T
+  onSelectSeller?: (id: T) => void
 }) {
   const bg = dark ? 'var(--color-operator-surface)' : 'var(--color-surface)'
   const border = dark ? 'var(--color-operator-border)' : 'var(--color-border)'
@@ -203,7 +216,10 @@ export function ConsoleTopBar({
       <div className="flex-1" />
 
       {/* Seller name + selector */}
-      {sellerName && (
+      {sellerName && sellerSelector && sellerOptions && onSelectSeller && (
+        <SellerMenu sellerName={sellerName} options={sellerOptions} selected={selectedSeller} onSelect={onSelectSeller} accent={accent} text={text} muted={muted} />
+      )}
+      {sellerName && !(sellerSelector && sellerOptions && onSelectSeller) && (
         <div className="flex items-center gap-2">
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
@@ -232,6 +248,80 @@ export function ConsoleTopBar({
         </div>
       </div>
     </header>
+  )
+}
+
+/** The top bar's Seller name and avatar as one button, opening the menu of Sellers to switch between. */
+function SellerMenu<T extends string>({ sellerName, options, selected, onSelect, accent, text, muted }: {
+  sellerName: string
+  options: readonly SellerOption<T>[]
+  selected?: T
+  onSelect: (id: T) => void
+  accent: string
+  text: string
+  muted: string
+}) {
+  const [open, setOpen] = useState(false)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const choose = (id: T) => { setOpen(false); onSelect(id) }
+  return (
+    <div className="relative" onKeyDown={event => { if (event.key === 'Escape' && open) { setOpen(false); trigger.current?.focus() } }}>
+      <button
+        ref={trigger}
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Seller: ${sellerName}. Switch Seller`}
+        className="flex items-center gap-2"
+      >
+        <span
+          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+          style={{ background: accent, color: '#fff' }}
+        >
+          {initials(sellerName)}
+        </span>
+        <span className="text-sm font-medium" style={{ color: text }}>{sellerName}</span>
+        <span style={{ color: muted }}>
+          <IconChevronDown size={14} />
+        </span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setOpen(false)} />
+          <div
+            role="menu"
+            aria-label="Switch Seller"
+            className="absolute right-0 z-50 mt-2 rounded-xl border p-1.5"
+            style={{ top: '100%', width: 264, background: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-lg)' }}
+          >
+            <p className="px-2.5 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>Prototype · Switch Seller</p>
+            {options.map(option => {
+              const current = option.id === selected
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={current}
+                  autoFocus={current}
+                  onClick={() => choose(option.id)}
+                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left"
+                  style={{ minHeight: 44, background: current ? 'var(--color-brand-muted)' : 'transparent' }}
+                >
+                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: current ? accent : 'var(--color-surface-raised)', color: current ? '#fff' : 'var(--color-text-secondary)' }}>{initials(option.name)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{option.name}</span>
+                    <span className="block truncate text-xs" style={{ color: 'var(--color-text-muted)' }}>{option.detail}</span>
+                  </span>
+                  {current && <span className="text-xs font-semibold" style={{ color: 'var(--color-brand)' }}>Current</span>}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 

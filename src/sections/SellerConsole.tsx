@@ -12,13 +12,15 @@ import {
 } from './ShellHelpers'
 import { useStory } from '../StoryClock'
 import {
-  BUYERS, CHATBOTS, CLAIMS, CLAIM_IDS, CONTENT_PERFORMANCE_7D, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET,
-  MODERATION_CASES, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, SELLERS, SELLER_SESSIONS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, VOLT_HOUSE_PREPUBLICATION,
-  awaitingSellerReplyAt, claimStateAt, claimSubmitted, claimsForOrder, completedForSellerAt, contextOptionsAt, courierAvailabilityAt,
-  courierCompensationAt, formatAge, formatClock, formatDate, formatDayMonth, formatEtb, formatLongDate, formatWeekday, fulfilmentOptionsAt,
-  happenedBefore, isForYouEligibleAt, lineOptions, messagesAt, orderStateAt, orderTotals, ordersAt, paidAt, paymentReference,
-  postsNeedingAttentionAt, prepublicationCards, relationshipStatusAt, restrictionAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt,
-  sellerProductsAt, sellerServiceAt, shortName, stateTime, trustAt,
+  BUYERS, CHATBOTS, CLAIMS, CLAIM_IDS, CONTENT_PERFORMANCE_7D, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, DEFAULT_SNAPSHOT, HANDOFF_REVIEWS,
+  INSIGHTS_7D, MARKET, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS, SELLER_SESSIONS, SELLER_SETTINGS,
+  SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, VOLT_HOUSE_PREPUBLICATION,
+  activeDiscount, awaitingSellerReplyAt, claimStateAt, claimSubmitted, claimsForOrder, completedForSellerAt, contextOptionsAt, courierAvailabilityAt,
+  courierCompensationAt, currentPrice, formatAge, formatCalendarDate, formatClock, formatDate, formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday,
+  fulfilmentOptionsAt, happenedBefore, isForYouEligibleAt, lineOptions, messagesAt, moderationIssuesAt, onAdulisSince, orderStateAt, orderTotals, ordersAt,
+  ordersRequiringPreparationAt, paidAt,
+  paymentReference, postsNeedingAttentionAt, preparationAt, prepublicationCards, prepublicationSnapshotFor, productQualityAt, relationshipStatusAt, restrictionAt,
+  reviewsAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, showcaseSellers, stateTime, trustAt,
   type ClaimId, type ClaimState, type ConversationId, type CourierId, type MessageContext, type Moment, type OrderId, type OrderState, type ProductId,
   type SellerId, type ShoppablePostId,
 } from '../demo-data'
@@ -54,11 +56,12 @@ const SECONDARY_NAV: NavItem[] = [
   { key: 'settings', label: 'Settings', icon: <IconSettings size={14} /> },
 ]
 
+// Mode-neutral buckets (specification §30); each Order row shows its own fulfilment-specific state.
 const BUCKETS: { key: OrderBucket; label: string }[] = [
   { key: 'needs-action', label: 'Needs Action' },
   { key: 'preparing', label: 'Preparing' },
-  { key: 'ready', label: 'Ready / Awaiting Courier' },
-  { key: 'delivery', label: 'In Delivery' },
+  { key: 'ready', label: 'Ready / Awaiting Fulfilment' },
+  { key: 'delivery', label: 'In Fulfilment' },
   { key: 'completed', label: 'Completed' },
   { key: 'cancelled', label: 'Cancelled / Refunded' },
 ]
@@ -113,11 +116,29 @@ function whenLabel(time: string, at: Moment) {
   return `${time.slice(0, 10) === at.at.slice(0, 10) ? 'Today' : formatDayMonth(time)} · ${formatClock(time)}`
 }
 
+/** '2 Oct 16:00': a record-specific deadline. */
+function dueLabel(time: string) {
+  return `${formatDayMonth(time)} ${formatClock(time)}`
+}
+
+/** 'Prepare by 2 Oct 16:00', then '· met' once the Order is Ready in time: the Order's own deadline, never a policy. */
+function prepareByLabel(orderId: OrderId, at: Moment) {
+  const preparation = preparationAt(orderId, at)
+  return preparation && `Prepare by ${dueLabel(preparation.due)}${preparation.met ? ' · met' : ''}`
+}
+
+/** The greeting for the story moment's time of day. */
+function greeting(at: Moment) {
+  const hour = Number(formatClock(at.at).slice(0, 2))
+  return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+}
+
 export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
   const initialNav = (demoTarget && ['home', 'orders', 'products', 'content', 'inbox', 'claims', 'reviews', 'trust', 'insights', 'store', 'couriers', 'automation', 'settings'].includes(demoTarget) ? demoTarget : 'home') as NavKey
-  // The Seller and story moment of the guided-flow step (the default Seller at the 10:25 snapshot otherwise).
+  // The story moment of the guided-flow step (the 10:25 snapshot otherwise). The console opens on the step's Seller
+  // (the default Seller otherwise); the top-bar Seller selector switches between the primary showcase Sellers.
   const { moment: at, seller: storySeller } = useStory()
-  const sellerId = storySeller ?? SURFACE_DEFAULTS.seller
+  const [sellerId, setSellerId] = useState<SellerId>(storySeller ?? SURFACE_DEFAULTS.seller)
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState<OrderId | null>(null)
@@ -126,6 +147,12 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
     setActiveNav(key)
     setSelectedOrder(null)
   }
+  // Switching Seller keeps the section and drops everything chosen for the previous Seller.
+  const switchSeller = (id: SellerId) => {
+    setSellerId(id)
+    setSelectedOrder(null)
+  }
+  const sellerOptions = showcaseSellers().map(id => ({ id, name: SELLERS[id].name, detail: `${SELLERS[id].category} · ${SELLERS[id].handle}` }))
 
   // Sidebar counts: Paid Orders needing action, conversations awaiting a reply, and open Claims.
   const badges: Partial<Record<NavKey, number>> = {
@@ -150,9 +177,10 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <ConsoleTopBar sellerName={SELLERS[sellerId].name} sellerSelector />
-        <div className="flex-1 overflow-y-auto">
-          {activeNav === 'home' && <HomePanel sellerId={sellerId} at={at} onOpenOrder={id => { setActiveNav('orders'); setSelectedOrder(id) }} onOpenOrders={() => navigate('orders')} />}
+        <ConsoleTopBar sellerName={SELLERS[sellerId].name} sellerSelector sellerOptions={sellerOptions} selectedSeller={sellerId} onSelectSeller={switchSeller} />
+        {/* Keyed by Seller: each panel starts again from the selected Seller's records. */}
+        <div key={sellerId} className="flex-1 overflow-y-auto">
+          {activeNav === 'home' && <HomePanel sellerId={sellerId} at={at} onOpenOrder={id => { setActiveNav('orders'); setSelectedOrder(id) }} onOpenOrders={() => navigate('orders')} onOpenContent={() => navigate('content')} />}
           {activeNav === 'orders' && (selectedOrder ? <OrderDetail orderId={selectedOrder} at={at} onBack={() => setSelectedOrder(null)} /> : <OrdersPanel sellerId={sellerId} at={at} onOpenOrder={setSelectedOrder} />)}
           {activeNav === 'products' && <ProductsPanel sellerId={sellerId} at={at} />}
           {activeNav === 'content' && <ContentPanel sellerId={sellerId} at={at} />}
@@ -164,22 +192,26 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
           {activeNav === 'store' && <StorePanel sellerId={sellerId} at={at} onOpenCouriers={() => navigate('couriers')} />}
           {activeNav === 'couriers' && <CouriersPanel sellerId={sellerId} at={at} />}
           {activeNav === 'automation' && <AutomationPanel sellerId={sellerId} at={at} />}
-          {activeNav === 'settings' && <SettingsPanel sellerId={sellerId} />}
+          {activeNav === 'settings' && <SettingsPanel sellerId={sellerId} at={at} />}
         </div>
       </div>
     </div>
   )
 }
 
-function HomePanel({ sellerId, at, onOpenOrder, onOpenOrders }: { sellerId: SellerId; at: Moment; onOpenOrder: (id: OrderId) => void; onOpenOrders: () => void }) {
+function HomePanel({ sellerId, at, onOpenOrder, onOpenOrders, onOpenContent }: { sellerId: SellerId; at: Moment; onOpenOrder: (id: OrderId) => void; onOpenOrders: () => void; onOpenContent: () => void }) {
+  // The Seller's current Home is the Daily Operations Brief. The pre-publication Home is offered only where DEMO_DATA
+  // records a Pre-publication Setup Snapshot: a historical replay that leaves the Seller's current state unchanged.
+  const snapshot = prepublicationSnapshotFor(sellerId)
   const [mode, setMode] = useState<HomeMode>('active')
+  const showing: HomeMode = snapshot ? mode : 'active'
   return (
     <div className="mx-auto max-w-6xl p-8">
       <div className="mb-6 flex items-start justify-between">
-        <div><h1 className="font-display text-3xl font-semibold text-text-primary">{mode === 'active' ? `Good morning, ${SELLERS[sellerId].name}` : 'Prepare your store for publication'}</h1><p className="mt-1 text-sm text-text-muted">{mode === 'active' ? `${formatWeekday(at.at)}, ${formatDate(at.at)} · Here is what needs attention today.` : 'Complete the required foundations before your store is published.'}</p></div>
-        <Segmented options={[['pre-publication', 'Pre-publication'], ['active', 'Active Seller']]} active={mode} onChange={value => setMode(value as HomeMode)} />
+        <div><h1 className="font-display text-3xl font-semibold text-text-primary">{showing === 'active' ? `${greeting(at)}, ${SELLERS[sellerId].name}` : 'Prepare your store for publication'}</h1><p className="mt-1 text-sm text-text-muted">{showing === 'active' ? `${formatWeekday(at.at)}, ${formatDate(at.at)} · Here is what needs attention today.` : 'Complete the required foundations before your store is published.'}</p></div>
+        {snapshot && <Segmented options={[['pre-publication', 'Pre-publication'], ['active', 'Active Seller']]} active={showing} onChange={value => setMode(value as HomeMode)} />}
       </div>
-      {mode === 'pre-publication' ? <PublicationReadiness /> : <DailyOperations sellerId={sellerId} at={at} onOpenOrder={onOpenOrder} onOpenOrders={onOpenOrders} />}
+      {showing === 'pre-publication' ? <PublicationReadiness /> : <DailyOperations sellerId={sellerId} at={at} onOpenOrder={onOpenOrder} onOpenOrders={onOpenOrders} onOpenContent={onOpenContent} />}
     </div>
   )
 }
@@ -194,7 +226,7 @@ function PublicationReadiness() {
   return (
     <>
       <div className="mb-5 rounded-2xl border border-brand/20 bg-brand-muted p-5">
-        <div className="flex items-center justify-between"><div><div className="text-xs font-semibold uppercase tracking-wider text-brand-dark">Publication Readiness Hub · {SELLERS[snapshot.seller].name} · {formatLongDate(snapshot.replay.at)}, {formatClock(snapshot.replay.at)}</div><div className="mt-1 font-display text-2xl font-semibold">{complete} of {cards.length} foundations complete</div></div><div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface font-mono text-sm font-bold text-brand">{percent}%</div></div>
+        <div className="flex items-center justify-between"><div><div className="text-xs font-semibold uppercase tracking-wider text-brand-dark">Publication Readiness Hub · Setup snapshot · {SELLERS[snapshot.seller].name} · {formatLongDate(snapshot.replay.at)}, {formatClock(snapshot.replay.at)}</div><div className="mt-1 font-display text-2xl font-semibold">{complete} of {cards.length} foundations complete</div></div><div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface font-mono text-sm font-bold text-brand">{percent}%</div></div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface"><div className="h-full rounded-full bg-brand" style={{ width: `${percent}%` }} /></div>
       </div>
       <div className="grid grid-cols-3 gap-4">
@@ -216,44 +248,61 @@ function ReadinessCard({ title, detail, status, state, action }: { title: string
   )
 }
 
-function DailyOperations({ sellerId, at, onOpenOrder, onOpenOrders }: { sellerId: SellerId; at: Moment; onOpenOrder: (id: OrderId) => void; onOpenOrders: () => void }) {
-  // The specification §29 priorities, counted from the Seller's records at the story moment.
+function DailyOperations({ sellerId, at, onOpenOrder, onOpenOrders, onOpenContent }: { sellerId: SellerId; at: Moment; onOpenOrder: (id: OrderId) => void; onOpenOrders: () => void; onOpenContent: () => void }) {
+  // The specification §29 priorities, counted from the Seller's records at the story moment. Deadlines are each
+  // record's own demo timestamps, not Adulis-wide preparation or Claim policy.
   const orders = sellerOrders(sellerId, at)
-  const paid = orders.filter(id => orderStateAt(id, at) === 'Paid')
+  // Paid or Preparing: an Order requires preparation until it reaches its mode's Ready state. Most recently paid first.
+  const toPrepare = ordersRequiringPreparationAt(sellerId, at).sort((a, b) => paidAt(b).localeCompare(paidAt(a)))
+  const prepareBy = toPrepare.map(id => ORDERS[id].prepareBy).filter((d): d is string => !!d).sort()[0]
   const claims = sellerClaims(sellerId, at).filter(id => claimStateAt(id, at) !== 'Resolved')
-  const deadline = claims.map(id => CLAIMS[id].responseDeadline).filter((d): d is string => !!d).sort()[0]
+  const dueClaim = claims.filter(id => CLAIMS[id].responseDeadline).sort((a, b) => CLAIMS[a].responseDeadline!.localeCompare(CLAIMS[b].responseDeadline!))[0]
+  // Ready / Awaiting Fulfilment, in any mode; the detail names each Order's own state.
+  const ready = orders.filter(id => bucketOf(orderStateAt(id, at)!) === 'ready')
   const awaiting = sellerThreads(sellerId, at).filter(({ id }) => awaitingSellerReplyAt(id, at))
   const stockRisks = sellerProductsAt(sellerId, at).filter(id => PRODUCTS[id].availability !== 'Available')
   const posts = postsNeedingAttentionAt(sellerId, at)
-  const moderation = (Object.keys(MODERATION_CASES) as (keyof typeof MODERATION_CASES)[]).filter(id => SHOPPABLE_POSTS[MODERATION_CASES[id].post].seller === sellerId && happenedBefore(MODERATION_CASES[id].reported, at))
+  const restricted = moderationIssuesAt(sellerId, at)
   // A delivery exception is a failed final handoff escalated to Handoff Manual Review.
   const exceptions = Object.values(HANDOFF_REVIEWS).filter(review => ORDERS[review.order].seller === sellerId && happenedBefore(review.escalated.at, at))
   const oldest = (time?: string) => (time ? `Oldest waiting ${formatAge(time, at.at)}` : '—')
   const priorities = [
-    { rank: 1, label: 'Paid Orders requiring preparation', count: paid.length, detail: oldest(paid.map(paidAt).sort()[0]), tone: 'brand', action: () => onOpenOrders() },
-    { rank: 2, label: 'Claims', count: claims.length, detail: deadline ? `Response due ${formatDayMonth(deadline)} ${formatClock(deadline)}` : '—', tone: 'danger' },
-    { rank: 3, label: 'Ready for Courier', count: orders.filter(id => orderStateAt(id, at) === 'Ready for Courier').length, detail: 'Awaiting assignment', tone: 'info' },
+    { rank: 1, label: 'Orders requiring preparation', count: toPrepare.length, detail: `${oldest(toPrepare.map(paidAt).sort()[0])}${prepareBy ? ` · prepare by ${dueLabel(prepareBy)}` : ''}`, tone: 'brand', action: () => onOpenOrders() },
+    { rank: 2, label: 'Claims', count: claims.length, detail: dueClaim ? `${dueClaim} · response due ${dueLabel(CLAIMS[dueClaim].responseDeadline!)}` : '—', tone: 'danger' },
+    { rank: 3, label: 'Orders ready for fulfilment', count: ready.length, detail: [...new Set(ready.map(id => orderStateAt(id, at)!))].join(' · ') || '—', tone: 'info' },
     { rank: 4, label: 'Delivery exceptions', count: exceptions.length, detail: exceptions.length ? 'Handoff manual review' : '—', tone: 'warning' },
     { rank: 5, label: 'Inventory risks', count: stockRisks.length, detail: stockRisks.map(id => PRODUCTS[id].name).join(' · ') || '—', tone: 'warning' },
     { rank: 6, label: 'Unanswered messages', count: awaiting.length, detail: oldest(awaiting.map(t => t.last.at).sort()[0]), tone: 'brand' },
-    { rank: 7, label: 'Content requiring action', count: posts.length, detail: posts.length ? 'Product unavailable' : '—', tone: 'warning' },
-    { rank: 8, label: 'Moderation', count: moderation.length, detail: moderation.length ? (restrictionAt(MODERATION_CASES[moderation[0]].post, at) ? 'Post restricted' : 'Post review requested') : '—', tone: 'danger' },
+    { rank: 7, label: 'Shoppable Posts needing action', count: posts.length, detail: posts.map(id => SHOPPABLE_POSTS[id].title).join(' · ') || '—', tone: 'warning', action: posts.length ? onOpenContent : undefined },
+    { rank: 8, label: 'Moderation issues', count: restricted.length, detail: restricted.length ? `Restricted · ${restricted.map(id => SHOPPABLE_POSTS[id].title).join(' · ')}` : '—', tone: 'danger' },
   ]
   return (
     <div className="grid grid-cols-[1.45fr_1fr] gap-5">
       <div className="rounded-2xl border border-border bg-surface p-5">
         <div className="mb-4 flex items-center justify-between"><div><div className="font-display text-xl font-semibold">Daily Operations Brief</div><div className="text-xs text-text-muted">Ordered by operational priority</div></div><StatusBadge status="active" size="sm" customLabel={`${priorities.reduce((sum, item) => sum + item.count, 0)} open`} /></div>
         <div className="divide-y divide-border">
-          {priorities.map(item => <PriorityRow key={item.rank} {...item} />)}
+          {priorities.map(item => <div key={item.rank}><PriorityRow {...item} />{item.rank === 7 && posts.map(id => <PostNeedingAction key={id} postId={id} />)}</div>)}
         </div>
       </div>
       <div className="flex flex-col gap-5">
         <div className="rounded-2xl border border-border bg-surface p-5">
           <div className="mb-4 flex items-center justify-between"><div className="font-semibold">Next Paid Orders</div><button onClick={onOpenOrders} className="text-xs font-semibold text-brand">View all</button></div>
-          {paid.slice(0, 3).map(id => <button key={id} onClick={() => onOpenOrder(id)} className="flex w-full items-center gap-3 border-b border-border py-3 text-left last:border-b-0"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted font-mono text-[9px] font-bold text-brand-dark">{id.slice(-3)}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{orderItems(id)}</span><span className="text-[10px] text-text-muted">{shortName(BUYERS[ORDERS[id].buyer].name)} · {formatAge(paidAt(id), at.at)}</span></span><StatusBadge status="paid" size="sm" /></button>)}
+          {toPrepare.slice(0, 3).map(id => <button key={id} onClick={() => onOpenOrder(id)} className="flex w-full items-center gap-3 border-b border-border py-3 text-left last:border-b-0"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted font-mono text-[9px] font-bold text-brand-dark">{id.slice(-3)}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{orderItems(id)}</span><span className="text-[10px] text-text-muted">{shortName(BUYERS[ORDERS[id].buyer].name)} · {formatAge(paidAt(id), at.at)}</span></span><StatusBadge {...stateBadge(orderStateAt(id, at)!)} size="sm" /></button>)}
+          {toPrepare.length === 0 && <p className="py-2 text-xs text-text-muted">No Orders requiring preparation.</p>}
         </div>
         <PerformanceCard sellerId={sellerId} />
       </div>
+    </div>
+  )
+}
+
+/** DEMO_DATA's "Needs attention" record for a post under Shoppable Posts needing action. The post stays published (rule 1.8). */
+function PostNeedingAction({ postId }: { postId: ShoppablePostId }) {
+  return (
+    <div className="mb-3 ml-[52px] rounded-xl border border-warning/20 bg-warning-bg p-3">
+      <div className="flex items-center justify-between gap-3"><span className="text-xs font-semibold text-warning">{POST_NEEDS_ATTENTION.title}</span><StatusBadge status="published" size="sm" /></div>
+      <div className="mt-1 text-sm font-semibold">{SHOPPABLE_POSTS[postId].title} <span className="font-mono text-[10px] font-normal text-text-muted">{postId}</span></div>
+      <p className="mt-1 text-xs leading-relaxed text-text-secondary">{POST_NEEDS_ATTENTION.message}</p>
     </div>
   )
 }
@@ -301,45 +350,44 @@ function OrdersTable({ rows, at, onOpenOrder }: { rows: OrderId[]; at: Moment; o
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-surface">
       <div className="grid grid-cols-[130px_1fr_160px_120px_110px_20px] gap-4 bg-surface-raised px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted"><span>Seller Order</span><span>Product / Buyer</span><span>Status</span><span>Total</span><span>Age</span><span /></div>
-      {rows.map(id => <button key={id} onClick={() => onOpenOrder(id)} className="grid w-full grid-cols-[130px_1fr_160px_120px_110px_20px] items-center gap-4 border-t border-border px-5 py-4 text-left hover:bg-surface-raised"><span className="font-mono text-xs font-semibold">{id}</span><span><span className="block text-sm font-semibold">{orderItems(id)}</span><span className="text-xs text-text-muted">{shortName(BUYERS[ORDERS[id].buyer].name)}</span></span><span><StatusBadge {...stateBadge(orderStateAt(id, at)!)} size="sm" /></span><span className="text-sm font-semibold">{formatEtb(orderTotals(id).total)}</span><span className="text-xs text-text-muted">{formatAge(paidAt(id), at.at)}</span><span>›</span></button>)}
+      {rows.map(id => <button key={id} onClick={() => onOpenOrder(id)} className="grid w-full grid-cols-[130px_1fr_160px_120px_110px_20px] items-center gap-4 border-t border-border px-5 py-4 text-left hover:bg-surface-raised"><span className="font-mono text-xs font-semibold">{id}</span><span><span className="block text-sm font-semibold">{orderItems(id)}</span><span className="text-xs text-text-muted">{shortName(BUYERS[ORDERS[id].buyer].name)}</span></span><span><StatusBadge {...stateBadge(orderStateAt(id, at)!)} size="sm" />{prepareByLabel(id, at) && <span className="mt-1 block text-[10px] text-text-muted">{prepareByLabel(id, at)}</span>}</span><span className="text-sm font-semibold">{formatEtb(orderTotals(id).total)}</span><span className="text-xs text-text-muted">{formatAge(paidAt(id), at.at)}</span><span>›</span></button>)}
     </div>
   )
 }
 
-type LocalStage = 'paid' | 'preparing' | 'ready' | 'assigned'
-const LOCAL_STAGES: readonly LocalStage[] = ['paid', 'preparing', 'ready', 'assigned']
-
 function OrderDetail({ orderId, at, onBack }: { orderId: OrderId; at: Moment; onBack: () => void }) {
   // The Order's mode-specific timeline (rules 4.4–4.7) at the story moment; the prototype controls step through its
-  // first four states.
+  // first four states, each named as the Order's own fulfilment mode names it.
   const order = ORDERS[orderId]
   const timeline = ORDER_TIMELINES[order.fulfilment]
+  const controls = timeline.slice(0, 4)
   const canonical = Math.max(0, timeline.indexOf(orderStateAt(orderId, at) ?? 'Paid'))
   const [override, setOverride] = useState<number | null>(null)
   const current = override ?? canonical
   const state = timeline[current]
-  const stage = LOCAL_STAGES[Math.min(current, 3)]
-  const setStage = (value: LocalStage) => setOverride(LOCAL_STAGES.indexOf(value))
+  const control = Math.min(current, controls.length - 1)
   const [chatOpen, setChatOpen] = useState(false)
   const courierMode = order.fulfilment === 'Courier Delivery'
   const buyer = BUYERS[order.buyer]
   const totals = orderTotals(orderId)
   const paid = paidAt(orderId)
+  const preparation = preparationAt(orderId, at)
   const happened = (s: OrderState) => current >= timeline.indexOf(s) && timeline.includes(s)
   const claim = claimsForOrder(orderId).find(id => claimStateAt(id, at) !== null)
   const conversation = CONVERSATION_IDS.find(id => CONVERSATIONS[id].seller === order.seller && CONVERSATIONS[id].buyer === order.buyer)
   const lastBuyerMessage = conversation && messagesAt(conversation, at).filter(m => m.from === 'buyer').pop()
   const location = (evidence?: { location?: string }) => (evidence?.location ? `Location ${evidence.location}` : '—')
   const verified = (evidence?: { method: string }) => (!evidence ? 'Not available' : evidence.method === 'Not verified' ? 'Not verified' : `${evidence.method} verified`)
+  const collection = order.fulfilment === 'Buyer Collection'
   return (
     <div className="mx-auto max-w-7xl p-8">
       <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand">← Back to Orders</button>
-      <div className="mb-6 flex items-start justify-between"><div><div className="flex items-center gap-3"><h1 className="font-display text-3xl font-semibold">{orderId}</h1><StatusBadge {...stateBadge(state)} /></div><p className="mt-1 text-sm text-text-muted">Seller Order · Created after provider-verified payment</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setChatOpen(!chatOpen)}>Chat with Buyer</Button>{current === 0 && <Button onClick={() => setStage('preparing')}>Start Preparation</Button>}{current === 1 && <Button onClick={() => setStage('ready')}>Mark Ready</Button>}{current === 2 && courierMode && <Button onClick={() => setStage('assigned')}>Assign Approved Courier</Button>}</div></div>
+      <div className="mb-6 flex items-start justify-between"><div><div className="flex items-center gap-3"><h1 className="font-display text-3xl font-semibold">{orderId}</h1><StatusBadge {...stateBadge(state)} /></div><p className="mt-1 text-sm text-text-muted">Seller Order · Created after provider-verified payment</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setChatOpen(!chatOpen)}>Chat with Buyer</Button>{current === 0 && <Button onClick={() => setOverride(1)}>Start Preparation</Button>}{current === 1 && <Button onClick={() => setOverride(2)}>Mark Ready</Button>}{current === 2 && courierMode && <Button onClick={() => setOverride(3)}>Assign Approved Courier</Button>}</div></div>
 
       <div className="grid grid-cols-[1.45fr_1fr] gap-5">
         <div className="flex flex-col gap-5">
           <DetailCard title="Order and Buyer">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-4"><Field label="Seller Order reference" value={orderId} /><Field label="Buyer-safe identity" value={`${shortName(buyer.name)} · ${buyer.deliveryArea ?? '—'}, ${MARKET.city}`} /><Field label="Fulfilment" value={order.fulfilment} /><Field label="Total" value={formatEtb(totals.total)} /></div>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-4"><Field label="Seller Order reference" value={orderId} /><Field label="Buyer-safe identity" value={`${shortName(buyer.name)} · ${buyer.deliveryArea ?? '—'}, ${MARKET.city}`} /><Field label="Fulfilment" value={order.fulfilment} /><Field label="Total" value={formatEtb(totals.total)} /><Field label="Prepare by" value={preparation ? `${formatDate(preparation.due)} · ${formatClock(preparation.due)}${preparation.ready ? ` · ${preparation.met ? 'met' : 'missed'}: ${preparation.ready.state} ${formatClock(preparation.ready.at)}` : ''}` : '—'} />{order.fulfilment === 'Seller Delivery' && <Field label="Delivery detail" value={[buyer.deliveryDetail, buyer.phoneMasked?.replace(/ /g, '\u00a0')].filter(Boolean).join(' · ') || '—'} />}</div>
           </DetailCard>
           <DetailCard title="Provider-verified payment" trailing={<StatusBadge status="paid" customLabel="Paid · read-only" />}>
             <div className="grid grid-cols-3 gap-4"><Field label="Provider reference" value={paymentReference(orderId)} /><Field label="Confirmed" value={`${formatDate(paid)} · ${formatClock(paid)}`} /><Field label="Payment authority" value="Provider + Adulis backend" /></div>
@@ -350,15 +398,23 @@ function OrderDetail({ orderId, at, onBack }: { orderId: OrderId; at: Moment; on
             <div className="mt-4 border-t border-border pt-3"><PriceRow label="Products" value={formatEtb(totals.products)} /><PriceRow label={order.fulfilment} value={formatEtb(totals.delivery)} /><PriceRow label="Adulis surcharge — 0.5%" value={formatEtb(totals.surcharge)} /><PriceRow label="Total" value={formatEtb(totals.total)} strong /></div>
           </DetailCard>
           <DetailCard title="Fulfilment evidence">
-            <div className="grid grid-cols-2 gap-3">
-              <Evidence title="Preparation" status={stage === 'paid' ? 'Not started' : stage === 'preparing' ? 'In progress' : 'Ready'} detail="Seller preparation checklist" />
-              <Evidence title="Courier assignment" status={!courierMode ? '—' : stage === 'assigned' && order.courier ? `${COURIERS[order.courier].name} assigned` : 'Awaiting assignment'} detail="Approved Seller Courier Pool" />
-              <Evidence title="Pickup evidence" status={!courierMode ? '—' : happened('Pickup Verified') ? verified(order.pickup) : 'Not available'} detail="Seller Pickup QR scan appears here" />
-              <Evidence title="Delivery evidence" status={happened('Completed') ? verified(order.finalHandoff) : 'Not available'} detail="Recipient Delivery QR scan appears here" />
-              <Evidence title="Pickup checkpoint" status={!courierMode ? '—' : happened('Pickup Verified') ? location(order.pickup) : 'Pending'} detail="Location recorded or unavailable" />
-              <Evidence title="Delivery checkpoint" status={!courierMode ? '—' : happened('Completed') ? location(order.finalHandoff) : 'Pending'} detail="Location recorded or unavailable" />
-            </div>
-            <div className="mt-3 text-xs text-text-muted">Checkpoint evidence is limited to pickup and delivery. No continuous GPS or live map is available.</div>
+            {/* Courier assignment, pickup and location checkpoints belong to Courier Delivery only (rules 4.7, 9.6). */}
+            {courierMode ? (
+              <div className="grid grid-cols-2 gap-3">
+                <Evidence title="Preparation" status={control === 0 ? 'Not started' : control === 1 ? 'In progress' : 'Ready'} detail="Seller preparation checklist" />
+                <Evidence title="Courier assignment" status={control === 3 && order.courier ? `${COURIERS[order.courier].name} assigned` : 'Awaiting assignment'} detail="Approved Seller Courier Pool" />
+                <Evidence title="Pickup evidence" status={happened('Pickup Verified') ? verified(order.pickup) : 'Not available'} detail="Seller Pickup QR scan appears here" />
+                <Evidence title="Delivery evidence" status={happened('Completed') ? verified(order.finalHandoff) : 'Not available'} detail="Recipient Delivery QR scan appears here" />
+                <Evidence title="Pickup checkpoint" status={happened('Pickup Verified') ? location(order.pickup) : 'Pending'} detail="Location recorded or unavailable" />
+                <Evidence title="Delivery checkpoint" status={happened('Completed') ? location(order.finalHandoff) : 'Pending'} detail="Location recorded or unavailable" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <Evidence title="Preparation" status={control === 0 ? 'Not started' : control === 1 ? 'In progress' : 'Ready'} detail="Seller preparation checklist" />
+                <Evidence title={collection ? 'Collection evidence' : 'Delivery evidence'} status={happened('Completed') ? verified(order.finalHandoff) : 'Not available'} detail={collection ? 'Buyer scans your Collection QR' : 'Buyer scans your Delivery QR'} />
+              </div>
+            )}
+            <div className="mt-3 text-xs text-text-muted">{courierMode ? 'Checkpoint evidence is limited to pickup and delivery. No continuous GPS or live map is available.' : 'QR is the primary handoff method and OTP the fallback. Location checkpoints apply to Courier Delivery only.'}</div>
           </DetailCard>
         </div>
         <div className="flex flex-col gap-5">
@@ -369,7 +425,7 @@ function OrderDetail({ orderId, at, onBack }: { orderId: OrderId; at: Moment; on
               : <div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">No active claim</span><span className="text-xs text-text-muted">Claims linked to this Seller Order appear here.</span></span><StatusBadge status="resolved" size="sm" customLabel="None" /></div>}
           </DetailCard>
           {chatOpen && <DetailCard title="Buyer chat"><div className="rounded-xl bg-surface-raised p-3 text-sm">{lastBuyerMessage ? `${shortName(buyer.name)}: ${lastBuyerMessage.text}` : '—'}</div><div className="mt-3 rounded-xl bg-warning-bg p-3 text-xs text-text-secondary">Chat supports coordination but does not establish payment, pickup, delivery, or claim truth.</div></DetailCard>}
-          <DetailCard title="State controls"><div className="text-xs text-text-muted">Prototype fulfilment state</div><div className="mt-3 flex flex-wrap gap-2">{LOCAL_STAGES.map(value => <button key={value} onClick={() => setStage(value)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold capitalize ${stage === value ? 'border-brand bg-brand-muted text-brand-dark' : 'border-border text-text-muted'}`}>{value}</button>)}</div></DetailCard>
+          <DetailCard title="State controls"><div className="text-xs text-text-muted">Prototype fulfilment state</div><div className="mt-3 flex flex-wrap gap-2">{controls.map((value, index) => <button key={value} onClick={() => setOverride(index)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${control === index ? 'border-brand bg-brand-muted text-brand-dark' : 'border-border text-text-muted'}`}>{value}</button>)}</div></DetailCard>
         </div>
       </div>
     </div>
@@ -399,6 +455,18 @@ function variantCount(id: ProductId) {
   return PRODUCTS[id].variants.reduce((count, group) => count * group.options.length, 1)
 }
 
+/** 'Out of Stock since 24 Sep': the Product's availability, with the date it sold out where DEMO_DATA records one. */
+function availabilityLabel(id: ProductId) {
+  const since = PRODUCTS[id].outOfStockSince
+  return `${PRODUCTS[id].availability}${since ? ` since ${formatDayMonth(since)}` : ''}`
+}
+
+/** The Product's active demo discount (percent, discounted price and end date), or undefined. */
+function discountLabel(id: ProductId) {
+  const discount = activeDiscount(id)
+  return discount && `${discount.percent}% · ${formatEtb(discount.price)} ${discount.ends ? `until ${formatDate(discount.ends)}` : '· no end date'}`
+}
+
 function ProductsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const [screen, setScreen] = useState<ProductScreen>('list')
   const [selectedId, setSelectedId] = useState<ProductId | null>(sellerProductsAt(sellerId, at)[0] ?? null)
@@ -411,16 +479,24 @@ function ProductsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
 function ProductsList({ sellerId, at, onOpen, onCreate }: { sellerId: SellerId; at: Moment; onOpen: (id: ProductId) => void; onCreate: () => void }) {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('all')
-  // The Seller's Products at the story moment; every DEMO_DATA Product is published, and none has its own category.
+  // The Seller's Products at the story moment; every DEMO_DATA Product is published. The Performance summary is
+  // DEMO_DATA's 7-day figures (specification §31); no figure is computed here.
   const rows = sellerProductsAt(sellerId, at).filter(id => (status === 'all' || status === 'published') && PRODUCTS[id].name.toLowerCase().includes(query.toLowerCase()))
   return (
     <div className="mx-auto max-w-7xl p-8">
       <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">Products</h1><p className="mt-1 text-sm text-text-muted">Manage canonical Products and their single-Product commerce posts.</p></div><Button onClick={onCreate}>Create Product</Button></div>
       <div className="mb-5 flex items-center gap-3"><div className="w-80"><SearchInput value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} placeholder="Search Products" /></div><Segmented options={[['all', 'All'], ['published', 'Published'], ['draft', 'Drafts']]} active={status} onChange={setStatus} small /></div>
       <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-        <div className="grid grid-cols-[72px_1.5fr_1fr_120px_130px_100px_90px_20px] gap-4 bg-surface-raised px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted"><span>Media</span><span>Product</span><span>Category</span><span>Price</span><span>Inventory</span><span>Variants</span><span>Status</span><span /></div>
-        {rows.map((id, index) => <button key={id} onClick={() => onOpen(id)} className="grid w-full grid-cols-[72px_1.5fr_1fr_120px_130px_100px_90px_20px] items-center gap-4 border-t border-border px-5 py-4 text-left hover:bg-surface-raised"><ProductThumb index={index} /><span><span className="block text-sm font-semibold">{PRODUCTS[id].name}</span><span className="font-mono text-[10px] text-text-muted">{id}</span></span><span className="text-xs text-text-secondary">—</span><span className="text-sm font-semibold">{formatEtb(PRODUCTS[id].price)}</span><span className={PRODUCTS[id].availability !== 'Available' ? 'text-xs font-semibold text-warning' : 'text-xs text-text-secondary'}>{PRODUCTS[id].stock} available</span><span className="text-xs text-text-secondary">{variantCount(id)}</span><StatusBadge status="published" size="sm" /><span>›</span></button>)}
+        <div className="grid grid-cols-[72px_1.5fr_1fr_120px_130px_100px_90px_20px] gap-4 bg-surface-raised px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted"><span>Media</span><span>Product</span><span>Performance</span><span>Price</span><span>Inventory</span><span>Variants</span><span>Status</span><span /></div>
+        {rows.map((id, index) => {
+          const performance = PRODUCT_PERFORMANCE_7D[id]
+          const discount = activeDiscount(id)
+          return <button key={id} onClick={() => onOpen(id)} className="grid w-full grid-cols-[72px_1.5fr_1fr_120px_130px_100px_90px_20px] items-center gap-4 border-t border-border px-5 py-4 text-left hover:bg-surface-raised"><ProductThumb index={index} /><span><span className="block text-sm font-semibold">{PRODUCTS[id].name}</span><span className="font-mono text-[10px] text-text-muted">{id}</span></span>{performance ? <span><span className="block text-xs font-semibold">{formatEtb(performance.gmv)}</span><span className="text-[10px] text-text-muted"><span className="whitespace-nowrap">{performance.views.toLocaleString('en-US')} views</span> · <span className="whitespace-nowrap">{performance.unitsSold} sold</span></span></span> : <span className="text-xs text-text-secondary">—</span>}<span><span className="block text-sm font-semibold">{formatEtb(currentPrice(id))}</span>{discount && <span className="text-[10px] text-text-muted"><s>{formatEtb(PRODUCTS[id].price)}</s> · {discount.percent}% off</span>}</span><span><span className={PRODUCTS[id].availability !== 'Available' ? 'block text-xs font-semibold text-warning' : 'block text-xs text-text-secondary'}>{PRODUCTS[id].stock} available</span><span className="text-[10px] text-text-muted">{availabilityLabel(id)}</span></span><span className="text-xs text-text-secondary">{variantCount(id)}</span><StatusBadge status="published" size="sm" /><span>›</span></button>
+        })}
+        {rows.length === 0 && <div className="border-t border-border px-5 py-8 text-center text-sm text-text-muted">No Products in this view</div>}
       </div>
+      {/* The 7-day window ends at the default snapshot, 10:25 on the story day. */}
+      <p className="mt-3 text-[10px] text-text-muted">Performance covers product views, units sold and GMV over the 7 days to {formatDayMonth(DEFAULT_SNAPSHOT.at)} {formatClock(DEFAULT_SNAPSHOT.at)}. GMV counts each unit at the price paid; a current discount applies only to new Orders.</p>
       <div className="mt-4 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Each Product Post represents exactly one Product. Product Posts are commerce detail surfaces and are never For You feed units.</div>
     </div>
   )
@@ -429,6 +505,8 @@ function ProductsList({ sellerId, at, onOpen, onCreate }: { sellerId: SellerId; 
 function ProductDetailPanel({ sellerId, at, productId, onBack, onEdit }: { sellerId: SellerId; at: Moment; productId: ProductId; onBack: () => void; onEdit: () => void }) {
   // DEMO_DATA gives Products unlabelled attributes, no category, no inventory policy and no demo embed.
   const product = PRODUCTS[productId]
+  const quality = productQualityAt(productId, at)
+  const discount = discountLabel(productId)
   return (
     <div className="mx-auto max-w-6xl p-8">
       <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand">← Back to Products</button>
@@ -436,11 +514,11 @@ function ProductDetailPanel({ sellerId, at, productId, onBack, onEdit }: { selle
       <div className="grid grid-cols-[1.2fr_1fr] gap-5">
         <div className="flex flex-col gap-5">
           <DetailCard title="Media"><div className="grid grid-cols-3 gap-3"><ProductMedia large /><ProductMedia /><ProductMedia muted /></div></DetailCard>
-          <DetailCard title="Product information"><div className="grid grid-cols-2 gap-5"><Field label="Name" value={product.name} /><Field label="Category" value="—" /><Field label="Description" value={product.description ?? '—'} /><Field label="Fulfilment" value={fulfilmentOptionsAt(sellerId, at).map(option => option.mode).join(' · ') || '—'} /></div></DetailCard>
+          <DetailCard title="Product information"><div className="grid grid-cols-2 gap-5"><Field label="Name" value={product.name} /><Field label="Category" value="—" /><Field label="Description" value={product.description ?? '—'} /><Field label="Fulfilment" value={fulfilmentOptionsAt(sellerId, at).map(option => option.mode).join(' · ') || '—'} /><Field label="Product Quality" value={quality ? `${quality.average} (${quality.ratings} rating${quality.ratings === 1 ? '' : 's'})` : quality === null ? 'No ratings yet' : '—'} /><Field label="Locally made" value={product.locallyMade ? 'Yes' : 'No'} /></div></DetailCard>
           <DetailCard title="Structured attributes"><div className="grid grid-cols-3 gap-4">{(product.attributes.length ? product.attributes : ['—']).map(attribute => <Field key={attribute} label="—" value={attribute} />)}</div></DetailCard>
         </div>
         <div className="flex flex-col gap-5">
-          <DetailCard title="Price and inventory"><InfoGrid rows={[['Price', formatEtb(product.price)], ['Inventory', `${product.stock} available`], ['Inventory policy', '—'], ['Availability', product.availability]]} /></DetailCard>
+          <DetailCard title="Price and inventory"><InfoGrid rows={[[discount ? 'Regular price' : 'Price', formatEtb(product.price)], ...(discount ? [['Active discount', discount] as [string, string]] : []), ['Inventory', `${product.stock} available`], ['Inventory policy', '—'], ['Availability', availabilityLabel(productId)]]} /></DetailCard>
           <DetailCard title="Variants"><VariantTable productId={productId} /></DetailCard>
           <DetailCard title="Product demo embed"><InfoGrid rows={[['Configuration', '—'], ['Provider', '—'], ['Placement', '—']]} /></DetailCard>
           <DetailCard title="Concept boundary"><p className="text-sm leading-relaxed text-text-secondary">This Product Post contains exactly one canonical Product and its commerce information. It is not a Shoppable Post and cannot be used as a top-level For You unit.</p></DetailCard>
@@ -514,7 +592,8 @@ function ShoppablePostsList({ sellerId, at, onOpen, onCreate }: { sellerId: Sell
       <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">Shoppable Posts</h1><p className="mt-1 text-sm text-text-muted">Image-led content with optional same-Seller Product tags and hotspots.</p></div><Button onClick={onCreate}>Create Shoppable Post</Button></div>
       <div className="mb-5 flex gap-2"><Pill active={bucket === 'drafts'} onClick={() => setBucket('drafts')}>Drafts · {inBucket('drafts').length}</Pill><Pill active={bucket === 'published'} onClick={() => setBucket('published')}>Published · {inBucket('published').length}</Pill><Pill active={bucket === 'restricted'} onClick={() => setBucket('restricted')}>Restricted / Removed · {inBucket('restricted').length}</Pill></div>
       <div className="grid grid-cols-3 gap-4">
-        {posts.map((id, index) => <button key={id} onClick={() => onOpen(id)} className="overflow-hidden rounded-2xl border border-border bg-surface text-left shadow-sm"><ContentMedia index={index} /><div className="p-4"><div className="flex items-center justify-between"><span className="font-mono text-[10px] text-text-muted">{id}</span><StatusBadge status={publicationOf(id, at)} size="sm" /></div><p className="mt-3 line-clamp-2 text-sm font-semibold">{SHOPPABLE_POSTS[id].caption}</p><div className="mt-4 flex items-center justify-between border-t border-border pt-3"><span className="text-xs text-text-secondary">{SHOPPABLE_POSTS[id].tags.length ? `${SHOPPABLE_POSTS[id].tags.length} tagged Product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}` : 'No Product tags'}</span><EligibilityBadge eligible={isForYouEligibleAt(id, at)} /></div></div></button>)}
+        {posts.map((id, index) => <button key={id} onClick={() => onOpen(id)} className="overflow-hidden rounded-2xl border border-border bg-surface text-left shadow-sm"><ContentMedia index={index} /><div className="p-4"><div className="flex items-center justify-between"><span className="font-mono text-[10px] text-text-muted">{id}</span><StatusBadge status={publicationOf(id, at)} size="sm" /></div><p className="mt-3 line-clamp-2 text-sm font-semibold">{SHOPPABLE_POSTS[id].caption}</p><div className="mt-4 flex items-center justify-between border-t border-border pt-3"><span><span className="block text-xs text-text-secondary">{SHOPPABLE_POSTS[id].tags.length ? `${SHOPPABLE_POSTS[id].tags.length} tagged Product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}` : 'No Product tags'}</span><span className="text-[10px] text-text-muted">{SHOPPABLE_POSTS[id].hotspots ? `${SHOPPABLE_POSTS[id].hotspots} hotspot${SHOPPABLE_POSTS[id].hotspots === 1 ? '' : 's'}` : 'No hotspots'}</span></span><EligibilityBadge eligible={isForYouEligibleAt(id, at)} /></div></div></button>)}
+        {posts.length === 0 && <div className="col-span-3 rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-text-muted">No Shoppable Posts in this list</div>}
       </div>
       <div className="mt-5 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Publication and For You eligibility are separate states. A Shoppable Post can be Published with zero Products and remain ineligible for For You.</div>
     </div>
@@ -665,6 +744,7 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
     <div className="flex h-full min-h-[680px]">
       <div className="w-80 flex-shrink-0 border-r border-border bg-surface">
         <div className="border-b border-border p-4"><div className="font-display text-xl font-semibold">Inbox</div><div className="mt-3"><SearchInput placeholder="Search conversations" /></div></div>
+        {threads.length === 0 && <p className="p-6 text-center text-sm text-text-muted">No conversations</p>}
         {threads.map(({ id, last }) => <button key={id} onClick={() => { setSelected(id); setEscalated(!!escalationOf(id)) }} className={`flex w-full gap-3 border-b border-border p-4 text-left ${selected === id ? 'bg-brand-muted' : ''}`}><AvatarText name={name(id)} /><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="text-sm font-semibold">{name(id)}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="mt-1 block truncate text-xs text-text-muted">{last.text}</span><span className="mt-2 inline-flex rounded-full bg-surface-raised px-2 py-0.5 font-mono text-[9px] text-text-secondary">{contextId(last.context)}</span></span>{awaitingSellerReplyAt(id, at) && <span role="img" aria-label="Needs reply" title="Needs reply" className="mt-1 h-2 w-2 rounded-full bg-brand" />}</button>)}
       </div>
       {selected && <div className="flex flex-1 flex-col overflow-hidden">
@@ -682,6 +762,7 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
           <div className="mt-2 text-[10px] text-text-muted">Human Seller reply · Chat does not establish payment, fulfilment, handoff, or claim truth.</div>
         </div>
       </div>}
+      {!selected && <div className="flex flex-1 items-center justify-center bg-surface-raised p-8"><div className="max-w-sm text-center"><div className="font-display text-xl font-semibold">No Buyer conversations yet</div><p className="mt-1 text-sm text-text-muted">Conversations with Buyers about your Products, posts and Orders appear here.</p></div></div>}
     </div>
   )
 }
@@ -778,7 +859,7 @@ function ClaimsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
         <div className="overflow-hidden rounded-2xl border border-border bg-surface">{claims.map(id => <button key={id} onClick={() => { setSelected(id); setSubmitted(false) }} className={`w-full border-b border-border p-4 text-left last:border-b-0 ${selected === id ? 'bg-brand-muted' : ''}`}><div className="flex items-center justify-between"><span className="font-mono text-xs font-semibold">{id}</span><StatusBadge status={CLAIM_BADGE[claimStateAt(id, at)!]} size="sm" /></div><div className="mt-2 text-sm font-semibold">{CLAIMS[id].issue}</div><div className="mt-1 text-xs text-text-muted">{CLAIMS[id].order} · {shortName(BUYERS[ORDERS[CLAIMS[id].order].buyer].name)}</div></button>)}</div>
         <div className="rounded-2xl border border-border bg-surface p-6">
           <div className="flex items-start justify-between"><div><div className="font-display text-2xl font-semibold">{claim.issue}</div><div className="mt-1 text-xs text-text-muted">{selected} · Seller Order {claim.order}</div></div><StatusBadge status={CLAIM_BADGE[state]} /></div>
-          <div className="mt-5 grid grid-cols-2 gap-4"><Field label="Buyer-safe identity" value={shortName(BUYERS[ORDERS[claim.order].buyer].name)} /><Field label="Submitted" value={whenLabel(claimSubmitted(selected), at)} /></div>
+          <div className="mt-5 grid grid-cols-2 gap-4"><Field label="Buyer-safe identity" value={shortName(BUYERS[ORDERS[claim.order].buyer].name)} /><Field label="Submitted" value={whenLabel(claimSubmitted(selected), at)} /><Field label="Response due" value={claim.responseDeadline ? whenLabel(claim.responseDeadline, at) : '—'} /></div>
           <SectionLabelInline>Buyer statement</SectionLabelInline><div className="rounded-xl bg-surface-raised p-4 text-sm leading-relaxed text-text-secondary">“{claim.statement}”</div>
           <SectionLabelInline>Evidence</SectionLabelInline><div className="grid grid-cols-3 gap-3">{Array.from({ length: claim.evidencePhotos }, (_, index) => <EvidenceTile key={index} label={`Buyer photo ${index + 1}`} />)}{handoff && handoff.method !== 'Not verified' && <EvidenceTile label="Verified handoff" />}</div>
           <div className="mt-5"><Textarea label="Seller response" value={response} onChange={event => setResponse(event.target.value)} placeholder="Add preparation details or evidence relevant to this claim." rows={4} /></div>
@@ -806,21 +887,57 @@ function StorePanel({ sellerId, at, onOpenCouriers }: { sellerId: SellerId; at: 
       {saved && <SuccessBanner title="Store settings saved" detail="Your latest Store configuration is now reflected in the prototype." />}
       {tab === 'profile' && (
         <div className="grid grid-cols-[1.4fr_.6fr] gap-5">
-          <DetailCard title="Store Profile"><div className="grid grid-cols-2 gap-4"><TextInput label="Store name" defaultValue={seller.name} /><TextInput label="Handle" defaultValue={seller.handle} hint="Public and unique." /><div className="col-span-2"><Textarea label="Bio" defaultValue={seller.bio ?? ''} rows={3} /></div><TextInput label="Physical Location" defaultValue={`${seller.area}, ${MARKET.city}`} /><TextInput label="Customer-facing contact" defaultValue="" /></div><div className="mt-5 flex justify-end"><Button onClick={() => setSaved(true)}>Save Profile</Button></div></DetailCard>
+          <div className="flex flex-col gap-5">
+            <DetailCard title="Store Profile"><div className="grid grid-cols-2 gap-4"><TextInput label="Store name" defaultValue={seller.name} /><TextInput label="Handle" defaultValue={seller.handle} hint="Public and unique." /><div className="col-span-2"><Textarea label="Bio" defaultValue={seller.bio ?? ''} rows={3} /></div><TextInput label="Physical Location" defaultValue={`${seller.area}, ${MARKET.city}`} /><TextInput label="Customer-facing contact" defaultValue="" /></div><div className="mt-5 flex justify-end"><Button onClick={() => setSaved(true)}>Save Profile</Button></div></DetailCard>
+            <DetailCard title="Physical Location"><StoreMap sellerId={sellerId} /></DetailCard>
+          </div>
           <div className="flex flex-col gap-5"><DetailCard title="Availability"><div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">{available ? 'Store available' : 'Store unavailable'}</span><span className="text-xs text-text-muted">Controls new ordering availability.</span></span><Toggle checked={available} onChange={() => setAvailable(!available)} /></div></DetailCard><DetailCard title="Public handle"><div className="font-mono text-sm font-semibold text-brand">{seller.handle}</div><div className="mt-2 text-xs text-text-muted">Handle changes affect future shared links.</div></DetailCard></div>
         </div>
       )}
       {tab === 'fulfilment' && (
         <div className="grid grid-cols-2 gap-5">
           <DetailCard title="Buyer Collection"><FulfilmentSetting title={collection ? 'Enabled' : 'Disabled'} detail={collection ? `${collection.place} · ${collection.hours}` : '—'} checked={!!collection} /></DetailCard>
-          <DetailCard title="Seller Delivery"><FulfilmentSetting title={delivery ? 'Enabled' : 'Disabled'} detail={delivery ? `${delivery.coverage ?? MARKET.city} · ${formatEtb(delivery.charge)}` : '—'} checked={!!delivery} /></DetailCard>
-          <DetailCard title="Courier Delivery"><FulfilmentSetting title={courier ? 'Enabled' : 'Disabled'} detail="Approved Seller Courier Pool · price shown before payment" checked={!!courier} /><Button variant="tertiary" onClick={onOpenCouriers} style={{ marginTop: 16 }}>Manage Couriers</Button></DetailCard>
+          <DetailCard title="Seller Delivery"><FulfilmentSetting title={delivery ? 'Enabled' : 'Disabled'} detail={delivery ? [formatEtb(delivery.charge), delivery.coverage].filter(Boolean).join(' · ') : '—'} checked={!!delivery} /></DetailCard>
+          <DetailCard title="Courier Delivery"><FulfilmentSetting title={courier ? 'Enabled' : 'Disabled'} detail={courier ? `${formatEtb(courier.charge)} · Approved Seller Courier Pool · price shown before payment` : '—'} checked={!!courier} /><Button variant="tertiary" onClick={onOpenCouriers} style={{ marginTop: 16 }}>Manage Couriers</Button></DetailCard>
           <DetailCard title="Preparation settings"><InfoGrid rows={[['Default lead time', '—'], ['Made-to-order lead time', '—'], ['Ready reminder', '—']]} /></DetailCard>
         </div>
       )}
       {tab === 'verification' && (
-        <div className="grid grid-cols-2 gap-5"><DetailCard title="Social account"><VerificationRow label={seller.handle} detail="Connected social-commerce account" status="Verified" /></DetailCard><DetailCard title="Store details"><VerificationRow label={seller.name} detail="Store profile and contact information" status="Verified" /></DetailCard><DetailCard title="Payment provider"><VerificationRow label="Provider connection" detail="Provider establishes payment truth" status={seller.paymentProvider?.status ?? '—'} /></DetailCard><DetailCard title="Fulfilment"><VerificationRow label="Courier and collection" detail="At least one fulfilment method is active" status="Verified" /></DetailCard></div>
+        <div className="grid grid-cols-2 gap-5"><DetailCard title="Social account"><VerificationRow label={seller.handle} detail={`${(seller.socialAccounts ?? []).join(' and ') || '—'} · social account control verified`} status="Verified" /></DetailCard><DetailCard title="Store details"><VerificationRow label={seller.name} detail="Store profile and contact information" status="Verified" /></DetailCard><DetailCard title="Payment provider"><VerificationRow label="Provider connection" detail="Provider establishes payment truth" status={seller.paymentProvider?.status ?? '—'} /></DetailCard><DetailCard title="Fulfilment"><VerificationRow label={options.map(o => o.mode).join(' · ') || '—'} detail="At least one fulfilment method is active" status="Verified" /></DetailCard></div>
       )}
+    </div>
+  )
+}
+
+/**
+ * The Store's physical location (specification §36): the approved area and DEMO_DATA's fictional neighborhood-level
+ * pin on a local illustration. No map service, no street address and no live location.
+ */
+function StoreMap({ sellerId }: { sellerId: SellerId }) {
+  const seller = SELLERS[sellerId]
+  const area = `${seller.area}, ${MARKET.city}`
+  return (
+    <div>
+      <div className="relative h-48 overflow-hidden rounded-xl border border-border bg-surface-raised" role="img" aria-label={`Illustrative map: fictional pin in ${area}`}>
+        <svg viewBox="0 0 480 192" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full" aria-hidden="true">
+          <g fill="var(--color-border)">
+            <rect x="24" y="18" width="92" height="54" rx="6" /><rect x="132" y="18" width="70" height="54" rx="6" /><rect x="318" y="18" width="84" height="40" rx="6" /><rect x="418" y="18" width="48" height="74" rx="6" />
+            <rect x="24" y="92" width="58" height="80" rx="6" /><rect x="98" y="122" width="104" height="50" rx="6" /><rect x="318" y="76" width="84" height="54" rx="6" /><rect x="292" y="146" width="110" height="34" rx="6" /><rect x="418" y="110" width="48" height="70" rx="6" />
+          </g>
+          <g stroke="var(--color-surface)" strokeWidth="10" strokeLinecap="round" fill="none">
+            <path d="M0 84 H480" /><path d="M218 0 V192" /><path d="M0 108 C120 100 180 140 300 136 S420 96 480 100" />
+          </g>
+          <circle cx="240" cy="96" r="54" fill="var(--color-brand)" fillOpacity="0.08" stroke="var(--color-brand)" strokeOpacity="0.4" strokeDasharray="5 5" />
+        </svg>
+        <svg width="28" height="36" viewBox="0 0 28 36" className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full" aria-hidden="true">
+          <path d="M14 35C14 35 26 21.5 26 13A12 12 0 0 0 2 13C2 21.5 14 35 14 35Z" fill="var(--color-brand)" stroke="white" strokeWidth="2" />
+          <circle cx="14" cy="13" r="4.5" fill="white" />
+        </svg>
+        <span className="absolute left-3 top-3 rounded-full bg-surface px-2.5 py-1 text-[10px] font-semibold shadow-sm">{area}</span>
+        <span className="absolute bottom-3 right-3 rounded-full bg-surface px-2.5 py-1 font-mono text-[10px] text-text-muted shadow-sm">Illustrative map</span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-4"><Field label="Area" value={area} /><Field label="Fictional map pin" value={seller.mapPin ? formatPin(seller.mapPin) : '—'} /></div>
+      <div className="mt-4 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">A fictional prototype pin at neighborhood level, rounded to about 1 km. It isn't a street address or a verified business location.</div>
     </div>
   )
 }
@@ -882,9 +999,17 @@ function AutomationPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const [answerSaved, setAnswerSaved] = useState(false)
   // The Seller's chatbot as DEMO_DATA configures it: its answers by topic, and the questions it couldn't match by the
   // story moment. DEMO_DATA records no usage totals or rates.
-  const answers = CHATBOTS[sellerId]?.answers ?? []
+  const chatbot = CHATBOTS[sellerId]
+  const answers = chatbot?.answers ?? []
   const unmatched = CONVERSATION_IDS.filter(id => CONVERSATIONS[id].seller === sellerId).flatMap(id => messagesAt(id, at).filter(m => m.escalatedFromChatbot))
   const first = answers[0]
+  // DEMO_DATA records no chatbot for this Seller: the empty state (specification §56).
+  if (!chatbot) return (
+    <div className="mx-auto max-w-7xl p-8">
+      <ModuleHeader title="Chatbot Automation" description="Manage automated answers and human escalation." />
+      <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center"><div className="font-display text-xl font-semibold">No chatbot set up</div><p className="mt-1 max-w-sm text-sm text-text-muted">{SELLERS[sellerId].name} has no configured chatbot answers.</p></div>
+    </div>
+  )
   return (
     <div className="mx-auto max-w-7xl p-8">
       <ModuleHeader title="Chatbot Automation" description="Manage automated answers and human escalation." trailing={<Segmented options={[['overview', 'Overview'], ['answers', 'Answers'], ['testing', 'Testing'], ['insights', 'Insights']]} active={tab} onChange={value => setTab(value as typeof tab)} />} />
@@ -896,7 +1021,9 @@ function AutomationPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   )
 }
 
-function SettingsPanel({ sellerId }: { sellerId: SellerId }) {
+// Settings show DEMO_DATA's prototype states for the Seller (specification §38). The Owner is the primary member;
+// no Seller-role rules, security policies, team emails or provider facts beyond DEMO_DATA are shown.
+function SettingsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const [tab, setTab] = useState('team')
   const tabs = [['team', 'Team'], ['roles', 'Roles & Permissions'], ['sessions', 'Sessions'], ['security', 'Security'], ['ownership', 'Ownership'], ['lifecycle', 'Account lifecycle'], ['notifications', 'Notifications'], ['provider', 'Provider status']]
   return (
@@ -910,7 +1037,7 @@ function SettingsPanel({ sellerId }: { sellerId: SellerId }) {
           {tab === 'sessions' && <SessionsSettings sellerId={sellerId} />}
           {tab === 'security' && <SecuritySettings />}
           {tab === 'ownership' && <OwnershipSettings sellerId={sellerId} />}
-          {tab === 'lifecycle' && <LifecycleSettings />}
+          {tab === 'lifecycle' && <LifecycleSettings sellerId={sellerId} at={at} />}
           {tab === 'notifications' && <NotificationSettings />}
           {tab === 'provider' && <ProviderSettings sellerId={sellerId} />}
         </div>
@@ -927,7 +1054,7 @@ function teamOf(sellerId: SellerId) {
 function TeamSettings({ sellerId }: { sellerId: SellerId }) {
   const [invited, setInvited] = useState(false)
   // DEMO_DATA records no team email addresses.
-  return <DetailCard title="Team"><div className="mb-4 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Every team member uses individual human credentials. Shared team passwords are not supported.</div>{teamOf(sellerId).map(id => <TeamRow key={id} name={STAFF[id].name} email="—" role={STAFF[id].role} status="Active" />)}<Button onClick={() => setInvited(true)} style={{ marginTop: 16 }}>{invited ? 'Invitation Sent' : 'Invite Team Member'}</Button></DetailCard>
+  return <DetailCard title="Team"><div className="mb-4 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Every team member uses individual human credentials. Shared team passwords are not supported.</div>{teamOf(sellerId).map(id => <TeamRow key={id} name={STAFF[id].name} email="—" role={STAFF[id].role === 'Owner' ? 'Owner · Primary member' : STAFF[id].role} status="Active" />)}<Button onClick={() => setInvited(true)} style={{ marginTop: 16 }}>{invited ? 'Invitation Sent' : 'Invite Team Member'}</Button></DetailCard>
 }
 
 function RolesSettings({ sellerId }: { sellerId: SellerId }) {
@@ -938,29 +1065,35 @@ function RolesSettings({ sellerId }: { sellerId: SellerId }) {
 
 function SessionsSettings({ sellerId }: { sellerId: SellerId }) {
   const team: readonly string[] = teamOf(sellerId)
-  return <DetailCard title="Sessions & Devices">{SELLER_SESSIONS.filter(session => team.includes(session.staff)).map((session, index) => <SessionRow key={index} device={`${session.surface} · ${session.device}`} person={STAFF[session.staff].name} detail="—" current={index === 0} />)}</DetailCard>
+  return <DetailCard title="Sessions & Devices">{SELLER_SESSIONS.filter(session => team.includes(session.staff)).map((session, index) => <SessionRow key={index} device={`${session.surface} · ${session.device}`} person={shortName(STAFF[session.staff].name)} detail="—" current={index === 0} />)}<div className="mt-4 flex items-center gap-2 rounded-xl bg-success-bg p-3 text-xs font-semibold text-success"><CheckIcon />{SELLER_SETTINGS.unrecognisedDevices === 0 ? 'No unrecognised devices' : `${SELLER_SETTINGS.unrecognisedDevices} unrecognised devices`}</div></DetailCard>
 }
 
 function SecuritySettings() {
-  return <div className="space-y-5"><DetailCard title="Security"><SettingToggle title="Two-step verification" detail="A second verification step when signing in." defaultChecked /><SettingToggle title="New device alerts" detail="Notify each person when their credentials are used on a new device." defaultChecked /><SettingToggle title="Session timeout" detail="Require reauthentication after extended inactivity." defaultChecked /></DetailCard><DetailCard title="Credential policy"><p className="text-sm leading-relaxed text-text-secondary">Credentials belong to one identifiable human. Team access is granted through invitations, roles and individual sessions—never through a shared password.</p></DetailCard></div>
+  // DEMO_DATA's Security state; it approves no sign-in or session policy.
+  return <div className="space-y-5"><DetailCard title="Security"><InfoGrid rows={[['Credentials', 'Individual credentials for each member'], ['Shared team password', 'None'], ['Security alerts', 'No open security alerts']]} /></DetailCard><DetailCard title="Credential policy"><p className="text-sm leading-relaxed text-text-secondary">Credentials belong to one identifiable human. Team access is granted through invitations, roles and individual sessions—never through a shared password.</p></DetailCard></div>
 }
 
 function OwnershipSettings({ sellerId }: { sellerId: SellerId }) {
   const owner = teamOf(sellerId).find(id => STAFF[id].role === 'Owner')
-  return <DetailCard title="Store Ownership"><InfoGrid rows={[['Current Owner', owner ? STAFF[owner].name : '—'], ['Owner email', '—'], ['Store', SELLERS[sellerId].name], ['Ownership status', 'Active']]} /><div className="mt-5 rounded-xl bg-warning-bg p-3 text-xs text-text-secondary">Ownership transfer requires acceptance by another individually authenticated human account.</div><Button variant="tertiary" style={{ marginTop: 16 }}>Start Ownership Transfer</Button></DetailCard>
+  return <DetailCard title="Store Ownership"><InfoGrid rows={[['Current Owner', owner ? STAFF[owner].name : '—'], ['Owner email', '—'], ['Store', SELLERS[sellerId].name], ['Ownership transfer', SELLER_SETTINGS.ownershipTransferPending ? 'Transfer pending' : 'No transfer pending']]} /><div className="mt-5 rounded-xl bg-warning-bg p-3 text-xs text-text-secondary">Ownership transfer requires acceptance by another individually authenticated human account.</div><Button variant="tertiary" style={{ marginTop: 16 }}>Start Ownership Transfer</Button></DetailCard>
 }
 
-function LifecycleSettings() {
-  return <div className="space-y-5"><DetailCard title="Account lifecycle"><SettingRow title="Pause Store" detail="Stop new Orders while preserving Store data." action="Review pause" /><SettingRow title="Export Store data" detail="Request an export of Seller-controlled records." action="Request export" /></DetailCard><DetailCard title="Close Seller account"><p className="text-sm text-text-secondary">Closing requires all active Seller Orders, claims and fulfilment obligations to be resolved.</p><Button variant="destructive" style={{ marginTop: 16 }}>Review Account Closure</Button></DetailCard></div>
+function LifecycleSettings({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+  // The Seller's lifecycle state: published and open, since the Seller joined Adulis.
+  const seller = SELLERS[sellerId]
+  return <div className="space-y-5"><DetailCard title="Seller lifecycle"><InfoGrid rows={[['Status', trustAt(sellerId, at) && seller.storeOpen ? 'Published and open' : '—'], ['On Adulis since', formatCalendarDate(onAdulisSince(sellerId))]]} /></DetailCard><DetailCard title="Account lifecycle"><SettingRow title="Pause Store" detail="Stop new Orders while preserving Store data." action="Review pause" /><SettingRow title="Export Store data" detail="Request an export of Seller-controlled records." action="Request export" /></DetailCard><DetailCard title="Close Seller account"><p className="text-sm text-text-secondary">Closing requires all active Seller Orders, claims and fulfilment obligations to be resolved.</p><Button variant="destructive" style={{ marginTop: 16 }}>Review Account Closure</Button></DetailCard></div>
 }
 
 function NotificationSettings() {
-  return <DetailCard title="Notifications"><SettingToggle title="New Paid Orders" detail="Immediate Console and Seller Companion alert." defaultChecked /><SettingToggle title="Claims and deadlines" detail="Urgent alerts for claim actions." defaultChecked /><SettingToggle title="Courier updates" detail="Offer, assignment and verified handoff events." defaultChecked /><SettingToggle title="Inventory risks" detail="Low-stock and unavailable Products." defaultChecked /><SettingToggle title="Unanswered messages" detail="Buyer conversations awaiting a human reply." defaultChecked /></DetailCard>
+  // Every Seller notification type in specification §54 is on by default (DEMO_DATA).
+  return <DetailCard title="Notifications"><div className="mb-2 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">{SELLER_SETTINGS.notifications}.</div><SettingToggle title="New Paid Orders" detail="Immediate Console and Seller Companion alert." defaultChecked /><SettingToggle title="Claims and deadlines" detail="Urgent alerts for claim actions." defaultChecked /><SettingToggle title="Courier updates" detail="Offer, assignment and verified handoff events." defaultChecked /><SettingToggle title="Inventory risks" detail="Low-stock and unavailable Products." defaultChecked /><SettingToggle title="Unanswered messages" detail="Buyer conversations awaiting a human reply." defaultChecked /><SettingToggle title="Trust changes" detail="Changes to your store's Trust level." defaultChecked /></DetailCard>
 }
 
 function ProviderSettings({ sellerId }: { sellerId: SellerId }) {
+  // DEMO_DATA records the provider status and, for one Seller, its confirmation date; payment is labelled
+  // "Secure payment" and no provider is named.
   const provider = SELLERS[sellerId].paymentProvider
-  return <DetailCard title="Payment-provider status"><div className="flex items-center justify-between rounded-xl bg-success-bg p-4"><span><span className="block text-sm font-semibold">Provider connected</span><span className="text-xs text-text-muted">{provider?.confirmed ? `Confirmed ${formatLongDate(provider.confirmed)}` : '—'}</span></span><StatusBadge status="active" customLabel={provider?.status ?? '—'} /></div><div className="mt-4 grid grid-cols-2 gap-4"><Field label="Payment authority" value="Provider + Adulis backend" /><Field label="Seller control" value="Read-only" /><Field label="Reconciliation" value="Automatic provider checks" /><Field label="Settlement profile" value="Configured at provider" /></div></DetailCard>
+  return <DetailCard title="Payment-provider status"><div className="flex items-center justify-between rounded-xl bg-success-bg p-4"><span><span className="block text-sm font-semibold">Secure payment</span><span className="text-xs text-text-muted">{provider?.confirmed ? `Confirmed ${formatLongDate(provider.confirmed)}` : '—'}</span></span><StatusBadge status="active" customLabel={provider?.status ?? '—'} /></div><div className="mt-4 grid grid-cols-2 gap-4"><Field label="Payment authority" value="Provider + Adulis backend" /><Field label="Seller control" value="Read-only" /><Field label="Reconciliation" value="—" /><Field label="Settlement profile" value="—" /></div></DetailCard>
 }
 
 function ModuleHeader({ title, description, trailing }: { title: string; description: string; trailing?: ReactNode }) {

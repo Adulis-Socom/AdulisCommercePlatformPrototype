@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { AdulisLogo } from '../App'
-import { useStory } from '../StoryClock'
+import { StoryProvider, useStory } from '../StoryClock'
 import {
   BUYERS, MARKET, ORDERS, PRODUCTS, REVIEWS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
-  describeFulfilment, formatClockShort, formatEtb, formatMonthShortYear, formatMonthYear, fulfilmentOptionsAt, initials,
-  isPubliclyEligibleAt, onAdulisSince, productQualityAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt,
-  sellerServiceAt, shortName, trustAt, trustLabel,
-  type Availability, type ProductId, type ShoppablePostId,
+  activeDiscount, currentPrice, describeFulfilment, formatClockShort, formatCompactCount, formatDate, formatEtb, formatMonthShortYear, formatMonthYear,
+  fulfilmentOptionsAt, initials, isPubliclyEligibleAt, onAdulisSince, productQualityAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt,
+  sellerProductsAt, sellerServiceAt, shortName, showcaseSellers, trustAt, trustLabel,
+  type Availability, type ProductId, type SellerId, type ShoppablePostId,
 } from '../demo-data'
 
 /* ─────────────────────────────────────
@@ -30,7 +30,12 @@ const POST_BACKGROUNDS = [
 interface Product {
   id: ProductId
   name: string
+  /** The price a new Order pays now: the active discounted price, otherwise the regular price. */
   price: string
+  /** The regular price, while an active demo discount applies. */
+  regularPrice?: string
+  discount?: { percent: number; ends?: string }
+  locallyMade: boolean
   availability: Availability
   quality: { average: number; ratings: number } | null | undefined
   imgBg: string
@@ -65,8 +70,11 @@ function useStorefront() {
   const seller = SELLERS[sellerId]
   const products: Product[] = sellerProductsAt(sellerId, at).map((id, index) => {
     const p = PRODUCTS[id]
+    const discount = activeDiscount(id)
     return {
-      id, name: p.name, price: formatEtb(p.price), availability: p.availability, quality: productQualityAt(id, at),
+      id, name: p.name, price: formatEtb(currentPrice(id)), availability: p.availability, quality: productQualityAt(id, at),
+      regularPrice: discount && formatEtb(p.price), discount: discount && { percent: discount.percent, ends: discount.ends && formatDate(discount.ends) },
+      locallyMade: p.locallyMade,
       imgBg: TILE_BACKGROUNDS[index % TILE_BACKGROUNDS.length], imgLabel: initials(p.name), description: p.description,
       // DEMO_DATA gives attributes without labels, and some variant groups without a name.
       variants: p.variants.map(group => ({ label: group.name ?? '—', options: group.options })),
@@ -114,31 +122,23 @@ type Screen =
    MAIN COMPONENT
 ───────────────────────────────────── */
 export default function SellerStorefront({ demoTarget }: { demoTarget?: string }) {
-  const { story, seller, products, posts } = useStorefront()
-  const linkedProduct = story.focus?.product ?? SURFACE_DEFAULTS.product
-  const linkedPost = story.focus?.post ?? SURFACE_DEFAULTS.post
+  // The prototype toolbar chooses the social entry and the public Storefront shown: the step's Seller first (the
+  // default Seller otherwise), then any primary showcase Seller. The phone reads the chosen Seller from the story.
+  const story = useStory()
   const initialEntry: EntryMode = demoTarget === 'product' ? 'product-link' : demoTarget === 'shoppable' ? 'shoppable-link' : 'bio-link'
-  const initialScreen: Screen = demoTarget === 'product' ? { type: 'product-detail', productId: linkedProduct } : demoTarget === 'shoppable' ? { type: 'post-detail', postId: linkedPost } : { type: 'storefront', tab: 'shop' }
   const [entryMode, setEntryMode] = useState<EntryMode>(initialEntry)
-  const [screen, setScreen] = useState<Screen>(initialScreen)
-  const [openInAdulisOverlay, setOpenInAdulisOverlay] = useState(false)
-
-  const navigate = (s: Screen) => setScreen(s)
-  const goBack = () => {
-    const cur = screen.type
-    if (cur === 'product-detail' || cur === 'post-detail' || cur === 'search') {
-      setScreen({ type: 'storefront', tab: cur === 'search' ? 'shop' : (cur === 'post-detail' ? 'posts' : 'shop') })
-    }
-  }
-
-  /* entry mode → initial screen */
+  // Choosing an entry, even the current one, opens it again from its first screen.
+  const [entryCount, setEntryCount] = useState(0)
+  const [sellerId, setSellerId] = useState<SellerId>(story.seller ?? SURFACE_DEFAULTS.seller)
   const handleEntryChange = (mode: EntryMode) => {
     setEntryMode(mode)
-    setOpenInAdulisOverlay(false)
-    if (mode === 'bio-link') setScreen({ type: 'storefront', tab: 'shop' })
-    if (mode === 'product-link') setScreen({ type: 'product-detail', productId: linkedProduct })
-    if (mode === 'shoppable-link') setScreen({ type: 'post-detail', postId: linkedPost })
+    setEntryCount(count => count + 1)
   }
+  const pillStyle = (active: boolean) => ({
+    padding: '4px 12px', borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: 'none',
+    background: active ? 'var(--color-brand)' : 'var(--color-surface-raised)',
+    color: active ? '#fff' : 'var(--color-text-muted)',
+  })
 
   return (
     <div style={{ background: 'var(--color-background)', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -155,18 +155,55 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
             <button
               key={opt.mode}
               onClick={() => handleEntryChange(opt.mode)}
-              style={{
-                padding: '4px 12px', borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: 'none',
-                background: entryMode === opt.mode ? 'var(--color-brand)' : 'var(--color-surface-raised)',
-                color: entryMode === opt.mode ? '#fff' : 'var(--color-text-muted)',
-              }}
+              style={pillStyle(entryMode === opt.mode)}
             >
               {opt.label}
             </button>
           ))}
         </div>
       </div>
+      <div className="storefront-toolbar" style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+        <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.08em' }}>PROTOTYPE · STOREFRONT SELLER</span>
+        <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
+          {showcaseSellers().map(id => (
+            <button key={id} onClick={() => setSellerId(id)} aria-pressed={sellerId === id} style={pillStyle(sellerId === id)}>
+              {SELLERS[id].name}
+            </button>
+          ))}
+        </div>
+      </div>
 
+      {/* Keyed by Seller and entry: the phone opens the chosen Storefront from the chosen entry's first screen. */}
+      <StoryProvider stage={{ ...story, seller: sellerId }}>
+        <StorefrontStage key={`${sellerId}:${entryMode}:${entryCount}`} entryMode={entryMode} />
+      </StoryProvider>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────
+   STOREFRONT STAGE — the 390px phone, for the chosen Seller
+───────────────────────────────────── */
+function StorefrontStage({ entryMode }: { entryMode: EntryMode }) {
+  const { story, seller, products, posts } = useStorefront()
+  // The step's Product and post when they belong to this Seller's Storefront (the surface defaults otherwise),
+  // else the Seller's first Product and first published post.
+  const linkedProduct = [story.focus?.product, SURFACE_DEFAULTS.product].find(id => products.some(p => p.id === id)) ?? products[0]?.id
+  const linkedPost = [story.focus?.post, SURFACE_DEFAULTS.post].find(id => posts.some(p => p.id === id)) ?? posts[0]?.id
+  const initialScreen: Screen = entryMode === 'product-link' && linkedProduct ? { type: 'product-detail', productId: linkedProduct } : entryMode === 'shoppable-link' && linkedPost ? { type: 'post-detail', postId: linkedPost } : { type: 'storefront', tab: 'shop' }
+  const [screen, setScreen] = useState<Screen>(initialScreen)
+  const [openInAdulisOverlay, setOpenInAdulisOverlay] = useState(false)
+
+  const navigate = (s: Screen) => setScreen(s)
+  const goBack = () => {
+    const cur = screen.type
+    if (cur === 'product-detail' || cur === 'post-detail' || cur === 'search') {
+      setScreen({ type: 'storefront', tab: cur === 'search' ? 'shop' : (cur === 'post-detail' ? 'posts' : 'shop') })
+    }
+  }
+
+  return (
+    <>
       {/* ── Phone frame ── */}
       <div className="storefront-stage" style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '32px 24px', background: 'var(--color-background)' }}>
         <div>
@@ -214,7 +251,7 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
           </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -330,6 +367,7 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
           { value: String(products.length), label: 'Products' },
           { value: String(posts.length), label: 'Posts' },
           { value: service ? `${service.average} ★` : '—', label: service ? `${service.ratings} review${service.ratings === 1 ? '' : 's'}` : '— reviews' },
+          { value: seller.followers === undefined ? '—' : formatCompactCount(seller.followers), label: 'Followers' },
         ].map(s => (
           <div key={s.label} style={{ textAlign: 'center' }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{s.value}</p>
@@ -357,6 +395,9 @@ function ShopTab({ navigate }: { navigate: (s: Screen) => void }) {
           {/* image */}
           <div style={{ height: 130, background: p.imgBg, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{p.imgLabel}</span>
+            {p.discount && (
+              <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 10, fontWeight: 700, background: 'var(--color-brand)', color: '#fff', padding: '2px 7px', borderRadius: 999 }}>−{p.discount.percent}%</span>
+            )}
             {p.availability === 'Out of Stock' && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', background: 'white', padding: '3px 8px', borderRadius: 999 }}>Out of Stock</span>
@@ -366,7 +407,7 @@ function ShopTab({ navigate }: { navigate: (s: Screen) => void }) {
           {/* info */}
           <div style={{ padding: '10px 10px 12px' }}>
             <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 3px', lineHeight: 1.3 }}>{p.name}</p>
-            <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-brand)', margin: '0 0 5px' }}>{p.price}</p>
+            <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-brand)', margin: '0 0 5px' }}>{p.price}{p.regularPrice && <span style={{ marginLeft: 5, fontSize: 10, color: 'var(--color-text-muted)', textDecoration: 'line-through' }}>{p.regularPrice}</span>}</p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <AvailBadge avail={p.availability} />
               <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>★ {qualityText(p.quality)}</span>
@@ -492,8 +533,9 @@ function AboutTab({ onOpenAdulisApp }: { onOpenAdulisApp: () => void }) {
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1L2 4v5c0 4 3 6.5 6 7.5 3-1 6-3.5 6-7.5V4L8 1z" fill="var(--color-success)"/></svg>
           <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-success)' }}>{trust} Seller</span>
         </div>
+        {/* Level-neutral: the Seller's actual Trust level shows, whatever it is (rule 14.6). */}
         <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '0 0 10px', lineHeight: 1.55 }}>
-          Trust level earned through consistent fulfilment, verified buyer reviews, and a clean claims record. Updated by Adulis based on seller performance.
+          Trust level based on fulfilment, verified buyer reviews and claims outcomes. Updated by Adulis based on seller performance.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {/* DEMO_DATA defines no Seller-level Product Quality and no claim rate. */}
@@ -598,6 +640,11 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
                 {product.quality && <StarRow rating={product.quality.average} small />}
                 <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>({product.quality ? product.quality.ratings : qualityText(product.quality)})</span>
               </div>
+              {product.regularPrice && product.discount && (
+                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '4px 0 0' }}>
+                  <span style={{ textDecoration: 'line-through' }}>{product.regularPrice}</span> · {product.discount.percent}% off{product.discount.ends ? ` until ${product.discount.ends}` : ''}
+                </p>
+              )}
             </div>
             <AvailBadge avail={product.availability} />
           </div>
@@ -645,6 +692,13 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
         {/* attributes */}
         <div style={{ padding: '14px 16px 0' }}>
           <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', margin: '0 0 8px' }}>Details</p>
+          {/* Explicit Locally made metadata only (rule 2.12). */}
+          {product.locallyMade && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--color-border)' }}>
+              <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Locally made</span>
+              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right', maxWidth: '60%' }}>Yes</span>
+            </div>
+          )}
           {product.attributes.map(a => (
             <div key={a.value} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--color-border)' }}>
               <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{a.label}</span>
