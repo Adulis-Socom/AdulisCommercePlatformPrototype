@@ -16,7 +16,6 @@ const STYLES: Record<ButtonVariant, {
   bg: string; color: string; border: string;
   hoverBg: string; activeBg: string;
   disabledBg: string; disabledColor: string;
-  focusRing: string;
 }> = {
   primary: {
     bg: 'var(--color-brand)',
@@ -26,7 +25,6 @@ const STYLES: Record<ButtonVariant, {
     activeBg: 'var(--color-brand-dark)',
     disabledBg: 'var(--color-border)',
     disabledColor: 'var(--color-text-muted)',
-    focusRing: 'var(--color-brand)',
   },
   secondary: {
     bg: 'transparent',
@@ -36,7 +34,6 @@ const STYLES: Record<ButtonVariant, {
     activeBg: 'var(--color-brand-muted)',
     disabledBg: 'transparent',
     disabledColor: 'var(--color-text-muted)',
-    focusRing: 'var(--color-brand)',
   },
   tertiary: {
     bg: 'var(--color-surface-raised)',
@@ -46,7 +43,6 @@ const STYLES: Record<ButtonVariant, {
     activeBg: 'var(--color-border-strong)',
     disabledBg: 'var(--color-surface-raised)',
     disabledColor: 'var(--color-text-muted)',
-    focusRing: 'var(--color-border-strong)',
   },
   text: {
     bg: 'transparent',
@@ -56,7 +52,6 @@ const STYLES: Record<ButtonVariant, {
     activeBg: 'var(--color-brand-muted)',
     disabledBg: 'transparent',
     disabledColor: 'var(--color-text-muted)',
-    focusRing: 'var(--color-brand)',
   },
   destructive: {
     bg: 'var(--color-danger)',
@@ -66,7 +61,6 @@ const STYLES: Record<ButtonVariant, {
     activeBg: '#A02020',
     disabledBg: 'var(--color-border)',
     disabledColor: 'var(--color-text-muted)',
-    focusRing: 'var(--color-danger)',
   },
   icon: {
     bg: 'var(--color-surface-raised)',
@@ -76,7 +70,6 @@ const STYLES: Record<ButtonVariant, {
     activeBg: 'var(--color-border-strong)',
     disabledBg: 'var(--color-surface-raised)',
     disabledColor: 'var(--color-text-muted)',
-    focusRing: 'var(--color-border-strong)',
   },
 }
 
@@ -102,6 +95,7 @@ export function Button({
   const isDisabled = disabled || loading
   const isIcon = variant === 'icon' && !children
 
+  // Keyboard focus shows the app-wide :focus-visible outline in src/index.css, so the button sets no outline of its own.
   return (
     <button
       disabled={isDisabled}
@@ -127,7 +121,6 @@ export function Button({
         color: isDisabled ? s.disabledColor : s.color,
         cursor: isDisabled ? 'not-allowed' : 'pointer',
         transition: 'background 0.12s, color 0.12s, opacity 0.12s, transform 0.08s',
-        outline: 'none',
         flexShrink: 0,
         opacity: isDisabled ? 0.6 : 1,
         ...style,
@@ -143,12 +136,6 @@ export function Button({
       }}
       onMouseUp={e => {
         (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
-      }}
-      onFocus={e => {
-        e.currentTarget.style.boxShadow = `0 0 0 3px ${s.focusRing}30`
-      }}
-      onBlur={e => {
-        e.currentTarget.style.boxShadow = 'none'
       }}
       {...rest}
     >

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AdulisLogo } from '../App'
-import { BUYERS, COURIERS, DEMO_CARTS, ORDERS, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName } from '../demo-data'
+import { BUYERS, COURIERS, DEMO_CARTS, GUEST_STATE, ORDERS, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName } from '../demo-data'
 
 // Demo personas and record names are read from the canonical module (WO-001).
 const BUYER_NAME = BUYERS[SURFACE_DEFAULTS.buyer].name
@@ -954,6 +954,22 @@ function RoleLauncher({ onNavigate }: RoleLauncherProps) {
         {ROLE_ENTRIES.map(entry => (
           <LauncherCard key={entry.role} entry={entry} onNavigate={onNavigate} />
         ))}
+      </div>
+
+      {/* Prototype-only controls inside the product surfaces (specification §2) */}
+      <div
+        className="mt-6 rounded-xl p-5 border"
+        style={{ background: 'var(--color-surface-raised)', borderColor: 'var(--color-border)' }}
+      >
+        <div className="font-semibold text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+          Prototype-Only Controls
+        </div>
+        <p className="text-sm" style={{ color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.6 }}>
+          <strong style={{ color: 'var(--color-text-primary)' }}>Buyer guest switch.</strong> Above the Buyer phone, labelled
+          PROTOTYPE NAVIGATION — NOT PRODUCTION UI. It shows the Buyer app as a guest or as the signed-in demo Buyer, for
+          demonstration only. Inside the app, Sign in / Create account runs the prototype sign-in: phone number, Continue,
+          then a {GUEST_STATE.otpDigits}-digit code.
+        </p>
       </div>
 
       {/* Additional navigation note */}

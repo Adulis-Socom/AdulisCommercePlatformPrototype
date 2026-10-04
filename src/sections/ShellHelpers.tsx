@@ -5,7 +5,7 @@ import { initials } from '../demo-data'
 
 /* ─── Phone Frame ─── */
 /** `clock` is the status-bar time: the story moment the surface shows ('10:25'). */
-export function PhoneFrame({ children, label, clock }: { children: ReactNode; label?: string; clock: string }) {
+export function PhoneFrame({ children, label, clock, toolbar }: { children: ReactNode; label?: string; clock: string; toolbar?: ReactNode }) {
   return (
     <div className="phone-stage flex flex-col items-center py-10" style={{ background: 'var(--color-background)', minHeight: '100%' }}>
       {label && (
@@ -13,6 +13,8 @@ export function PhoneFrame({ children, label, clock }: { children: ReactNode; la
           {label}
         </p>
       )}
+      {/* A prototype-only control above the phone, outside the product UI (specification §61). */}
+      {toolbar}
       <div
         className="phone-frame relative flex flex-col overflow-hidden"
         style={{

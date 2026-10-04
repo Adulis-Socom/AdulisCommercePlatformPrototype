@@ -203,6 +203,11 @@ export function buyerVisibleProductsAt(at: Moment = DEFAULT_SNAPSHOT): ProductId
   return buyerVisibleSellers().flatMap(seller => sellerProductsAt(seller, at))
 }
 
+/** Whether a Buyer can buy the Product at `at`: Buyers can see it and it isn't out of stock (rule 3.11 revalidates a Cart with this). */
+export function isPurchasableAt(product: ProductId, at: Moment = DEFAULT_SNAPSHOT): boolean {
+  return buyerVisibleProductsAt(at).includes(product) && PRODUCTS[product].availability !== 'Out of Stock'
+}
+
 /** The Shoppable Posts Buyers can see at `at` (published, not restricted), in ID order. */
 export function buyerVisiblePostsAt(at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
   return buyerVisibleSellers().flatMap(seller => sellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at)))

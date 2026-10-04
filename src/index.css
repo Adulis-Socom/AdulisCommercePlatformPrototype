@@ -301,7 +301,8 @@ textarea {
 
   .phone-frame button,
   .website-phone-frame button,
-  .storefront-phone button {
+  .storefront-phone button,
+  .prototype-switch button {
     min-width: 44px;
     min-height: 44px;
   }

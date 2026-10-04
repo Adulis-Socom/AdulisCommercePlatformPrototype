@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Button } from '../components/ui/Button'
 import { PhoneInput, SearchInput, Textarea, TextInput } from '../components/ui/Input'
 import { Skeleton } from '../components/ui/Overlay'
@@ -8,14 +8,14 @@ import {
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
-  BUYERS, CHATBOTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DEMO_CARTS, MARKET, MODERATION_CASES, ORDERS,
+  BUYERS, CHATBOTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DEMO_CARTS, GUEST_STATE, MARKET, MODERATION_CASES, ORDERS,
   ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   adulisSurcharge, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, claimStateAt, claimSubmitted, claimsForOrder, describeFulfilment,
-  forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatEtb, fulfilmentOptionsAt, happenedBefore, initials, lineOptions, messagesAt,
+  forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatEtb, fulfilmentOptionsAt, happenedBefore, initials, isPurchasableAt, lineOptions, messagesAt,
   notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, productQualityAt, reviewsAt, sellerPostsAt, sellerProductsAt,
   sellerServiceAt, shortName, stateTime, trustAt, trustLabel,
   type ClaimId, type CollectionId, type ConversationId, type FulfilmentMode, type ModerationId, type Moment, type NotificationRecord, type OrderId,
-  type OrderState, type ProductId, type SellerId, type ShoppablePostId, type Timestamp,
+  type OrderLine, type OrderState, type ProductId, type SellerId, type ShoppablePostId, type Timestamp,
 } from '../demo-data'
 
 type TabKey = 'foryou' | 'shop' | 'saved' | 'orders' | 'you'
@@ -28,8 +28,14 @@ type Screen =
   | 'orders' | 'order-detail' | 'delegated-recipient' | 'qr-scanner' | 'qr-camera'
   | 'qr-verifying' | 'delivery-confirmed' | 'otp' | 'completed' | 'review'
   | 'claim-start' | 'claim-form' | 'claim-status' | 'chats' | 'conversation'
-  | 'chatbot' | 'notifications'
+  | 'chatbot' | 'notifications' | 'you' | 'sign-in-phone' | 'sign-in-code' | 'cart-check'
 type Fulfilment = 'collection' | 'seller' | 'courier'
+/** A guest browses public content; signing in shows Maya's signed-in state (rules 3.1–3.12, specification §12). */
+type Auth = 'guest' | 'signed-in'
+/** Where the Buyer was heading when sign-in was required: it resumes after sign-in (rule 3.10, specification §7, §12). */
+type Intent = { screen: Screen; tab?: TabKey; then?: 'checkout' | 'report' }
+/** A line of the temporary prototype Cart: transient session state, never a canonical record (rule 3.12). */
+type CartLine = OrderLine
 
 const FULFILMENT_MODE: Record<Fulfilment, FulfilmentMode> = { collection: 'Buyer Collection', seller: 'Seller Delivery', courier: 'Courier Delivery' }
 const FULFILMENT_KEY: Record<FulfilmentMode, Fulfilment> = { 'Buyer Collection': 'collection', 'Seller Delivery': 'seller', 'Courier Delivery': 'courier' }
@@ -63,6 +69,49 @@ const TABS = [
   { key: 'orders' as TabKey, label: 'Orders', icon: <IconOrders size={22} /> },
   { key: 'you' as TabKey, label: 'You', icon: <IconUser size={22} /> },
 ]
+
+// The screens that hold the signed-in Buyer's own data or actions (rules 3.2–3.4, 3.7). A guest sees the sign-in
+// requirement on them instead; the cart screens stay public (rule 3.6).
+const ORDER_SCREENS: readonly Screen[] = ['orders', 'order-detail', 'delegated-recipient', 'qr-scanner', 'qr-camera', 'qr-verifying', 'delivery-confirmed', 'otp', 'completed', 'review', 'claim-start', 'claim-form', 'claim-status']
+const CHECKOUT_SCREENS: readonly Screen[] = ['cart-check', 'checkout-coordinator', 'seller-checkout', 'payment-transition', 'payment-processing', 'payment-success', 'payment-failed', 'payment-checking']
+// A guided-flow step that opens on a cart or checkout screen starts with DEMO_DATA's Flow D carts.
+const CART_SCREENS: readonly Screen[] = ['seller-cart', 'multi-cart', ...CHECKOUT_SCREENS]
+
+/** The sign-in requirement a guest sees on an account-bound screen, with the approved Orders and You messages (rules 3.3–3.4). */
+function signInGate(screen: Screen): { title: string; message: string; then?: 'checkout' } | null {
+  if (screen === 'you') return { title: 'You', message: 'Sign in to see your profile.' }
+  if (ORDER_SCREENS.includes(screen)) return { title: 'Orders', message: 'Sign in to start ordering and track your orders.' }
+  if (screen === 'saved' || screen === 'collection') return { title: 'Saved', message: 'Sign in to save.' }
+  if (screen === 'chats' || screen === 'conversation' || screen === 'chatbot') return { title: 'Messages', message: 'Sign in to chat with sellers.' }
+  if (screen === 'notifications') return { title: 'Notifications', message: 'Sign in to see notifications.' }
+  if (CHECKOUT_SCREENS.includes(screen)) return { title: 'Checkout', message: 'Sign in to check out.', then: 'checkout' }
+  return null
+}
+
+/** The temporary Cart's Seller carts, in the order each Seller's first item was added: carts stay separated by Seller (rules 4.1–4.3). */
+function sellerCarts(cart: readonly CartLine[]): { seller: SellerId; lines: CartLine[] }[] {
+  const groups: { seller: SellerId; lines: CartLine[] }[] = []
+  for (const line of cart) {
+    const seller = PRODUCTS[line.product].seller
+    const group = groups.find(item => item.seller === seller)
+    if (group) group.lines.push(line)
+    else groups.push({ seller, lines: [line] })
+  }
+  return groups
+}
+
+const sameLine = (a: CartLine, b: CartLine) => a.product === b.product && a.options.join('\u0000') === b.options.join('\u0000')
+
+/** A Seller cart's Products subtotal at the Products' regular prices, as the checkout cart's subtotal is. */
+function linesSubtotal(lines: readonly CartLine[]) {
+  return lines.reduce((sum, line) => sum + PRODUCTS[line.product].price * line.quantity, 0)
+}
+
+/** Whether a Seller cart is DEMO_DATA's checkout cart, line for line: the one cart whose payment the prototype completes. */
+function isCheckoutCart(seller: SellerId, lines: readonly CartLine[]) {
+  const canonical = ORDERS[CHECKOUT_CART]
+  return seller === canonical.seller && lines.length === canonical.lines.length && canonical.lines.every(line => lines.some(other => sameLine(line, other) && other.quantity === line.quantity))
+}
 
 /** A cart's Products subtotal at the Products' regular prices. */
 function cartProducts(cart: OrderId) {
@@ -118,6 +167,19 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [claimIssue, setClaimIssue] = useState('')
   const [claimId, setClaimId] = useState<ClaimId | undefined>(upcomingClaim(focus?.order ?? SURFACE_DEFAULTS.order, story.moment))
   const [orderStage, setOrderStage] = useState<OrderState>(orderStateAt(focus?.order ?? SURFACE_DEFAULTS.order, story.moment) ?? 'Paid')
+  // The public entry screen starts anonymous; every guided-flow step shows Maya, signed in throughout the story (DEMO_DATA › Buyer).
+  const [auth, setAuth] = useState<Auth>(initialScreen === 'start' ? 'guest' : 'signed-in')
+  const signedIn = auth === 'signed-in'
+  const [signInPrompt, setSignInPrompt] = useState<{ title: string; intent: Intent } | null>(null)
+  const [intent, setIntent] = useState<Intent>({ screen: 'feed', tab: 'foryou' })
+  const [signInFrom, setSignInFrom] = useState<Screen>('start')
+  const [phone, setPhone] = useState('')
+  const [code, setCode] = useState('')
+  // The temporary Cart is this session's own state, so signing in keeps it (rules 3.10, 3.12); a reset remounts the app.
+  const [cart, setCart] = useState<CartLine[]>(CART_SCREENS.includes(initialScreen) ? DEMO_CARTS.flatMap(id => ORDERS[id].lines) : [])
+  const [cartSeller, setCartSeller] = useState<SellerId>(ORDERS[CHECKOUT_CART].seller)
+  const [checkoutSeller, setCheckoutSeller] = useState<SellerId>(ORDERS[CHECKOUT_CART].seller)
+  const [notificationsFrom, setNotificationsFrom] = useState<Screen>('orders')
   const paymentTotal = cartTotal(fulfilment, at).total
   const openPost = (id: ShoppablePostId) => { setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); setScreen('post') }
   const openProduct = (id: ProductId) => { setProductId(id); setSellerId(PRODUCTS[id].seller); setScreen('product') }
@@ -128,56 +190,102 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const paid = () => { advanceTo(paidAt(CHECKOUT_CART)); setScreen('payment-success') }
   const handoffVerified = () => { const done = stateTime(orderId, 'Completed'); if (done) advanceTo(done); setScreen('delivery-confirmed') }
 
+  // Account-bound actions ask a guest to sign in instead of acting (rules 3.5, 3.7, 3.9); a signed-in Buyer just acts.
+  const requireSignIn = (title: string, next: Intent, act: () => void) => (signedIn ? act() : setSignInPrompt({ title, intent: next }))
+  const startSignIn = (next: Intent) => { setSignInPrompt(null); setIntent(next); setSignInFrom(screen); setPhone(''); setCode(''); setScreen('sign-in-phone') }
+  // Checkout continues only once the Cart is revalidated against current availability (rule 3.11).
+  const unavailable = cart.filter(line => !isPurchasableAt(line.product, at))
+  const continueCheckout = () => setScreen(unavailable.length ? 'cart-check' : 'checkout-coordinator')
+  const startCheckout = (seller: SellerId) => { setCheckoutSeller(seller); requireSignIn('Sign in to check out', { screen: 'checkout-coordinator', then: 'checkout' }, continueCheckout) }
+  const signIn = (next: Intent = intent) => {
+    setAuth('signed-in')
+    if (next.tab) setActiveTab(next.tab)
+    if (next.then === 'checkout') return continueCheckout()
+    setScreen(next.screen)
+    if (next.then === 'report') setReportOpen(true)
+  }
+  // The prototype switch signs in at once. During a sign-in request it continues where the guest was heading, as sign-in does.
+  const switchSignedIn = () => {
+    if (signInPrompt) { setSignInPrompt(null); return signIn(signInPrompt.intent) }
+    if (screen === 'sign-in-phone' || screen === 'sign-in-code') return signIn()
+    setAuth('signed-in')
+  }
+  const addToCart = (line: CartLine) => {
+    setCart(lines => (lines.some(item => sameLine(item, line)) ? lines.map(item => (sameLine(item, line) ? { ...item, quantity: item.quantity + line.quantity } : item)) : [...lines, line]))
+    setCartSeller(PRODUCTS[line.product].seller)
+  }
+  const carts = sellerCarts(cart)
+  const checkoutLines = carts.find(item => item.seller === checkoutSeller)?.lines ?? []
+
   const goTab = (key: TabKey) => {
     setActiveTab(key)
     if (key === 'foryou') setScreen('feed')
     if (key === 'shop') setScreen('search')
     if (key === 'saved') setScreen('saved')
     if (key === 'orders') setScreen('orders')
+    if (key === 'you') setScreen('you')
   }
 
-  const showNav = ['feed', 'search', 'saved', 'orders'].includes(screen)
+  const showNav = ['feed', 'search', 'saved', 'orders', 'you'].includes(screen)
+  const gate = signedIn ? null : signInGate(screen)
+  const shown: Screen | 'gated' = gate ? 'gated' : screen
 
   return (
-    <PhoneFrame label={`05 — MOBILE BUYER · ${shortName(BUYERS[BUYER].name).toUpperCase()}`} clock={formatClockShort(at.at)}>
+    <PhoneFrame
+      label={`05 — MOBILE BUYER · ${signedIn ? shortName(BUYERS[BUYER].name).toUpperCase() : 'GUEST'}`}
+      clock={formatClockShort(at.at)}
+      toolbar={<PrototypeSignInSwitch signedIn={signedIn} onGuest={() => { setAuth('guest'); setSignInPrompt(null); setReportOpen(false) }} onSignedIn={switchSignedIn} />}
+    >
       <div className="relative flex flex-1 flex-col overflow-hidden">
-        {screen === 'start' && <AppStart onExplore={() => setScreen('feed')} />}
-        {screen === 'feed' && (
+        {gate && <SignInRequired title={gate.title} message={gate.message} onSignIn={() => startSignIn({ screen, tab: activeTab, then: gate.then })} />}
+        {shown === 'start' && <AppStart onExplore={() => { setAuth('guest'); setActiveTab('foryou'); setScreen('feed') }} onSignIn={() => startSignIn({ screen: 'feed', tab: 'foryou' })} />}
+        {shown === 'sign-in-phone' && <SignInPhone phone={phone} setPhone={setPhone} onBack={() => setScreen(signInFrom)} onContinue={() => setScreen('sign-in-code')} />}
+        {shown === 'sign-in-code' && <SignInCode phone={phone} code={code} setCode={setCode} onBack={() => setScreen('sign-in-phone')} onVerify={signIn} />}
+        {shown === 'feed' && (
           <Feed
             at={at}
+            guest={!signedIn}
+            onSignIn={() => startSignIn({ screen: 'feed', tab: 'foryou' })}
+            onNotifications={() => { setNotificationsFrom('feed'); requireSignIn('Sign in to see notifications', { screen: 'notifications' }, () => setScreen('notifications')) }}
             onSearch={() => { setScreen('search'); setActiveTab('shop') }}
             onPost={openPost}
             onHotspot={id => { setPostId(id); setSheetOpen(true) }}
             onSeller={openSeller}
           />
         )}
-        {screen === 'post' && (
+        {shown === 'post' && (
           <ExpandedPost
             postId={postId}
             onBack={() => setScreen('feed')}
             onHotspot={() => setSheetOpen(true)}
             onSeller={() => openSeller(SHOPPABLE_POSTS[postId].seller)}
-            onReport={() => setReportOpen(true)}
+            onReport={() => requireSignIn('Sign in to report this post', { screen: 'post', then: 'report' }, () => setReportOpen(true))}
           />
         )}
-        {screen === 'product' && (
+        {shown === 'product' && (
           <ProductDetail
             productId={productId}
             at={at}
-            saved={saved}
-            onSave={() => setSaved(!saved)}
+            saved={signedIn && saved}
+            onSave={() => requireSignIn('Sign in to save', { screen: 'product' }, () => setSaved(!saved))}
             onBack={() => setScreen('post')}
             onSeller={() => openSeller(PRODUCTS[productId].seller)}
-            onAddToCart={(options, quantity) => setAddedToCart({ product: productId, options, quantity })}
+            onAddToCart={(options, quantity) => { addToCart({ product: productId, options, quantity }); setAddedToCart({ product: productId, options, quantity }) }}
             // Only a Seller with a chatbot has one to ask; otherwise Chat opens the conversation with the Seller.
-            onChat={() => (CHATBOTS[PRODUCTS[productId].seller] ? setScreen('chatbot') : openConversation(PRODUCTS[productId].seller))}
+            onChat={() => {
+              const seller = PRODUCTS[productId].seller
+              const chat: Screen = CHATBOTS[seller] ? 'chatbot' : 'conversation'
+              setChatSellerId(seller)
+              requireSignIn('Sign in to chat with sellers', { screen: chat }, () => setScreen(chat))
+            }}
           />
         )}
-        {screen === 'seller' && <SellerProfile sellerId={sellerId} at={at} onBack={() => setScreen('feed')} onShop={() => setScreen('seller-shop')} onPost={openPost} />}
-        {screen === 'seller-shop' && <SellerShop sellerId={sellerId} at={at} onBack={() => setScreen('seller')} onProduct={openProduct} onSearch={() => setScreen('search')} />}
-        {screen === 'search' && (
+        {shown === 'seller' && <SellerProfile sellerId={sellerId} at={at} signedIn={signedIn} onFollow={() => requireSignIn('Sign in to follow sellers', { screen: 'seller' }, () => {})} onBack={() => setScreen('feed')} onShop={() => setScreen('seller-shop')} onPost={openPost} />}
+        {shown === 'seller-shop' && <SellerShop sellerId={sellerId} at={at} onBack={() => setScreen('seller')} onProduct={openProduct} onSearch={() => setScreen('search')} />}
+        {shown === 'search' && (
           <Search
             at={at}
+            recent={signedIn ? BUYERS[BUYER].recentSearches ?? [] : []}
             query={query}
             setQuery={setQuery}
             tab={searchTab}
@@ -187,34 +295,47 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onSeller={openSeller}
           />
         )}
-        {screen === 'saved' && <Saved onCollection={id => { setCollectionId(id); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
-        {screen === 'collection' && <Collection collectionId={collectionId} onBack={() => setScreen('saved')} onProduct={openProduct} onPost={openPost} />}
-        {screen === 'seller-cart' && <SellerCart onBack={() => setScreen('product')} onAllCarts={() => setScreen('multi-cart')} onCheckout={() => setScreen('checkout-coordinator')} />}
-        {screen === 'multi-cart' && <MultiCart onBack={() => setScreen('seller-cart')} onCheckout={() => setScreen('checkout-coordinator')} />}
-        {screen === 'checkout-coordinator' && <CheckoutCoordinator onBack={() => setScreen('multi-cart')} onContinue={() => setScreen('seller-checkout')} />}
-        {screen === 'seller-checkout' && <SellerCheckout at={at} fulfilment={fulfilment} setFulfilment={setFulfilment} onBack={() => setScreen('checkout-coordinator')} onPay={() => setScreen('payment-transition')} />}
-        {screen === 'payment-transition' && <PaymentTransition amount={paymentTotal} onBack={() => setScreen('seller-checkout')} onContinue={() => setScreen('payment-processing')} />}
-        {screen === 'payment-processing' && <PaymentProcessing amount={paymentTotal} onPaid={paid} onFailed={() => setScreen('payment-failed')} onChecking={() => setScreen('payment-checking')} />}
-        {screen === 'payment-success' && <PaymentSuccess amount={paymentTotal} onDone={() => { setActiveTab('orders'); setScreen('orders') }} />}
-        {screen === 'payment-failed' && <PaymentFailed onRetry={() => setScreen('payment-transition')} onCart={() => setScreen('seller-cart')} />}
-        {screen === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={paid} />}
-        {screen === 'orders' && <OrdersList at={at} onOrder={openOrder} onChats={() => setScreen('chats')} onNotifications={() => setScreen('notifications')} />}
-        {screen === 'order-detail' && <OrderDetail orderId={orderId} stage={orderStage} setStage={setOrderStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => setScreen('otp')} onClaim={openClaim} onChat={() => openConversation(ORDERS[orderId].seller)} />}
-        {screen === 'delegated-recipient' && <DelegatedRecipient onBack={() => setScreen('order-detail')} onSave={() => setScreen('order-detail')} />}
-        {screen === 'qr-scanner' && <DeliveryScanner onBack={() => setScreen('order-detail')} onCamera={() => setScreen('qr-camera')} onOtp={() => setScreen('otp')} />}
-        {screen === 'qr-camera' && <ScannerCamera onBack={() => setScreen('qr-scanner')} onScan={() => setScreen('qr-verifying')} />}
-        {screen === 'qr-verifying' && <QrVerifying orderId={orderId} onVerified={handoffVerified} />}
-        {screen === 'delivery-confirmed' && <DeliveryConfirmed orderId={orderId} onContinue={() => setScreen('completed')} />}
-        {screen === 'otp' && <OtpFallback onBack={() => setScreen('qr-scanner')} onVerify={handoffVerified} />}
-        {screen === 'completed' && <CompletedOrder orderId={orderId} onBack={() => setScreen('orders')} onReview={() => setScreen('review')} onClaim={openClaim} />}
-        {screen === 'review' && <ReviewOrder orderId={orderId} onBack={() => setScreen('completed')} onSubmit={() => { const review = REVIEW_IDS.find(id => REVIEWS[id].order === orderId); if (review) advanceTo(REVIEWS[review].written); setScreen('completed') }} />}
-        {screen === 'claim-start' && <ClaimStart orderId={orderId} issue={claimIssue} setIssue={setClaimIssue} onBack={() => setScreen('order-detail')} onContinue={() => setScreen('claim-form')} />}
-        {screen === 'claim-form' && <ClaimForm claimId={claimId} issue={claimIssue} onBack={() => setScreen('claim-start')} onSubmit={() => { if (claimId) advanceTo(claimSubmitted(claimId)); setScreen('claim-status') }} />}
-        {screen === 'claim-status' && <ClaimStatus orderId={orderId} claimId={claimId} at={at} onDone={() => setScreen('order-detail')} />}
-        {screen === 'chats' && <ChatList at={at} onBack={() => setScreen('orders')} onConversation={openConversation} />}
-        {screen === 'conversation' && <Conversation sellerId={chatSellerId} at={at} onBack={() => setScreen('chats')} />}
-        {screen === 'chatbot' && <Chatbot productId={productId} onBack={() => setScreen('product')} onEscalate={advanceTo} />}
-        {screen === 'notifications' && <Notifications at={at} onBack={() => setScreen('orders')} onOrder={openOrder} />}
+        {shown === 'saved' && <Saved onCollection={id => { setCollectionId(id); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
+        {shown === 'collection' && <Collection collectionId={collectionId} onBack={() => setScreen('saved')} onProduct={openProduct} onPost={openPost} />}
+        {shown === 'seller-cart' && (
+          <SellerCart
+            seller={cartSeller}
+            lines={carts.find(item => item.seller === cartSeller)?.lines ?? []}
+            at={signedIn ? at : null}
+            onBack={() => setScreen('product')}
+            onAllCarts={() => setScreen('multi-cart')}
+            onCheckout={() => startCheckout(cartSeller)}
+            onQuantity={(line, quantity) => setCart(lines => lines.map(item => (sameLine(item, line) ? { ...item, quantity } : item)))}
+            onRemove={line => setCart(lines => lines.filter(item => !sameLine(item, line)))}
+          />
+        )}
+        {shown === 'multi-cart' && <MultiCart carts={carts} first={cartSeller} at={signedIn ? at : null} onBack={() => setScreen('seller-cart')} onCheckout={startCheckout} />}
+        {shown === 'cart-check' && <CartCheck unavailable={unavailable} seller={checkoutSeller} sellerReady={checkoutLines.length > 0 && checkoutLines.every(line => isPurchasableAt(line.product, at))} onContinue={() => setScreen('checkout-coordinator')} onReview={seller => { setCartSeller(seller); setScreen('seller-cart') }} onAllCarts={() => setScreen('multi-cart')} />}
+        {shown === 'checkout-coordinator' && <CheckoutCoordinator seller={checkoutSeller} lines={checkoutLines} others={carts.filter(item => item.seller !== checkoutSeller).map(item => item.seller)} onBack={() => setScreen('multi-cart')} onContinue={() => setScreen('seller-checkout')} />}
+        {shown === 'seller-checkout' && <SellerCheckout at={at} seller={checkoutSeller} lines={checkoutLines} fulfilment={fulfilment} setFulfilment={setFulfilment} onBack={() => setScreen('checkout-coordinator')} onPay={isCheckoutCart(checkoutSeller, checkoutLines) ? () => setScreen('payment-transition') : undefined} />}
+        {shown === 'payment-transition' && <PaymentTransition amount={paymentTotal} onBack={() => setScreen('seller-checkout')} onContinue={() => setScreen('payment-processing')} />}
+        {shown === 'payment-processing' && <PaymentProcessing amount={paymentTotal} onPaid={paid} onFailed={() => setScreen('payment-failed')} onChecking={() => setScreen('payment-checking')} />}
+        {shown === 'payment-success' && <PaymentSuccess amount={paymentTotal} onDone={() => { setActiveTab('orders'); setScreen('orders') }} />}
+        {shown === 'payment-failed' && <PaymentFailed onRetry={() => setScreen('payment-transition')} onCart={() => setScreen('seller-cart')} />}
+        {shown === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={paid} />}
+        {shown === 'orders' && <OrdersList at={at} onOrder={openOrder} onChats={() => setScreen('chats')} onNotifications={() => { setNotificationsFrom('orders'); setScreen('notifications') }} />}
+        {shown === 'order-detail' && <OrderDetail orderId={orderId} stage={orderStage} setStage={setOrderStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => setScreen('otp')} onClaim={openClaim} onChat={() => openConversation(ORDERS[orderId].seller)} />}
+        {shown === 'delegated-recipient' && <DelegatedRecipient onBack={() => setScreen('order-detail')} onSave={() => setScreen('order-detail')} />}
+        {shown === 'qr-scanner' && <DeliveryScanner onBack={() => setScreen('order-detail')} onCamera={() => setScreen('qr-camera')} onOtp={() => setScreen('otp')} />}
+        {shown === 'qr-camera' && <ScannerCamera onBack={() => setScreen('qr-scanner')} onScan={() => setScreen('qr-verifying')} />}
+        {shown === 'qr-verifying' && <QrVerifying orderId={orderId} onVerified={handoffVerified} />}
+        {shown === 'delivery-confirmed' && <DeliveryConfirmed orderId={orderId} onContinue={() => setScreen('completed')} />}
+        {shown === 'otp' && <OtpFallback onBack={() => setScreen('qr-scanner')} onVerify={handoffVerified} />}
+        {shown === 'completed' && <CompletedOrder orderId={orderId} onBack={() => setScreen('orders')} onReview={() => setScreen('review')} onClaim={openClaim} />}
+        {shown === 'review' && <ReviewOrder orderId={orderId} onBack={() => setScreen('completed')} onSubmit={() => { const review = REVIEW_IDS.find(id => REVIEWS[id].order === orderId); if (review) advanceTo(REVIEWS[review].written); setScreen('completed') }} />}
+        {shown === 'claim-start' && <ClaimStart orderId={orderId} issue={claimIssue} setIssue={setClaimIssue} onBack={() => setScreen('order-detail')} onContinue={() => setScreen('claim-form')} />}
+        {shown === 'claim-form' && <ClaimForm claimId={claimId} issue={claimIssue} onBack={() => setScreen('claim-start')} onSubmit={() => { if (claimId) advanceTo(claimSubmitted(claimId)); setScreen('claim-status') }} />}
+        {shown === 'claim-status' && <ClaimStatus orderId={orderId} claimId={claimId} at={at} onDone={() => setScreen('order-detail')} />}
+        {shown === 'chats' && <ChatList at={at} onBack={() => setScreen('orders')} onConversation={openConversation} />}
+        {shown === 'conversation' && <Conversation sellerId={chatSellerId} at={at} onBack={() => setScreen('chats')} />}
+        {shown === 'chatbot' && <Chatbot productId={productId} onBack={() => setScreen('product')} onEscalate={advanceTo} />}
+        {shown === 'notifications' && <Notifications at={at} onBack={() => setScreen(notificationsFrom)} onOrder={openOrder} />}
+        {shown === 'you' && <YouProfile at={at} onSeller={openSeller} />}
 
         {showNav && (
           <BottomNav items={TABS} active={activeTab} onSelect={k => goTab(k as TabKey)} />
@@ -235,12 +356,13 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
           />
         )}
         {reportOpen && <ReportPostSheet postId={postId} onClose={() => setReportOpen(false)} />}
+        {signInPrompt && <SignInSheet title={signInPrompt.title} onSignIn={() => startSignIn(signInPrompt.intent)} onClose={() => setSignInPrompt(null)} />}
       </div>
     </PhoneFrame>
   )
 }
 
-function AppStart({ onExplore }: { onExplore: () => void }) {
+function AppStart({ onExplore, onSignIn }: { onExplore: () => void; onSignIn: () => void }) {
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden">
       <img src={PHOTOS.group} alt="Ethiopian makers wearing traditional dress" className="absolute inset-0 h-full w-full object-cover" />
@@ -251,13 +373,182 @@ function AppStart({ onExplore }: { onExplore: () => void }) {
         <p className="mt-3 text-sm leading-relaxed text-white/80">
           Discover Ethiopian products through the people, craft and stories behind them.
         </p>
+        {/* On the dark photo the keyboard focus outline uses the light inverse colour, so it stays visible (§57). */}
         <div className="mt-7 flex flex-col gap-2.5">
-          <Button size="lg" onClick={onExplore} style={{ width: '100%' }}>Explore as guest</Button>
-          <Button size="lg" variant="tertiary" style={{ width: '100%', background: 'rgba(255,255,255,.14)', color: 'white', borderColor: 'rgba(255,255,255,.35)' }}>Sign in</Button>
+          <Button size="lg" onClick={onExplore} style={{ width: '100%', outlineColor: 'var(--color-text-inverse)' }}>Explore as guest</Button>
+          <Button size="lg" variant="tertiary" onClick={onSignIn} style={{ width: '100%', background: 'rgba(255,255,255,.14)', color: 'white', borderColor: 'rgba(255,255,255,.35)', outlineColor: 'var(--color-text-inverse)' }}>Sign in</Button>
         </div>
         <p className="mt-4 text-center text-xs text-white/60">No account needed to browse</p>
       </div>
     </div>
+  )
+}
+
+/** The prototype-only switch between the guest and signed-in Buyer states (WO-003; specification §2, §61). */
+function PrototypeSignInSwitch({ signedIn, onGuest, onSignedIn }: { signedIn: boolean; onGuest: () => void; onSignedIn: () => void }) {
+  const option = (active: boolean) => `rounded-md px-3 py-1.5 text-xs font-semibold ${active ? 'bg-brand text-white' : 'text-text-secondary'}`
+  return (
+    <div className="prototype-switch mb-3 flex max-w-full flex-wrap items-center justify-center gap-2" role="group" aria-label="Prototype navigation, not production UI: Buyer sign-in state">
+      <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">PROTOTYPE NAVIGATION — NOT PRODUCTION UI</span>
+      <span className="inline-flex rounded-lg border border-border bg-surface p-0.5">
+        <button onClick={onGuest} aria-pressed={!signedIn} className={option(!signedIn)}>Guest</button>
+        <button onClick={onSignedIn} aria-pressed={signedIn} className={option(signedIn)}>Signed in</button>
+      </span>
+    </div>
+  )
+}
+
+/** What a guest sees on an account-bound screen: the sign-in requirement, never the signed-in Buyer's data (rules 3.2–3.7). */
+function SignInRequired({ title, message, onSignIn }: { title: string; message: string; onSignIn: () => void }) {
+  return (
+    <>
+      <Header title={title} />
+      <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-raised text-text-muted"><IconUser size={24} /></span>
+        <div className="mt-4 font-display text-xl font-semibold">{message}</div>
+        <Button onClick={onSignIn} style={{ marginTop: 20 }}>Sign in / Create account</Button>
+      </div>
+    </>
+  )
+}
+
+/** The sign-in requirement for an account-bound action: nothing happens until the guest signs in (rules 3.5, 3.7, 3.9). */
+function SignInSheet({ title, onSignIn, onClose }: { title: string; onSignIn: () => void; onClose: () => void }) {
+  // Keyboard use (§57): focus starts on the sheet's action and Escape closes it, as in the library overlays. Dismissing
+  // the sheet returns focus to the control that asked for sign-in.
+  const [trigger] = useState(() => document.activeElement)
+  const dismiss = () => {
+    onClose()
+    if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus()
+  }
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+  return (
+    <div onClick={dismiss} className="absolute inset-0 z-50 flex flex-col justify-end bg-black/45" role="presentation">
+      <div onClick={e => e.stopPropagation()} className="rounded-t-3xl bg-surface px-5 pb-7 pt-3 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="sign-in-sheet-title">
+        <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-border-strong" />
+        <div className="flex items-center justify-between"><div id="sign-in-sheet-title" className="font-display text-xl font-semibold">{title}</div><IconButton label="Close" onClick={dismiss}>×</IconButton></div>
+        <p className="mt-1 text-sm text-text-muted">Use your phone number to sign in or create an account.</p>
+        <Button size="lg" autoFocus onClick={onSignIn} style={{ width: '100%', marginTop: 20 }}>Sign in / Create account</Button>
+        <Button size="lg" variant="tertiary" onClick={dismiss} style={{ width: '100%', marginTop: 8 }}>Not now</Button>
+      </div>
+    </div>
+  )
+}
+
+const PHONE_DIGITS = 9
+
+/** Prototype sign-in, step 1: phone number, then Continue (specification §12). Sign in and Create account share it. */
+function SignInPhone({ phone, setPhone, onBack, onContinue }: { phone: string; setPhone: (value: string) => void; onBack: () => void; onContinue: () => void }) {
+  const [error, setError] = useState<string>()
+  const digits = phone.replace(/\D/g, '')
+  return (
+    <>
+      <Header title="Sign in" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="font-display text-2xl font-semibold">Sign in / Create account</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">Enter your phone number. We’ll send a {GUEST_STATE.otpDigits}-digit code to continue.</p>
+        <div className="mt-6">
+          <PhoneInput
+            label="Phone number"
+            value={phone}
+            onChange={value => { setPhone(value.replace(/[^\d ]/g, '').slice(0, PHONE_DIGITS + 4)); setError(undefined) }}
+            error={error}
+          />
+        </div>
+      </div>
+      <div className="border-t border-border p-4 pb-6">
+        <Button size="lg" onClick={() => (digits.length === PHONE_DIGITS ? onContinue() : setError('Enter a complete phone number.'))} style={{ width: '100%' }}>Continue</Button>
+      </div>
+    </>
+  )
+}
+
+/** Prototype sign-in, step 2: the 6-digit account sign-in code. It isn't a handoff OTP (specification §12, §19). */
+function SignInCode({ phone, code, setCode, onBack, onVerify }: { phone: string; code: string; setCode: (value: string) => void; onBack: () => void; onVerify: () => void }) {
+  const [error, setError] = useState<string>()
+  const digits = GUEST_STATE.otpDigits
+  return (
+    <>
+      <Header title="Sign in" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="font-display text-2xl font-semibold">Enter the {digits}-digit code</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">We sent a sign-in code to {phone.trim()}.</p>
+        <div className="mt-6">
+          <TextInput
+            label={`${digits}-digit sign-in code`}
+            value={code}
+            onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, digits)); setError(undefined) }}
+            placeholder={'0'.repeat(digits)}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            error={error}
+          />
+        </div>
+        <div className="mt-5 rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary"><span className="mb-1 block font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype</span>No code is sent. Any {digits} digits sign in to the demo Buyer account.</div>
+      </div>
+      <div className="border-t border-border p-4 pb-6">
+        <Button size="lg" onClick={() => (code.length === digits ? onVerify() : setError(`Enter all ${digits} digits.`))} style={{ width: '100%' }}>Sign in</Button>
+      </div>
+    </>
+  )
+}
+
+/** After sign-in, before Checkout continues: what changed in the Cart, so nothing invalid is ordered silently (rule 3.11). */
+function CartCheck({ unavailable, seller, sellerReady, onContinue, onReview, onAllCarts }: {
+  unavailable: readonly CartLine[]; seller: SellerId; sellerReady: boolean; onContinue: () => void; onReview: (seller: SellerId) => void; onAllCarts: () => void
+}) {
+  return (
+    <>
+      <Header title="Cart check" />
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="font-display text-2xl font-semibold">Some items are no longer available</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">We checked your cart after you signed in. No Seller Order was created.</p>
+        <div className="mt-5 flex flex-col gap-3">
+          {unavailable.map(line => (
+            <div key={`${line.product}-${line.options.join('-')}`} className="flex gap-3 rounded-xl border border-danger/20 bg-danger-bg p-3">
+              <Placeholder label={PRODUCTS[line.product].name} className="h-16 w-14 rounded-lg" />
+              <span className="flex-1">
+                <span className="block text-sm font-semibold">{PRODUCTS[line.product].name}</span>
+                <span className="mt-1 block text-xs text-text-muted">{SELLERS[PRODUCTS[line.product].seller].name} · {[lineOptions(line), `Quantity ${line.quantity}`].filter(Boolean).join(' · ')}</span>
+                <span className="mt-1 block text-xs font-semibold text-danger">{availabilityText(line.product)}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2 border-t border-border p-4 pb-6">
+        {sellerReady
+          ? <><Button size="lg" onClick={onContinue}>Continue to {SELLERS[seller].name} checkout</Button><Button size="lg" variant="tertiary" onClick={onAllCarts}>Review your carts</Button></>
+          : <Button size="lg" onClick={() => onReview(seller)}>Review {SELLERS[seller].name} cart</Button>}
+      </div>
+    </>
+  )
+}
+
+/** The signed-in Buyer's profile: DEMO_DATA's facts only. Account Settings and deletion aren't defined, so they aren't shown. */
+function YouProfile({ at, onSeller }: { at: Moment; onSeller: (id: SellerId) => void }) {
+  const buyer = BUYERS[BUYER]
+  return (
+    <>
+      <Header title="You" />
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex items-center gap-4">
+          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-muted font-display text-xl font-bold text-brand-dark">{initials(buyer.name)}</span>
+          <span><span className="block font-display text-2xl font-semibold">{buyer.name}</span><span className="text-sm text-text-muted">{buyer.phoneMasked ?? '—'}</span></span>
+        </div>
+        <SectionLabel>Profile</SectionLabel>
+        <div className="rounded-xl bg-surface-raised p-4">
+          <PriceRow label="Market" value={MARKET.country} />
+          <PriceRow label="Saved discovery area" value={buyer.discoveryArea ?? '—'} />
+        </div>
+        <SectionLabel>Following</SectionLabel>
+        <div className="flex flex-col gap-2">{(buyer.follows ?? []).map(id => <SellerRow key={id} sellerId={id} at={at} onClick={() => onSeller(id)} />)}</div>
+      </div>
+    </>
   )
 }
 
@@ -274,22 +565,24 @@ function Header({ title, onBack, onSearch, trailing }: {
   )
 }
 
-function GuestStrip() {
+function GuestStrip({ onSignIn }: { onSignIn: () => void }) {
   return (
     <div className="flex items-center justify-between bg-brand-muted px-4 py-2 text-xs text-brand-dark">
       <span>Browsing as guest</span>
-      <span className="font-semibold">Sign in to save</span>
+      <button onClick={onSignIn} className="font-semibold">Sign in to save</button>
     </div>
   )
 }
 
-function Feed({ at, onSearch, onPost, onHotspot, onSeller }: {
-  at: Moment; onSearch: () => void; onPost: (id: ShoppablePostId) => void; onHotspot: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void
+function Feed({ at, guest, onSignIn, onNotifications, onSearch, onPost, onHotspot, onSeller }: {
+  at: Moment; guest: boolean; onSignIn: () => void; onNotifications: () => void; onSearch: () => void
+  onPost: (id: ShoppablePostId) => void; onHotspot: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void
 }) {
+  // A guest sees the Guest/default discovery ranking: the same records, in the same order, as Maya's For You (§7; DEMO_DATA › Buyer).
   return (
     <>
-      <Header title="For You" onSearch={onSearch} trailing={<IconButton label="Notifications">○</IconButton>} />
-      <GuestStrip />
+      <Header title="For You" onSearch={onSearch} trailing={<IconButton label="Notifications" onClick={onNotifications}>○</IconButton>} />
+      {guest && <GuestStrip onSignIn={onSignIn} />}
       <div className="flex-1 snap-y snap-mandatory overflow-y-auto bg-text-primary">
         {forYouAt(at).map(id => {
           const post = SHOPPABLE_POSTS[id]
@@ -465,10 +758,11 @@ function ProductDetail({ productId, at, onBack, onSeller, saved, onSave, onAddTo
   )
 }
 
-function SellerProfile({ sellerId, at, onBack, onShop, onPost }: { sellerId: SellerId; at: Moment; onBack: () => void; onShop: () => void; onPost: (id: ShoppablePostId) => void }) {
+function SellerProfile({ sellerId, at, signedIn, onFollow, onBack, onShop, onPost }: { sellerId: SellerId; at: Moment; signedIn: boolean; onFollow: () => void; onBack: () => void; onShop: () => void; onPost: (id: ShoppablePostId) => void }) {
   const seller = SELLERS[sellerId]
   const service = sellerServiceAt(sellerId, at)
-  const following = (BUYERS[BUYER].follows ?? []).includes(sellerId)
+  // Follows are Maya's relationships: a guest has none (DEMO_DATA › Buyer).
+  const following = signedIn && (BUYERS[BUYER].follows ?? []).includes(sellerId)
   // The two-post preview keeps its cap; it shows the Seller's first two published posts.
   const recent = sellerPostsAt(sellerId, at).filter(id => SHOPPABLE_POSTS[id].publication === 'Published').slice(0, 2)
   return (
@@ -479,7 +773,7 @@ function SellerProfile({ sellerId, at, onBack, onShop, onPost }: { sellerId: Sel
         <div className="-mt-10 px-5">
           <div className="flex items-end justify-between">
             <div className="flex h-20 w-20 items-center justify-center rounded-2xl border-4 border-surface bg-brand-muted font-display text-2xl font-bold text-brand-dark">{initials(seller.name)}</div>
-            <Button size="sm" variant="secondary">{following ? 'Following' : 'Follow'}</Button>
+            <Button size="sm" variant="secondary" onClick={onFollow}>{following ? 'Following' : 'Follow'}</Button>
           </div>
           <div className="mt-3 font-display text-2xl font-semibold">{seller.name}</div>
           <div className="text-sm text-text-muted">{seller.handle} · {seller.area}, {MARKET.city}</div>
@@ -521,8 +815,8 @@ function SellerShop({ sellerId, at, onBack, onProduct, onSearch }: { sellerId: S
   )
 }
 
-function Search({ at, query, setQuery, tab, setTab, onProduct, onPost, onSeller }: {
-  at: Moment; query: string; setQuery: (q: string) => void; tab: SearchTab; setTab: (t: SearchTab) => void
+function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, onSeller }: {
+  at: Moment; recent: readonly string[]; query: string; setQuery: (q: string) => void; tab: SearchTab; setTab: (t: SearchTab) => void
   onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void
 }) {
   // Search behaves as before: any query other than the zero-result example shows the same results, which are the
@@ -539,7 +833,7 @@ function Search({ at, query, setQuery, tab, setTab, onProduct, onPost, onSeller 
           placeholder="Search products, posts, sellers"
         />
       </div>
-      {!active ? <SearchLanding onQuery={setQuery} /> : zero ? <ZeroSearch query={query} onClear={() => setQuery('')} /> : (
+      {!active ? <SearchLanding recent={recent} onQuery={setQuery} /> : zero ? <ZeroSearch query={query} onClear={() => setQuery('')} /> : (
         <>
           <div className="flex border-b border-border bg-surface">
             {(['top', 'products', 'posts', 'sellers'] as SearchTab[]).map(t => (
@@ -558,15 +852,15 @@ function Search({ at, query, setQuery, tab, setTab, onProduct, onPost, onSeller 
   )
 }
 
-function SearchLanding({ onQuery }: { onQuery: (q: string) => void }) {
-  // DEMO_DATA defines no browse categories, so the category tiles aren't shown.
+function SearchLanding({ recent, onQuery }: { recent: readonly string[]; onQuery: (q: string) => void }) {
+  // DEMO_DATA defines no browse categories, so the category tiles aren't shown. Recent searches are the signed-in Buyer's own.
   const buyer = BUYERS[BUYER]
   return (
     <div className="flex-1 overflow-y-auto p-5">
       <div className="font-display text-2xl font-semibold">What are you looking for?</div>
       <p className="mt-1 text-sm text-text-muted">Search intentionally across Products, Posts and Sellers.</p>
-      <SectionLabel>Recent</SectionLabel>
-      {(buyer.recentSearches ?? []).map(q => <button key={q} onClick={() => onQuery(q)} className="flex w-full items-center justify-between border-b border-border py-3 text-sm"><span>↗ &nbsp;{q}</span><span className="text-text-muted">×</span></button>)}
+      {recent.length > 0 && <SectionLabel>Recent</SectionLabel>}
+      {recent.map(q => <button key={q} onClick={() => onQuery(q)} className="flex w-full items-center justify-between border-b border-border py-3 text-sm"><span>↗ &nbsp;{q}</span><span className="text-text-muted">×</span></button>)}
       <button onClick={() => onQuery(buyer.zeroResultQuery ?? '')} className="mt-6 text-xs font-semibold text-text-muted underline">Preview zero-results example</button>
     </div>
   )
@@ -620,7 +914,6 @@ function Saved({ onCollection, onProduct, onPost }: { onCollection: (id: Collect
   return (
     <>
       <Header title="Saved" />
-      <GuestStrip />
       <div className="flex-1 overflow-y-auto p-4">
         <div className="mb-4 flex items-end justify-between"><div><div className="font-display text-2xl font-semibold">Your finds</div><div className="text-xs text-text-muted">Private to you</div></div><Button size="sm">New collection</Button></div>
         {collections.map(id => {
@@ -1158,18 +1451,20 @@ function AddToCartConfirmation({ product, options, quantity, onClose, onCart }: 
   )
 }
 
-function SellerCart({ onBack, onAllCarts, onCheckout }: { onBack: () => void; onAllCarts: () => void; onCheckout: () => void }) {
-  // The checkout cart; each of DEMO_DATA's carts holds one line.
-  const order = ORDERS[CHECKOUT_CART]
-  const seller = SELLERS[order.seller].name
-  const line = order.lines[0]
-  const product = PRODUCTS[line.product]
-  const [quantity, setQuantity] = useState(line.quantity)
-  const [removed, setRemoved] = useState(false)
+function SellerCart({ seller: sellerId, lines, at, onBack, onAllCarts, onCheckout, onQuantity, onRemove }: {
+  seller: SellerId; lines: readonly CartLine[]
+  /** The story moment the signed-in Buyer's Cart is checked at; a guest's Cart is checked after sign-in instead (rule 3.11). */
+  at: Moment | null
+  onBack: () => void; onAllCarts: () => void; onCheckout: () => void; onQuantity: (line: CartLine, quantity: number) => void; onRemove: (line: CartLine) => void
+}) {
+  // A Seller's own cart, as the Buyer built it in this session (rules 3.10, 4.1–4.3).
+  const seller = SELLERS[sellerId].name
+  const subtotal = linesSubtotal(lines)
+  const unavailable = at ? lines.filter(line => !isPurchasableAt(line.product, at)) : []
   return (
     <>
       <Header title={`${seller} cart`} onBack={onBack} trailing={<button onClick={onAllCarts} className="text-xs font-semibold text-brand">All carts</button>} />
-      {removed ? (
+      {lines.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-raised text-text-muted"><IconShop size={24} /></span>
           <div className="mt-4 font-display text-xl font-semibold">{seller} cart is empty</div>
@@ -1177,49 +1472,59 @@ function SellerCart({ onBack, onAllCarts, onCheckout }: { onBack: () => void; on
           <Button variant="secondary" onClick={onBack} style={{ marginTop: 20 }}>Return to Product</Button>
         </div>
       ) : <div className="flex-1 overflow-y-auto p-4">
-        <SellerIdentity initials={initials(seller)} name={seller} meta={`${order.lines.length} item · Seller-specific cart`} />
-        <div className="mt-4 flex gap-3 border-b border-border pb-5">
-          <Placeholder label={product.name} className="h-28 w-24 rounded-xl" />
-          <div className="flex flex-1 flex-col">
-            <div className="text-sm font-semibold leading-snug">{product.name}</div>
-            <div className="mt-1 text-xs text-text-muted">{lineOptions(line)}</div>
-            <div className="mt-2 text-sm font-bold text-brand">{formatEtb(product.price)}</div>
-            <div className="mt-auto flex items-center justify-between">
-              <div className="inline-flex items-center rounded-lg border border-border">
-                <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="h-8 w-8">−</button>
-                <span className="w-7 text-center text-xs font-semibold">{quantity}</span>
-                <button onClick={() => setQuantity(quantity + 1)} className="h-8 w-8">+</button>
+        <SellerIdentity initials={initials(seller)} name={seller} meta={`${lines.length} item${lines.length === 1 ? '' : 's'} · Seller-specific cart`} />
+        {lines.map(line => {
+          const product = PRODUCTS[line.product]
+          const gone = unavailable.includes(line)
+          return (
+            <div key={`${line.product}-${line.options.join('-')}`} className="mt-4 flex gap-3 border-b border-border pb-5">
+              <Placeholder label={product.name} className="h-28 w-24 rounded-xl" />
+              <div className="flex flex-1 flex-col">
+                <div className="text-sm font-semibold leading-snug">{product.name}</div>
+                <div className="mt-1 text-xs text-text-muted">{lineOptions(line)}</div>
+                <div className={`mt-2 text-sm font-bold ${gone ? 'text-danger' : 'text-brand'}`}>{gone ? availabilityText(line.product) : formatEtb(product.price)}</div>
+                <div className="mt-auto flex items-center justify-between">
+                  <div className="inline-flex items-center rounded-lg border border-border">
+                    <button onClick={() => onQuantity(line, Math.max(1, line.quantity - 1))} aria-label={`Decrease ${product.name} quantity`} className="h-8 w-8">−</button>
+                    <span className="w-7 text-center text-xs font-semibold">{line.quantity}</span>
+                    <button onClick={() => onQuantity(line, line.quantity + 1)} aria-label={`Increase ${product.name} quantity`} className="h-8 w-8">+</button>
+                  </div>
+                  <button onClick={() => onRemove(line)} className="text-xs text-danger">Remove</button>
+                </div>
               </div>
-              <button onClick={() => setRemoved(true)} className="text-xs text-danger">Remove</button>
             </div>
-          </div>
-        </div>
+          )
+        })}
         <div className="mt-5 rounded-xl bg-surface-raised p-4">
-          <PriceRow label="Products" value={formatEtb(quantity * product.price)} />
-          <div className="mt-3 border-t border-border pt-3"><PriceRow label="Cart subtotal" value={formatEtb(quantity * product.price)} strong /></div>
+          <PriceRow label="Products" value={formatEtb(subtotal)} />
+          <div className="mt-3 border-t border-border pt-3"><PriceRow label="Cart subtotal" value={formatEtb(subtotal)} strong /></div>
         </div>
         <p className="mt-3 text-xs leading-relaxed text-text-muted">Fulfilment and applicable fees are selected during checkout. This checkout creates an order with {seller} only.</p>
       </div>}
-      {!removed && <div className="border-t border-border bg-surface p-4 pb-6">
-        <Button size="lg" onClick={onCheckout} style={{ width: '100%' }}>Checkout this Seller cart</Button>
+      {lines.length > 0 && <div className="border-t border-border bg-surface p-4 pb-6">
+        {unavailable.length > 0 && <p role="alert" className="mb-3 text-xs leading-relaxed text-danger">Remove the unavailable item{unavailable.length === 1 ? '' : 's'} to check out this cart.</p>}
+        <Button size="lg" onClick={onCheckout} disabled={unavailable.length > 0} style={{ width: '100%' }}>Checkout this Seller cart</Button>
       </div>}
     </>
   )
 }
 
-function MultiCart({ onBack, onCheckout }: { onBack: () => void; onCheckout: () => void }) {
-  // The checkout cart goes first; every other Seller cart is reviewed separately.
-  const [notice, setNotice] = useState<OrderId | null>(null)
+function MultiCart({ carts, first, at, onBack, onCheckout }: {
+  carts: readonly { seller: SellerId; lines: readonly CartLine[] }[]; first: SellerId; at: Moment | null; onBack: () => void; onCheckout: (seller: SellerId) => void
+}) {
+  // The current Seller cart goes first; every other Seller cart is reviewed separately.
+  const ordered = [...carts.filter(item => item.seller === first), ...carts.filter(item => item.seller !== first)]
+  const [notice, setNotice] = useState<SellerId | null>(null)
   return (
     <>
       <Header title="Your carts" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="font-display text-2xl font-semibold">{DEMO_CARTS.length} Seller cart{DEMO_CARTS.length === 1 ? '' : 's'}</div>
+        <div className="font-display text-2xl font-semibold">{ordered.length} Seller cart{ordered.length === 1 ? '' : 's'}</div>
         <p className="mt-1 text-sm text-text-muted">Each seller is checked out and confirmed separately.</p>
-        {DEMO_CARTS.map(cart => (cart === CHECKOUT_CART
-          ? <CartSummary key={cart} cart={cart} onCheckout={onCheckout} />
-          : <CartSummary key={cart} cart={cart} onCheckout={() => setNotice(cart)} actionLabel="Review separately" />))}
-        {notice && <div className="mt-3 rounded-xl bg-brand-muted p-3 text-xs leading-relaxed text-brand-dark">{SELLERS[ORDERS[notice].seller].name} remains a separate Seller cart. Finish or leave the {SELLERS[ORDERS[CHECKOUT_CART].seller].name} checkout before starting this one.</div>}
+        {ordered.map((item, index) => (index === 0
+          ? <CartSummary key={item.seller} seller={item.seller} lines={item.lines} blocked={!!at && item.lines.some(line => !isPurchasableAt(line.product, at))} onCheckout={() => onCheckout(item.seller)} />
+          : <CartSummary key={item.seller} seller={item.seller} lines={item.lines} onCheckout={() => setNotice(item.seller)} actionLabel="Review separately" />))}
+        {notice && ordered[0] && <div className="mt-3 rounded-xl bg-brand-muted p-3 text-xs leading-relaxed text-brand-dark">{SELLERS[notice].name} remains a separate Seller cart. Finish or leave the {SELLERS[ordered[0].seller].name} checkout before starting this one.</div>}
         <div className="mt-5 rounded-xl border border-info/20 bg-info-bg p-3 text-xs leading-relaxed text-info">
           Adulis coordinates your carts, but each checkout creates one distinct Seller Order. Amounts, fulfilment and payment status are never combined across sellers.
         </div>
@@ -1228,43 +1533,42 @@ function MultiCart({ onBack, onCheckout }: { onBack: () => void; onCheckout: () 
   )
 }
 
-function CartSummary({ cart, onCheckout, actionLabel }: { cart: OrderId; onCheckout: () => void; actionLabel?: string }) {
-  const order = ORDERS[cart]
-  const seller = SELLERS[order.seller].name
-  const item = order.lines.map(line => PRODUCTS[line.product].name).join(' · ')
-  const quantity = order.lines.reduce((sum, line) => sum + line.quantity, 0)
+function CartSummary({ seller: sellerId, lines, blocked, onCheckout, actionLabel }: { seller: SellerId; lines: readonly CartLine[]; blocked?: boolean; onCheckout: () => void; actionLabel?: string }) {
+  const seller = SELLERS[sellerId].name
+  const item = lines.map(line => PRODUCTS[line.product].name).join(' · ')
+  const quantity = lines.reduce((sum, line) => sum + line.quantity, 0)
   return (
     <div className="mt-4 rounded-2xl border border-border bg-surface p-4 shadow-sm">
-      <SellerIdentity initials={initials(seller)} name={seller} meta={`${order.lines.length} item`} />
+      <SellerIdentity initials={initials(seller)} name={seller} meta={`${lines.length} item${lines.length === 1 ? '' : 's'}`} />
       <div className="my-4 flex items-center gap-3">
         <Placeholder label={item} className="h-16 w-16 rounded-lg" />
         <div className="flex-1"><div className="text-sm font-semibold">{item}</div><div className="mt-1 text-xs text-text-muted">Quantity {quantity}</div></div>
-        <div className="text-sm font-bold">{formatEtb(cartProducts(cart))}</div>
+        <div className="text-sm font-bold">{formatEtb(linesSubtotal(lines))}</div>
       </div>
-      <Button size="sm" variant="secondary" onClick={onCheckout} style={{ width: '100%' }}>{actionLabel ?? `Checkout ${seller}`}</Button>
+      {blocked && <p role="alert" className="mb-3 text-xs leading-relaxed text-danger">Remove the unavailable items in this cart before checkout.</p>}
+      <Button size="sm" variant="secondary" onClick={onCheckout} disabled={blocked} style={{ width: '100%' }}>{actionLabel ?? `Checkout ${seller}`}</Button>
     </div>
   )
 }
 
-function CheckoutCoordinator({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
-  const seller = SELLERS[ORDERS[CHECKOUT_CART].seller].name
-  const lines = ORDERS[CHECKOUT_CART].lines.length
-  const others = DEMO_CARTS.filter(cart => cart !== CHECKOUT_CART)
+function CheckoutCoordinator({ seller: sellerId, lines, others, onBack, onContinue }: { seller: SellerId; lines: readonly CartLine[]; others: readonly SellerId[]; onBack: () => void; onContinue: () => void }) {
+  // One checkout for one Seller cart; the Buyer's other Seller carts stay as they are (rules 4.1–4.3).
+  const seller = SELLERS[sellerId].name
   return (
     <>
       <Header title="Checkout" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-muted font-display text-lg font-bold text-brand-dark">{initials(seller)}</div>
         <div className="mt-4 font-display text-2xl font-semibold">Checkout {seller}</div>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">You are starting one checkout for one Seller cart.{others.map(cart => ` Your ${SELLERS[ORDERS[cart].seller].name} cart stays saved and unchanged.`)}</p>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">You are starting one checkout for one Seller cart.{others.map(other => ` Your ${SELLERS[other].name} cart stays saved and unchanged.`)}</p>
         <div className="mt-6 rounded-2xl border border-brand/20 bg-brand-muted p-4">
           <div className="text-xs font-semibold uppercase tracking-wider text-brand-dark">Seller Order</div>
-          <div className="mt-2 flex items-center justify-between"><span className="font-semibold">{seller}</span><span className="font-bold">{formatEtb(cartProducts(CHECKOUT_CART))}</span></div>
-          <div className="mt-1 text-xs text-text-secondary">{lines} product{lines === 1 ? '' : 's'} · Fulfilment selected next</div>
+          <div className="mt-2 flex items-center justify-between"><span className="font-semibold">{seller}</span><span className="font-bold">{formatEtb(linesSubtotal(lines))}</span></div>
+          <div className="mt-1 text-xs text-text-secondary">{lines.length} product{lines.length === 1 ? '' : 's'} · Fulfilment selected next</div>
         </div>
-        {others.map(cart => (
-          <div key={cart} className="mt-4 rounded-2xl border border-border p-4 opacity-70">
-            <div className="flex items-center justify-between"><span className="font-semibold">{SELLERS[ORDERS[cart].seller].name}</span><span className="text-xs text-text-muted">Stays in cart</span></div>
+        {others.map(other => (
+          <div key={other} className="mt-4 rounded-2xl border border-border p-4 opacity-70">
+            <div className="flex items-center justify-between"><span className="font-semibold">{SELLERS[other].name}</span><span className="text-xs text-text-muted">Stays in cart</span></div>
             <div className="mt-1 text-xs text-text-muted">Not part of this checkout</div>
           </div>
         ))}
@@ -1277,16 +1581,21 @@ function CheckoutCoordinator({ onBack, onContinue }: { onBack: () => void; onCon
   )
 }
 
-function SellerCheckout({ at, fulfilment, setFulfilment, onBack, onPay }: {
-  at: Moment; fulfilment: Fulfilment; setFulfilment: (value: Fulfilment) => void; onBack: () => void; onPay: () => void
+function SellerCheckout({ at, seller: sellerId, lines, fulfilment: preferred, setFulfilment, onBack, onPay }: {
+  at: Moment; seller: SellerId; lines: readonly CartLine[]; fulfilment: Fulfilment; setFulfilment: (value: Fulfilment) => void; onBack: () => void
+  /** Payment continues only for DEMO_DATA's checkout cart; any other cart's payment belongs to WO-006, so no Seller Order is created. */
+  onPay?: () => void
 }) {
   // The options the Seller offers at the story moment, with its own charges. DEMO_DATA quotes no delivery time.
-  const order = ORDERS[CHECKOUT_CART]
-  const seller = SELLERS[order.seller]
+  const seller = SELLERS[sellerId]
   const buyer = BUYERS[BUYER]
-  const options = fulfilmentOptionsAt(order.seller, at)
+  const options = fulfilmentOptionsAt(sellerId, at)
+  const fulfilment = options.some(option => FULFILMENT_KEY[option.mode] === preferred) ? preferred : FULFILMENT_KEY[options[0].mode]
   const courier = options.find(option => option.mode === 'Courier Delivery')
-  const { products, delivery, surcharge, total } = cartTotal(fulfilment, at)
+  const products = linesSubtotal(lines)
+  const delivery = options.find(option => option.mode === FULFILMENT_MODE[fulfilment])?.charge ?? 0
+  const surcharge = adulisSurcharge(products)
+  const total = products + delivery + surcharge
   const detail: Record<FulfilmentMode, string> = {
     'Buyer Collection': `Collect from ${seller.name} in ${seller.area}`,
     'Seller Delivery': 'Arranged and delivered by the seller',
@@ -1296,7 +1605,7 @@ function SellerCheckout({ at, fulfilment, setFulfilment, onBack, onPay }: {
     <>
       <Header title={`${seller.name} checkout`} onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="rounded-xl bg-surface-raised p-3"><SellerIdentity initials={initials(seller.name)} name={seller.name} meta={`Seller Order · ${order.lines.length} product${order.lines.length === 1 ? '' : 's'}`} /></div>
+        <div className="rounded-xl bg-surface-raised p-3"><SellerIdentity initials={initials(seller.name)} name={seller.name} meta={`Seller Order · ${lines.length} product${lines.length === 1 ? '' : 's'}`} /></div>
         <SectionLabel>Fulfilment</SectionLabel>
         {options.map(option => <FulfilmentOption key={option.mode} active={fulfilment === FULFILMENT_KEY[option.mode]} onClick={() => setFulfilment(FULFILMENT_KEY[option.mode])} title={option.mode} detail={detail[option.mode]} price={option.charge ? formatEtb(option.charge) : 'No delivery fee'} />)}
         {fulfilment === 'courier' && courier && (
@@ -1320,7 +1629,9 @@ function SellerCheckout({ at, fulfilment, setFulfilment, onBack, onPay }: {
         <p className="mt-3 text-xs leading-relaxed text-text-muted">Payment status is established by the payment provider and Adulis backend. The seller does not confirm payment.</p>
       </div>
       <div className="border-t border-border bg-surface p-4 pb-6">
-        <Button size="lg" onClick={onPay} style={{ width: '100%' }}>Continue to payment · {formatEtb(total)}</Button>
+        {onPay
+          ? <Button size="lg" onClick={onPay} style={{ width: '100%' }}>Continue to payment · {formatEtb(total)}</Button>
+          : <div className="rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary"><span className="mb-1 block font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype</span>Payment for this cart comes with the Checkout test flows (WO-006). No Seller Order is created.</div>}
       </div>
     </>
   )
