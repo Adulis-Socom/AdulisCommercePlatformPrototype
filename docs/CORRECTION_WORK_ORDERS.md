@@ -33,8 +33,8 @@ Implementation progress is separate from approval status (see Work-order convent
 - WO-003 — IMPLEMENTED AND MERGED
 - WO-004 — IMPLEMENTED AND MERGED
 - WO-005 — IMPLEMENTED AND MERGED
-- WO-006 — NOT STARTED
-- WO-006A — NOT STARTED / BLOCKED ON CANONICAL BUYER COLLECTION SCENARIO
+- WO-006 — IMPLEMENTED AND MERGED
+- WO-006A — NOT STARTED / BLOCKED ON CANONICAL MAYA BUYER COLLECTION SCENARIO
 - WO-007 — NOT STARTED
 - WO-008 — NOT STARTED
 - WO-009 — NOT STARTED
@@ -1146,6 +1146,7 @@ WO-003 to WO-006 are not blocked by this decision. WO-006A stays in the executio
 - 2026-10-04: Post-WO-003 reconciliation. Implementation progress records WO-003 — Guest Buyer Authentication States as implemented and merged into main. WO-004 to WO-011, including WO-006A, are still not started. No work-order text, approval status or dependency changed.
 - 2026-10-05: Post-WO-004 reconciliation. Implementation progress records WO-004 — Buyer Home / Discovery / FYP Rebuild as implemented and merged into main; WO-005 is next. WO-003's availability-revalidation rule is preserved. Already-unavailable Products can no longer be added to Cart, so deterministic coverage of the "became unavailable after add-to-cart" race is assigned to WO-006 as requirement 24, with acceptance criterion 11, in addition to its existing scenarios. WO-006A's blocker is unchanged. No approval status, dependency, execution order or canonical demo record changed; WO-005 to WO-011, including WO-006A, are not started.
 - 2026-10-05: Post-WO-005 reconciliation. Implementation progress records WO-005 — Buyer–Seller Chat Context Rebuild as implemented and merged into main; WO-006 is next. WO-006's requirement 24 remains the approved deterministic availability-race coverage. WO-006A's blocker is unchanged. No approval status, dependency, execution order, canonical demo record or later work order changed; WO-006 to WO-011, including WO-006A, are not started.
+- 2026-10-05: Post-WO-006 reconciliation. Implementation progress records WO-006 — Single-Seller and Multi-Seller Checkout Test Flows as implemented and merged into main. WO-006A is next but remains blocked pending a canonical Maya Buyer Collection scenario, as its progress line now states; a separate canonical-data reconciliation will handle that blocker. No approval status, canonical demo record, dependency or execution order changed; WO-006A to WO-011 are not started.
 
 ## Related documents
 
