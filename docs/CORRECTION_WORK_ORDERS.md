@@ -26,12 +26,12 @@ Because execution is sequential, a work order that is PENDING DECISION holds bac
 
 ## Implementation progress
 
-Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-04:
+Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-05:
 
 - WO-001 — IMPLEMENTED AND MERGED
 - WO-002 — IMPLEMENTED AND MERGED
 - WO-003 — IMPLEMENTED AND MERGED
-- WO-004 — NOT STARTED
+- WO-004 — IMPLEMENTED AND MERGED
 - WO-005 — NOT STARTED
 - WO-006 — NOT STARTED
 - WO-006A — NOT STARTED / BLOCKED ON CANONICAL BUYER COLLECTION SCENARIO
@@ -40,6 +40,8 @@ Implementation progress is separate from approval status (see Work-order convent
 - WO-009 — NOT STARTED
 - WO-010 — NOT STARTED
 - WO-011 — NOT STARTED
+
+**Cross-work-order clarification (2026-10-05).** WO-003's availability-revalidation rule remains valid. After WO-004, already-unavailable Products cannot be added to Cart, so the canonical demo no longer naturally reaches the "became unavailable after add-to-cart" branch. Deterministic coverage of that race condition is assigned to WO-006's Checkout test environment. See WO-006 requirement 24.
 
 ## Work-order conventions
 
@@ -552,6 +554,7 @@ It also provides a deterministic Checkout testing environment on the three demo 
 - **Flow D:** `PRD-AA-001` ×1 and `PRD-NG-001` ×1 → two Seller carts → Checkout coordinator → separate Seller Orders `ADU-24091` and `ADU-24092`. Nura Glow's first attempt, `PAY-24092-01`, fails at 10:06, and the retry, `PAY-24092-02`, is Paid at 10:07.
 - The Buyer screens Seller-specific Cart, Multi-cart summary, Checkout, Gateway transition, Payment Processing and Payment Success (§12, §14–§16), plus the payment Failed and Retry states (§16, §56).
 - Session-only Checkout test runs: Scenario A (one Seller), Scenario B2 (two Sellers) and Scenario B3 (three Sellers), with sequential payments, partial completion, a paid example of each fulfilment mode and a prototype-only scenario control (requirements 12–23).
+- A deterministic, transient availability-race Checkout test that demonstrates WO-003's revalidation rule: a Product that is purchasable when added becomes unavailable while it is in the Cart (requirement 24).
 
 **OUT OF SCOPE.**
 
@@ -603,6 +606,20 @@ It also provides a deterministic Checkout testing environment on the three demo 
 21. Each fulfilment mode has a testable Checkout/payment example (§15): Buyer Collection and Courier Delivery in Scenario A; Courier Delivery for `TEST-B2-01` and `TEST-B3-01`; Seller Delivery for `TEST-B2-02`, `TEST-B3-02` and `TEST-B3-03`. Courier Delivery shows the Products subtotal, the Courier Delivery charge, the Adulis 0.5% surcharge and the Total. Buyer Collection shows its approved fulfilment charge according to DD (free), and Seller Delivery uses the Seller's approved DD charge (Nura Glow ETB 120.00, Volt House ETB 100.00). Volt House offers Courier Delivery only from 16:30. Do not invent prices or charges (DD *Sellers*).
 22. WO-006 may test Buyer Collection → price breakdown → payment → payment success using a `TEST-*` Order. This doesn't create a canonical Buyer Collection Order in DD and doesn't resolve WO-006A: the pending canonical Maya Buyer Collection scenario is required only before WO-006A implements the normal Buyer-app final Collection Handoff. WO-006 stops the Buyer Collection test after the Checkout/payment outcome and doesn't simulate the Collection QR final handoff.
 23. A prototype-only control labelled "PROTOTYPE NAVIGATION — NOT PRODUCTION UI" (§61) loads the Scenario A, Scenario B2 or Scenario B3 carts and, for Scenario B3, picks "All payments succeed" or "Order 2 payment fails". It's listed among the Prototype Guide's prototype-only controls (§2) and is never a Buyer feature.
+24. A deterministic, transient Checkout test for availability revalidation demonstrates WO-003's already-approved revalidation rule (R3.11, §12) through this Checkout testing environment. It tests the legitimate race: the Product is purchasable when added → the Product enters the Cart → before Checkout confirmation, the test scenario changes that Product's availability → Checkout revalidates → the Buyer is told that the Product is no longer available → Checkout cannot proceed with the invalid line. It is additional coverage: Scenarios A, B2 and B3 and requirements 1–23 are unchanged.
+    - The Product must be purchasable when it is initially added to the Cart.
+    - The availability change happens only after the Product is already in the Cart.
+    - The availability change is transient prototype/test-session state (R3.12).
+    - Do not edit a canonical DEMO_DATA Product record merely to create this race.
+    - Do not make an already-out-of-stock Product addable.
+    - Revalidation must identify the affected Product.
+    - Do not silently substitute another Product, silently change the Variant, silently change the quantity, or silently remove the line without telling the Buyer.
+    - Checkout stays blocked for that Seller cart until the invalid line is resolved according to the test UI.
+    - The scenario does not create a Seller Order merely because revalidation ran.
+    - No payment attempt is created until the cart passes revalidation.
+    - Other Seller carts remain independent (R4.1–4.3).
+    - Reset removes the transient availability override and restores the canonical demo state (R3.12).
+    - Do not assign a production Order ID. Do not turn the transient availability override into canonical Inventory truth.
 
 **DATA REQUIREMENTS.**
 
@@ -631,6 +648,7 @@ It also provides a deterministic Checkout testing environment on the three demo 
 - From the prototype-only control, run Scenario A with each Addis Atelier fulfilment option, Scenario B2 and both Scenario B3 outcomes, and compare every item, amount, reference, attempt and progress message with requirements 12–23.
 - Choose each fulfilment mode: Buyer Collection, Seller Delivery and Courier Delivery each complete payment on a `TEST-*` Order, and the Buyer Collection test stops at its payment outcome.
 - Check that no `TEST-*` Order appears in Buyer Orders history, Seller Console Orders, Seller Insights, Courier statistics, Reviews or Claims, and that resetting the prototype or the test scenario removes every test run while `ADU-24091` and `ADU-24092` stay unchanged.
+- Run the availability-race test (requirement 24): add a purchasable Product, let the test scenario change its availability while it is in the Cart, and confirm that revalidation names the Product and blocks that Seller cart until the line is resolved, with nothing silently changed, no Seller Order and no payment attempt, the other Seller carts independent, and the canonical state restored on reset.
 
 **ACCEPTANCE CRITERIA.**
 
@@ -644,6 +662,7 @@ It also provides a deterministic Checkout testing environment on the three demo 
 8. Payment failure in one Seller Order does not rewrite successful payments.
 9. Requirements 1–23 hold.
 10. The standard checks pass.
+11. Requirement 24 holds: in the availability-race test, the Buyer is told which Product is no longer available, and Checkout cannot proceed with that line.
 
 **REQUIRED COMMANDS.** The standard commands.
 
@@ -1125,6 +1144,7 @@ WO-003 to WO-006 are not blocked by this decision. WO-006A stays in the executio
 - 2026-10-04: WO-006 extended with the Checkout testing environment from the original Figma correction list's Correction Work Order 03, reconciled with DEMO_DATA.md as approved: session-only Scenario A (Addis Atelier: Linen Overshirt M/Natural and Wide-Leg Trousers M/Charcoal) and Scenario B (Addis Atelier, Nura Glow and Volt House, with sequential payments and partial completion); `TEST-` references; fixed fulfilment modes, with Buyer Collection selectable but not paid; and a prototype-only scenario control. These are requirements 12–19 and acceptance criteria 3–8. The original Overshirt M/Sand, Trousers M/Black and Compact Power Bank were replaced, because DEMO_DATA.md has no such variants and the Power Bank is out of stock. Flows C and D, every other work order and every canonical demo record are unchanged. WO-006 stays APPROVED FOR IMPLEMENTATION, in sequence and not started.
 - 2026-10-04: WO-006 documentation correction. The Checkout work is confirmed as WO-006, not WO-003, which remains Guest Buyer Authentication States; WHY now says so. Scenario B is renamed Scenario B3 (three Sellers), and the new Scenario B2 adds explicit two-Seller coverage with Scenario B3's Addis Atelier and Nura Glow carts. Test Orders use scenario-scoped references (`TEST-A-01`, `TEST-B2-01`, `TEST-B2-02`, `TEST-B3-01` to `TEST-B3-03`), and payment attempts have their own `TESTPAY-` references, with a retry staying on the same Seller Order. Buyer Collection can now be paid on a test Order (Scenario A), stopping at the payment outcome, without creating a DEMO_DATA Order or resolving WO-006A. Test Orders stay out of canonical Orders, Insights, statistics, Reviews, Claims and aggregates. These are requirements 12–23. No guest-cart Order reference is resolved, and WO-003 is unchanged. No canonical demo record changed; WO-006 stays APPROVED FOR IMPLEMENTATION and not started.
 - 2026-10-04: Post-WO-003 reconciliation. Implementation progress records WO-003 — Guest Buyer Authentication States as implemented and merged into main. WO-004 to WO-011, including WO-006A, are still not started. No work-order text, approval status or dependency changed.
+- 2026-10-05: Post-WO-004 reconciliation. Implementation progress records WO-004 — Buyer Home / Discovery / FYP Rebuild as implemented and merged into main; WO-005 is next. WO-003's availability-revalidation rule is preserved. Already-unavailable Products can no longer be added to Cart, so deterministic coverage of the "became unavailable after add-to-cart" race is assigned to WO-006 as requirement 24, with acceptance criterion 11, in addition to its existing scenarios. WO-006A's blocker is unchanged. No approval status, dependency, execution order or canonical demo record changed; WO-005 to WO-011, including WO-006A, are not started.
 
 ## Related documents
 
