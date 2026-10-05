@@ -32,7 +32,7 @@ Implementation progress is separate from approval status (see Work-order convent
 - WO-002 — IMPLEMENTED AND MERGED
 - WO-003 — IMPLEMENTED AND MERGED
 - WO-004 — IMPLEMENTED AND MERGED
-- WO-005 — NOT STARTED
+- WO-005 — IMPLEMENTED AND MERGED
 - WO-006 — NOT STARTED
 - WO-006A — NOT STARTED / BLOCKED ON CANONICAL BUYER COLLECTION SCENARIO
 - WO-007 — NOT STARTED
@@ -1145,6 +1145,7 @@ WO-003 to WO-006 are not blocked by this decision. WO-006A stays in the executio
 - 2026-10-04: WO-006 documentation correction. The Checkout work is confirmed as WO-006, not WO-003, which remains Guest Buyer Authentication States; WHY now says so. Scenario B is renamed Scenario B3 (three Sellers), and the new Scenario B2 adds explicit two-Seller coverage with Scenario B3's Addis Atelier and Nura Glow carts. Test Orders use scenario-scoped references (`TEST-A-01`, `TEST-B2-01`, `TEST-B2-02`, `TEST-B3-01` to `TEST-B3-03`), and payment attempts have their own `TESTPAY-` references, with a retry staying on the same Seller Order. Buyer Collection can now be paid on a test Order (Scenario A), stopping at the payment outcome, without creating a DEMO_DATA Order or resolving WO-006A. Test Orders stay out of canonical Orders, Insights, statistics, Reviews, Claims and aggregates. These are requirements 12–23. No guest-cart Order reference is resolved, and WO-003 is unchanged. No canonical demo record changed; WO-006 stays APPROVED FOR IMPLEMENTATION and not started.
 - 2026-10-04: Post-WO-003 reconciliation. Implementation progress records WO-003 — Guest Buyer Authentication States as implemented and merged into main. WO-004 to WO-011, including WO-006A, are still not started. No work-order text, approval status or dependency changed.
 - 2026-10-05: Post-WO-004 reconciliation. Implementation progress records WO-004 — Buyer Home / Discovery / FYP Rebuild as implemented and merged into main; WO-005 is next. WO-003's availability-revalidation rule is preserved. Already-unavailable Products can no longer be added to Cart, so deterministic coverage of the "became unavailable after add-to-cart" race is assigned to WO-006 as requirement 24, with acceptance criterion 11, in addition to its existing scenarios. WO-006A's blocker is unchanged. No approval status, dependency, execution order or canonical demo record changed; WO-005 to WO-011, including WO-006A, are not started.
+- 2026-10-05: Post-WO-005 reconciliation. Implementation progress records WO-005 — Buyer–Seller Chat Context Rebuild as implemented and merged into main; WO-006 is next. WO-006's requirement 24 remains the approved deterministic availability-race coverage. WO-006A's blocker is unchanged. No approval status, dependency, execution order, canonical demo record or later work order changed; WO-006 to WO-011, including WO-006A, are not started.
 
 ## Related documents
 
