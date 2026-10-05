@@ -255,6 +255,27 @@ export function orderTotals(order: OrderId): OrderTotals {
   return { products, delivery, surcharge, total: products + delivery + surcharge }
 }
 
+/**
+ * A Seller cart's Products subtotal at the prices a new Order pays now: an active discount applies (WO-006
+ * requirement 10). Recorded Orders keep their own totals (orderTotals).
+ */
+export function productsSubtotal(lines: readonly OrderLine[]): Santim {
+  return lines.reduce((sum, line) => sum + currentPrice(line.product) * line.quantity, 0)
+}
+
+/**
+ * A new Seller Order's totals at Checkout: the Products at current prices, the Seller's own charge for the fulfilment
+ * mode at `at`, and the 0.5% surcharge on the Products subtotal only, excluding the delivery charge (rules 5.6–5.8).
+ */
+export function checkoutTotalsAt(seller: SellerId, lines: readonly OrderLine[], mode: FulfilmentMode, at: Moment = DEFAULT_SNAPSHOT): OrderTotals {
+  if (lines.some(line => PRODUCTS[line.product].seller !== seller)) throw new Error(`A ${SELLERS[seller].name} cart holds only its own Products`)
+  const delivery = fulfilmentOptionsAt(seller, at).find(option => option.mode === mode)?.charge
+  if (delivery === undefined) throw new Error(`${SELLERS[seller].name} offers no ${mode} at ${at.at}`)
+  const products = productsSubtotal(lines)
+  const surcharge = adulisSurcharge(products)
+  return { products, delivery, surcharge, total: products + delivery + surcharge }
+}
+
 /** When the Order was Paid: the provider/backend confirmation of its successful payment attempt. */
 export function paidAt(order: OrderId): Timestamp {
   const paid = ORDERS[order].history[0]

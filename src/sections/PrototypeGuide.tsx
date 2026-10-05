@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { AdulisLogo } from '../App'
-import { BUYERS, COURIERS, DEMO_CARTS, GUEST_STATE, ORDERS, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName } from '../demo-data'
+import { BUYERS, COURIERS, DEMO_CARTS, GUEST_STATE, ORDERS, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName, paymentAttempts } from '../demo-data'
 
 // Demo personas and record names are read from the canonical module (WO-001).
 const BUYER_NAME = BUYERS[SURFACE_DEFAULTS.buyer].name
 const SELLER_NAME = SELLERS[SURFACE_DEFAULTS.seller].name
 const COURIER_NAME = COURIERS[SURFACE_DEFAULTS.courier].name
 const [CART_SELLER, SECOND_CART_SELLER] = DEMO_CARTS.map(order => SELLERS[ORDERS[order].seller].name)
+// Flow D's two Seller Orders, and the second one's failed attempt and its retry (DEMO_DATA › Seller Orders).
+const [CART_ORDER, SECOND_CART_ORDER] = DEMO_CARTS
+const [FAILED_ATTEMPT, RETRY_ATTEMPT] = paymentAttempts(SECOND_CART_ORDER).map(attempt => attempt.ref)
 
 /* ═══════════════════════════════════════════════
    00 — PROTOTYPE GUIDE
@@ -757,8 +760,8 @@ const DEMO_FLOWS = [
   {
     id: 'D',
     label: 'Multi-Seller Cart',
-    path: `Add Product from ${CART_SELLER} + Product from ${SECOND_CART_SELLER} → Two seller carts → Checkout coordinator → Separate seller orders`,
-    screens: 6,
+    path: `Add Product from ${CART_SELLER} + Product from ${SECOND_CART_SELLER} → Two seller carts → Checkout ${CART_SELLER} on its own: ${CART_ORDER} Paid → Checkout ${SECOND_CART_SELLER}, a separate Seller Order: ${SECOND_CART_ORDER} → ${FAILED_ATTEMPT} fails → Retry: payment attempt 2 on the same ${SECOND_CART_ORDER} → ${RETRY_ATTEMPT} Paid → ${CART_ORDER} stays Paid, never rolled back`,
+    screens: 9,
     color: '#B87C20',
   },
   {
@@ -969,6 +972,13 @@ function RoleLauncher({ onNavigate }: RoleLauncherProps) {
           PROTOTYPE NAVIGATION — NOT PRODUCTION UI. It shows the Buyer app as a guest or as the signed-in demo Buyer, for
           demonstration only. Inside the app, Sign in / Create account runs the prototype sign-in: phone number, Continue,
           then a {GUEST_STATE.otpDigits}-digit code.
+        </p>
+        <p className="text-sm" style={{ color: 'var(--color-text-secondary)', margin: '12px 0 0', lineHeight: 1.6 }}>
+          <strong style={{ color: 'var(--color-text-primary)' }}>Checkout test control.</strong> Beside the Buyer guest switch,
+          under the same PROTOTYPE NAVIGATION — NOT PRODUCTION UI label. Choose a run and Load: Scenario A (one Seller),
+          Scenario B2 (two Sellers), Scenario B3 with All payments succeed or Order 2 payment fails, or the availability
+          race. A run's TEST- Seller Orders and TESTPAY- payment attempts exist only inside it, never in Orders, the Seller
+          surfaces or the demo data; Reset or a prototype reset removes them. It is never a Buyer feature.
         </p>
       </div>
 

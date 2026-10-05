@@ -8,15 +8,16 @@ import {
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
-  BUYERS, CHATBOTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
+  BUYERS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
   MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
-  activeDiscount, adulisSurcharge, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, claimStateAt, claimSubmitted, claimsForOrder,
+  activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, claimStateAt, claimSubmitted, claimsForOrder,
   contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, followingAt,
   forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDayMonth, formatEtb, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
-  isContextChoiceAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt,
-  productQualityAt, reviewsAt, sameContext, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, trustAt, trustLabel,
-  type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FulfilmentMode, type MessageContext, type MessageRecord, type ModerationId, type Moment,
-  type NotificationRecord, type OrderId, type OrderLine, type OrderState, type ProductId, type SellerId, type ShoppablePostId, type Timestamp,
+  isContextChoiceAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
+  productQualityAt, productsSubtotal, reviewsAt, sameContext, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, testPaymentRef, trustAt, trustLabel,
+  type CheckoutTest, type CheckoutTestId, type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FulfilmentMode, type MessageContext,
+  type MessageRecord, type ModerationId, type Moment, type NotificationRecord, type OrderId, type OrderLine, type OrderState, type OrderTotals, type ProductId,
+  type SellerId, type ShoppablePostId, type Timestamp,
 } from '../demo-data'
 
 type TabKey = 'home' | 'shop' | 'saved' | 'orders' | 'you'
@@ -32,7 +33,6 @@ type Screen =
   | 'qr-verifying' | 'delivery-confirmed' | 'otp' | 'completed' | 'review'
   | 'claim-start' | 'claim-form' | 'claim-status' | 'chats' | 'conversation'
   | 'chatbot' | 'notifications' | 'you' | 'sign-in-phone' | 'sign-in-code' | 'cart-check'
-type Fulfilment = 'collection' | 'seller' | 'courier'
 /** A guest browses public content; signing in shows Maya's signed-in state (rules 3.1–3.12, specification §12). */
 type Auth = 'guest' | 'signed-in'
 /** A Save target: a Product Post or a whole Shoppable Post (rule 2.5), never one standing in for the other. */
@@ -55,9 +55,23 @@ type CartLine = OrderLine
  * conversation's.
  */
 type ChatEntry = { seller: SellerId; context: MessageContext; from: Screen }
-
-const FULFILMENT_MODE: Record<Fulfilment, FulfilmentMode> = { collection: 'Buyer Collection', seller: 'Seller Delivery', courier: 'Courier Delivery' }
-const FULFILMENT_KEY: Record<FulfilmentMode, Fulfilment> = { 'Buyer Collection': 'collection', 'Seller Delivery': 'seller', 'Courier Delivery': 'courier' }
+/** A payment attempt made in this session, by its PAY- or TESTPAY- reference. Processing until the outcome shows. */
+type Attempt = { ref: string; status: 'Processing' | 'Paid' | 'Failed' }
+/**
+ * A Seller Order this session's Checkout created (WO-006): one of DEMO_DATA's two Flow D Orders in Flows C and D, or a
+ * Checkout test run's TEST- Order. It is created with its first payment attempt, once its Seller cart passes
+ * revalidation, and keeps the lines, fulfilment and totals it was created with. A retry is another attempt on the same
+ * Seller Order (rule 5.9). It is transient session state: DEMO_DATA never changes, and a reset removes it (rule 3.12).
+ */
+type CheckoutOrder = { ref: string; test: boolean; seller: SellerId; lines: readonly CartLine[]; mode: FulfilmentMode; totals: OrderTotals; attempts: readonly Attempt[] }
+/** A Seller Order's own state in a coordinated checkout (WO-006 requirement 20). */
+type OrderStatus = 'PAID' | 'PAYMENT FAILED' | 'NOT YET PAID'
+/** A Seller Order a coordinated checkout covers: numbered in payment order, with its Order once created. */
+type ProgressEntry = { number: number; seller: SellerId; order?: CheckoutOrder }
+/** What Reset test restores: the Buyer's carts and checkout as they were before the first test run loaded. */
+type BeforeTest = { cart: CartLine[]; screen: Screen; cartSeller: SellerId; checkoutSeller: SellerId; modes: Partial<Record<SellerId, FulfilmentMode>>; paying: string | null }
+/** A Checkout test run (WO-006 requirements 12–24) and whether its availability race has happened. */
+type TestRun = { test: CheckoutTest; raced: boolean; before: BeforeTest }
 
 // The start screen's photograph illustrates no demo record, so it stays. Products and posts show neutral placeholders:
 // DEMO_DATA defines no imagery, and the inherited photographs showed other items.
@@ -66,8 +80,6 @@ const PHOTOS = {
 }
 
 const BUYER = SURFACE_DEFAULTS.buyer
-// The Seller cart the checkout screens show: the first of DEMO_DATA's Flow D carts.
-const CHECKOUT_CART = DEMO_CARTS[0]
 
 // Claim issues: the categories the approved documents use (DEMO_DATA › Claims). Report reasons: the prototype report
 // categories (specification §7).
@@ -110,6 +122,10 @@ const ON_PHOTO = { outlineColor: 'var(--color-text-inverse)' }
 // edge it stays clear of the selected channel's underline.
 const INSET_FOCUS = { outlineOffset: '-5px' }
 
+// The surcharge row's label names its basis: 0.5% of the Products subtotal, never of a delivery charge (rules 5.6–5.8).
+// Non-breaking spaces keep "0.5% of products" together when a narrow phone wraps the label.
+const SURCHARGE_LABEL = 'Adulis surcharge — 0.5% of products'
+
 // How far the channel bar's overflow shadow reaches in from its right edge, in px. At 360 px the bar ends 11 px after the
 // "Discounts" label, so 10 px covers no fully visible label at rest.
 const CHANNEL_CUE_WIDTH = 10
@@ -146,27 +162,62 @@ function sellerCarts(cart: readonly CartLine[]): { seller: SellerId; lines: Cart
 
 const sameLine = (a: CartLine, b: CartLine) => a.product === b.product && a.options.join('\u0000') === b.options.join('\u0000')
 
-/** A Seller cart's Products subtotal at the Products' regular prices, as the checkout cart's subtotal is. */
-function linesSubtotal(lines: readonly CartLine[]) {
-  return lines.reduce((sum, line) => sum + PRODUCTS[line.product].price * line.quantity, 0)
+/** The cart without the given lines' quantities: a paid Seller Order's items leave the Cart (checked out). */
+function withoutLines(cart: readonly CartLine[], lines: readonly CartLine[]): CartLine[] {
+  return cart
+    .map(item => ({ ...item, quantity: item.quantity - lines.filter(line => sameLine(line, item)).reduce((sum, line) => sum + line.quantity, 0) }))
+    .filter(item => item.quantity > 0)
 }
 
-/** Whether a Seller cart is DEMO_DATA's checkout cart, line for line: the one cart whose payment the prototype completes. */
-function isCheckoutCart(seller: SellerId, lines: readonly CartLine[]) {
-  const canonical = ORDERS[CHECKOUT_CART]
-  return seller === canonical.seller && lines.length === canonical.lines.length && canonical.lines.every(line => lines.some(other => sameLine(line, other) && other.quantity === line.quantity))
+/**
+ * The DEMO_DATA Order a Seller cart is, line for line, while that Order isn't paid yet at `at`: Flows C and D pay
+ * DEMO_DATA's Flow D carts (DD › Seller Orders). Any other cart outside a Checkout test run creates no Seller Order.
+ */
+function canonicalOrderFor(seller: SellerId, lines: readonly CartLine[], at: Moment): OrderId | undefined {
+  return DEMO_CARTS.find(id => {
+    const order = ORDERS[id]
+    return order.seller === seller && orderStateAt(id, at) === null && lines.length === order.lines.length && order.lines.every(line => lines.some(other => sameLine(line, other) && other.quantity === line.quantity))
+  })
 }
 
-/** A cart's Products subtotal at the Products' regular prices. */
-function cartProducts(cart: OrderId) {
-  return ORDERS[cart].lines.reduce((sum, line) => sum + PRODUCTS[line.product].price * line.quantity, 0)
+/** A Seller Order's state from its latest payment attempt (WO-006 requirement 20). */
+function orderStatus(order?: CheckoutOrder): OrderStatus {
+  const last = order?.attempts[order.attempts.length - 1]
+  return last?.status === 'Paid' ? 'PAID' : last?.status === 'Failed' ? 'PAYMENT FAILED' : 'NOT YET PAID'
 }
 
-/** The checkout total for the cart with a fulfilment option: Products + delivery charge + the 0.5% surcharge. */
-function cartTotal(fulfilment: Fulfilment, at: Moment) {
-  const products = cartProducts(CHECKOUT_CART)
-  const delivery = fulfilmentOptionsAt(ORDERS[CHECKOUT_CART].seller, at).find(option => option.mode === FULFILMENT_MODE[fulfilment])?.charge ?? 0
-  return { products, delivery, surcharge: adulisSurcharge(products), total: products + delivery + adulisSurcharge(products) }
+/**
+ * The outcome of the Order's attempt `index` (from 0): DEMO_DATA's for an ADU- Order (Flow D's second Order fails its
+ * first attempt, rule 5.9), the test run's for a TEST- Order. Outcomes are deterministic, so the prototype never invents or rewrites a payment.
+ */
+function scheduledOutcome(order: CheckoutOrder, test: CheckoutTest | undefined, index: number): 'Paid' | 'Failed' {
+  if (!order.test) return paymentAttempts(order.ref as OrderId)[index]?.status ?? 'Paid'
+  return test?.orders.find(item => item.ref === order.ref)?.attempts[index] === 'FAILED' ? 'Failed' : 'Paid'
+}
+
+/** The reference of the Order's attempt `index` (from 0): PAY-<order number>-<attempt> or TESTPAY-<scenario>-<order>-<attempt>. */
+function attemptRef(order: CheckoutOrder, index: number): string {
+  return order.test ? testPaymentRef(order.ref, index + 1) : paymentAttempts(order.ref as OrderId)[index].ref
+}
+
+/** DEMO_DATA's Order as this session's Checkout created it, with the given attempt outcomes so far. */
+function demoOrder(id: OrderId, attempts: readonly Attempt['status'][]): CheckoutOrder {
+  const order = ORDERS[id]
+  return { ref: id, test: false, seller: order.seller, lines: order.lines, mode: order.fulfilment, totals: orderTotals(id), attempts: attempts.map((status, i) => ({ ref: paymentAttempts(id)[i].ref, status })) }
+}
+
+/**
+ * Where a guided-flow step that opens on a cart, checkout or payment screen starts: DEMO_DATA's Flow D carts, and on a
+ * payment screen that payment's Seller Order (Flow D's first, or the second one's failed attempt).
+ */
+function initialCheckout(screen: Screen): { cart: CartLine[]; orders: CheckoutOrder[]; paying: string | null } {
+  const cart = CART_SCREENS.includes(screen) ? DEMO_CARTS.flatMap(id => ORDERS[id].lines) : []
+  const [first, second] = DEMO_CARTS
+  const start = (order: CheckoutOrder) => ({ cart: orderStatus(order) === 'PAID' ? withoutLines(cart, order.lines) : cart, orders: [order], paying: order.ref })
+  if (screen === 'payment-success') return start(demoOrder(first, ['Paid']))
+  if (screen === 'payment-processing' || screen === 'payment-checking') return start(demoOrder(first, ['Processing']))
+  if (screen === 'payment-failed') return start(demoOrder(second, ['Failed']))
+  return { cart, orders: [], paying: null }
 }
 
 /** The Order's DEMO_DATA Claim that hasn't been submitted at `at`: the Claim a claim step submits. Other claims are transient. */
@@ -219,7 +270,6 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [query, setQuery] = useState('')
   const [addedToCart, setAddedToCart] = useState<{ product: ProductId; options: readonly string[]; quantity: number } | null>(null)
   const [reportOpen, setReportOpen] = useState(false)
-  const [fulfilment, setFulfilment] = useState<Fulfilment>('courier')
   // The records the screens show: a guided-flow step starts on its DEMO_DATA records, and opening an item selects it.
   const story = useStory()
   const focus = story.focus
@@ -246,27 +296,180 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   // The temporary Cart is this session's own state, so signing in keeps it (rules 3.10, 3.12); a reset remounts the app.
-  const [cart, setCart] = useState<CartLine[]>(CART_SCREENS.includes(initialScreen) ? DEMO_CARTS.flatMap(id => ORDERS[id].lines) : [])
-  const [cartSeller, setCartSeller] = useState<SellerId>(ORDERS[CHECKOUT_CART].seller)
-  const [checkoutSeller, setCheckoutSeller] = useState<SellerId>(ORDERS[CHECKOUT_CART].seller)
+  const [initial] = useState(() => initialCheckout(initialScreen))
+  const [cart, setCart] = useState<CartLine[]>(initial.cart)
+  const [cartSeller, setCartSeller] = useState<SellerId>(ORDERS[DEMO_CARTS[0]].seller)
+  const [checkoutSeller, setCheckoutSeller] = useState<SellerId>(ORDERS[DEMO_CARTS[0]].seller)
+  // Checkout (WO-006), all transient session state that a reset removes (rule 3.12): each Seller cart's own fulfilment
+  // choice (rule 4.3); the Seller Orders this session's Checkout created, with their payment attempts; the Order being
+  // paid (none yet: the checkout Seller's cart, before its Order exists); and the Checkout test run, if one is loaded.
+  const [modeChoice, setModeChoice] = useState<Partial<Record<SellerId, FulfilmentMode>>>({})
+  const [orders, setOrders] = useState<CheckoutOrder[]>(initial.orders)
+  const [payingRef, setPayingRef] = useState<string | null>(initial.paying)
+  const [run, setRun] = useState<TestRun | null>(null)
+  // Whether the Cart check followed sign-in (rule 3.11) or the start of a checkout (WO-006 requirement 24).
+  const [checkAfterSignIn, setCheckAfterSignIn] = useState(false)
   const [notificationsFrom, setNotificationsFrom] = useState<Screen>('orders')
-  const paymentTotal = cartTotal(fulfilment, at).total
   const openPost = (id: ShoppablePostId) => { setDiscoverySheet(null); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
   const openProduct = (id: ProductId) => { setDiscoverySheet(null); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
   const openSeller = (id: SellerId) => { setSellerId(id); setScreen('seller') }
   const openOrder = (id: OrderId) => { setOrderId(id); setOrderStage(orderStateAt(id, at) ?? 'Paid'); setScreen('order-detail') }
   const openConversation = (entry: ChatEntry) => { setChat(entry); setScreen('conversation') }
   const openClaim = () => { setClaimId(upcomingClaim(orderId, at)); setScreen('claim-start') }
-  const paid = () => { advanceTo(paidAt(CHECKOUT_CART)); setScreen('payment-success') }
   const handoffVerified = () => { const done = stateTime(orderId, 'Completed'); if (done) advanceTo(done); setScreen('delivery-confirmed') }
 
   // Account-bound actions ask a guest to sign in instead of acting (rules 3.5, 3.7, 3.9); a signed-in Buyer just acts.
   const requireSignIn = (title: string, next: Intent, act: () => void) => (signedIn ? act() : setSignInPrompt({ title, intent: next }))
   const startSignIn = (next: Intent) => { setSignInPrompt(null); setIntent(next); setSignInFrom(screen); setPhone(''); setCode(''); setScreen('sign-in-phone') }
-  // Checkout continues only once the Cart is revalidated against current availability (rule 3.11).
-  const unavailable = cart.filter(line => !isPurchasableAt(line.product, at))
-  const continueCheckout = () => setScreen(unavailable.length ? 'cart-check' : 'checkout-coordinator')
-  const startCheckout = (seller: SellerId) => { setCheckoutSeller(seller); requireSignIn('Sign in to check out', { screen: 'checkout-coordinator', then: 'checkout' }, continueCheckout) }
+  // Once a test run's availability race has happened (WO-006 requirement 24), its Product can't be bought in that run.
+  // DEMO_DATA's Product, and every other run, keep their canonical availability.
+  const raced = run?.raced ? run.test.race : undefined
+  const purchasable = (id: ProductId) => id !== raced && isPurchasableAt(id, at)
+  const availabilityOf = (id: ProductId) => (id === raced ? 'Currently unavailable' : availabilityText(id))
+  const carts = sellerCarts(cart)
+  const checkoutLines = carts.find(item => item.seller === checkoutSeller)?.lines ?? []
+  // Checkout continues only once the Cart is revalidated against current availability (rule 3.11). `racedNow` is a race
+  // that happened as this checkout started, before its state update.
+  const unavailable = cart.filter(line => !purchasable(line.product))
+  const continueCheckout = (racedNow?: ProductId, afterSignIn = false) => {
+    setCheckAfterSignIn(afterSignIn)
+    setScreen(cart.some(line => line.product === racedNow || !purchasable(line.product)) ? 'cart-check' : 'checkout-coordinator')
+  }
+  // The Seller Orders of this session's Checkout that count now: the test run's while one is loaded, otherwise DEMO_DATA's.
+  const sessionOrders = orders.filter(order => order.test === !!run)
+  const openOrderFor = (seller: SellerId) => sessionOrders.find(order => order.seller === seller && orderStatus(order) !== 'PAID')
+  const payingOrder = payingRef ? orders.find(order => order.ref === payingRef) : undefined
+  // The Seller Order the next payment attempt is for: the one being retried, or the checkout Seller's Order still waiting
+  // for payment. Without one, opening secure payment creates the checkout Seller cart's Order.
+  const retrying = (payingOrder && orderStatus(payingOrder) === 'PAYMENT FAILED' ? payingOrder : undefined) ?? openOrderFor(checkoutSeller)
+  // Each Seller cart's own fulfilment choice (rule 4.3). Until the Buyer chooses, Checkout preselects the mode of the
+  // Seller Order it creates (the test run's or DEMO_DATA's), otherwise Courier Delivery where the Seller offers it.
+  const modeFor = (seller: SellerId, lines: readonly CartLine[]): FulfilmentMode => {
+    const options = fulfilmentOptionsAt(seller, at)
+    const offered = (mode?: FulfilmentMode) => (mode && options.some(option => option.mode === mode) ? mode : undefined)
+    const canonical = canonicalOrderFor(seller, lines, at)
+    const planned = run ? run.test.orders.find(order => order.seller === seller)?.mode : canonical && ORDERS[canonical].fulfilment
+    return offered(modeChoice[seller]) ?? offered(planned) ?? offered('Courier Delivery') ?? options[0].mode
+  }
+  // The Seller Order a Seller cart's Checkout creates: the test run's TEST- Order for that Seller, or DEMO_DATA's Order in
+  // Flows C and D, with its own fulfilment mode. Otherwise why no Seller Order is created.
+  const orderPlanFor = (seller: SellerId, lines: readonly CartLine[], mode: FulfilmentMode): { ref: string; test: boolean } | { note: string } => {
+    const name = SELLERS[seller].name
+    if (run) {
+      if (run.test.race) return { note: 'The availability-race test stops before payment. No Seller Order is created.' }
+      const planned = run.test.orders.find(order => order.seller === seller)
+      if (!planned) return { note: `${run.test.label} has no Seller Order for ${name}. No Seller Order is created.` }
+      const existing = orders.find(order => order.ref === planned.ref)
+      if (existing && orderStatus(existing) === 'PAID') return { note: `${planned.ref} is already paid in this test run. No other Seller Order is created.` }
+      return { ref: planned.ref, test: true }
+    }
+    const canonical = canonicalOrderFor(seller, lines, at)
+    if (!canonical) return { note: "Payment runs only for the demo story's Seller Orders and the Checkout test runs. No Seller Order is created." }
+    const required = ORDERS[canonical].fulfilment
+    if (mode !== required) return { note: `In the demo story, ${canonical} is paid with ${required}. Choose ${required} to continue. No Seller Order is created.` }
+    return { ref: canonical, test: false }
+  }
+  // Paying a Seller Order that is waiting for payment again: another attempt on the same Order (rule 5.9).
+  const retryPayment = (order: CheckoutOrder) => {
+    setPayingRef(order.ref)
+    setCheckoutSeller(order.seller)
+    requireSignIn('Sign in to check out', { screen: 'payment-transition' }, () => setScreen('payment-transition'))
+  }
+  const startCheckout = (seller: SellerId) => {
+    const open = openOrderFor(seller)
+    if (open) return retryPayment(open)
+    setCheckoutSeller(seller)
+    // Requirement 24's race: the run makes its Product unavailable once it is in this Seller cart, as checkout starts.
+    const race = run && !run.raced && run.test.race && PRODUCTS[run.test.race].seller === seller && cart.some(line => line.product === run.test.race) ? run.test.race : undefined
+    if (race && run) setRun({ ...run, raced: true })
+    requireSignIn('Sign in to check out', { screen: 'checkout-coordinator', then: 'checkout' }, () => continueCheckout(race))
+  }
+  // Open secure payment: the Seller cart is revalidated once more, then its Seller Order is created with its first
+  // payment attempt, or a retry adds the next attempt to the same Order. No attempt is created for an invalid cart.
+  const openPayment = () => {
+    const seller = retrying?.seller ?? checkoutSeller
+    const lines = retrying?.lines ?? checkoutLines
+    if (lines.some(line => !purchasable(line.product))) return continueCheckout()
+    let order = retrying
+    if (!order) {
+      const mode = modeFor(seller, lines)
+      const plan = orderPlanFor(seller, lines, mode)
+      if ('note' in plan) return setScreen('seller-checkout')
+      order = { ref: plan.ref, test: plan.test, seller, lines, mode, totals: checkoutTotalsAt(seller, lines, mode, at), attempts: [] }
+    }
+    const next: CheckoutOrder = { ...order, attempts: [...order.attempts, { ref: attemptRef(order, order.attempts.length), status: 'Processing' }] }
+    setOrders(all => (all.some(item => item.ref === next.ref) ? all.map(item => (item.ref === next.ref ? next : item)) : [...all, next]))
+    setPayingRef(next.ref)
+    setScreen('payment-processing')
+  }
+  // The Seller Orders this coordinated checkout covers, in payment order (WO-006 requirements 19–20): the test run's, or
+  // DEMO_DATA's Flow D Orders. Each keeps its own state; the count is coordination only, never one cross-Seller Order.
+  const progress: ProgressEntry[] = (run ? run.test.orders.map(order => ({ ref: order.ref, seller: order.seller })) : DEMO_CARTS.map(id => ({ ref: id as string, seller: ORDERS[id].seller })))
+    .flatMap(({ ref, seller }, i) => {
+      const order = sessionOrders.find(item => item.ref === ref)
+      if (order) return [{ number: i + 1, seller, order }]
+      const lines = carts.find(item => item.seller === seller)?.lines
+      return lines && (run || canonicalOrderFor(seller, lines, at) === ref) ? [{ number: i + 1, seller }] : []
+    })
+  const nextUp = progress.find(entry => orderStatus(entry.order) !== 'PAID' && carts.some(item => item.seller === entry.seller))
+  const checkoutMode = modeFor(checkoutSeller, checkoutLines)
+  const checkoutPlan = orderPlanFor(checkoutSeller, checkoutLines, checkoutMode)
+  // The outcome of the attempt in progress, as the provider and backend establish it (rules 5.1–5.5): DEMO_DATA's
+  // attempts move the story to their times (10:05, 10:06, 10:07); a test run moves no story time. A paid Order's items
+  // leave the Cart.
+  const resolvePayment = () => {
+    const order = payingOrder
+    if (!order) return
+    const index = order.attempts.length - 1
+    const status = scheduledOutcome(order, run?.test, index)
+    if (!order.test) advanceTo(paymentAttempts(order.ref as OrderId)[index].at)
+    setOrders(all => all.map(item => (item.ref === order.ref ? { ...item, attempts: item.attempts.map((attempt, i) => (i === index ? { ...attempt, status } : attempt)) } : item)))
+    if (status === 'Failed') return setScreen('payment-failed')
+    const rest = withoutLines(cart, order.lines)
+    const remaining = sellerCarts(rest).map(item => item.seller)
+    const following = progress.find(entry => entry.order?.ref !== order.ref && orderStatus(entry.order) !== 'PAID' && remaining.includes(entry.seller))?.seller ?? remaining[0]
+    setCart(rest)
+    if (following) setCartSeller(following)
+    setScreen('payment-success')
+  }
+  // The prototype-only Checkout test control (WO-006 requirement 23). Loading a run replaces the Buyer's carts with the
+  // run's; Reset test removes its TEST- Orders, TESTPAY- attempts, race and progress and restores what it replaced.
+  const loadTest = (id: CheckoutTestId) => {
+    const test = CHECKOUT_TESTS.find(item => item.id === id)
+    if (!test) return
+    const first = PRODUCTS[test.cart[0].product].seller
+    setRun({ test, raced: false, before: run?.before ?? { cart, screen, cartSeller, checkoutSeller, modes: modeChoice, paying: payingRef } })
+    setOrders(all => all.filter(order => !order.test))
+    setModeChoice({})
+    setPayingRef(null)
+    setCart([...test.cart])
+    setCartSeller(first)
+    setCheckoutSeller(first)
+    setDiscoverySheet(null)
+    setAddedToCart(null)
+    setReportOpen(false)
+    setSignInPrompt(null)
+    if (!test.race) return setScreen(test.orders.length > 1 ? 'multi-cart' : 'seller-cart')
+    // The race starts on its Product's Product Post, where it is still purchasable.
+    setProductId(test.race)
+    setSellerId(PRODUCTS[test.race].seller)
+    setProductFrom('multi-cart')
+    setScreen('product')
+  }
+  const resetTest = () => {
+    if (!run) return
+    const { before } = run
+    setRun(null)
+    setOrders(all => all.filter(order => !order.test))
+    setModeChoice(before.modes)
+    setPayingRef(before.paying)
+    setCart(before.cart)
+    setCartSeller(before.cartSeller)
+    setCheckoutSeller(before.checkoutSeller)
+    setDiscoverySheet(null)
+    setAddedToCart(null)
+    setScreen(before.screen)
+  }
   // Save adds to Maya's default Saved Collection (WO-004 requirement 11): its canonical items plus this session's changes.
   const defaultCollection = COLLECTION_IDS.find(id => COLLECTIONS[id].owner === BUYER && COLLECTIONS[id].isDefault)!
   const inSaved = (key: SaveKey) => savedChanges[key] ?? COLLECTIONS[defaultCollection].items.some(item => saveKeyOf(item) === key)
@@ -295,7 +498,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
     setAuth('signed-in')
     if (next.tab) setActiveTab(next.tab)
     if (next.channel) setChannel(next.channel)
-    if (next.then === 'checkout') return continueCheckout()
+    if (next.then === 'checkout') return continueCheckout(undefined, true)
     setScreen(next.screen)
     if (next.then === 'report') setReportOpen(true)
     if (next.then === 'save' && next.save) save(next.save)
@@ -311,8 +514,6 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
     setCart(lines => (lines.some(item => sameLine(item, line)) ? lines.map(item => (sameLine(item, line) ? { ...item, quantity: item.quantity + line.quantity } : item)) : [...lines, line]))
     setCartSeller(PRODUCTS[line.product].seller)
   }
-  const carts = sellerCarts(cart)
-  const checkoutLines = carts.find(item => item.seller === checkoutSeller)?.lines ?? []
 
   const goTab = (key: TabKey) => {
     setActiveTab(key)
@@ -331,9 +532,14 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
     <PhoneFrame
       label={`05 — MOBILE BUYER · ${signedIn ? shortName(BUYERS[BUYER].name).toUpperCase() : 'GUEST'}`}
       clock={formatClockShort(at.at)}
-      toolbar={<PrototypeSignInSwitch signedIn={signedIn} onGuest={() => { setAuth('guest'); setSignInPrompt(null); setReportOpen(false); setDiscoverySheet(null); setChosenArea(null) }} onSignedIn={switchSignedIn} />}
+      toolbar={
+        <PrototypeSignInSwitch signedIn={signedIn} onGuest={() => { setAuth('guest'); setSignInPrompt(null); setReportOpen(false); setDiscoverySheet(null); setChosenArea(null) }} onSignedIn={switchSignedIn}>
+          <CheckoutTestControl active={run?.test ?? null} onLoad={loadTest} onReset={resetTest} />
+        </PrototypeSignInSwitch>
+      }
     >
       <div className="relative flex flex-1 flex-col overflow-hidden">
+        {run && <TestRunBanner label={run.test.label} />}
         {gate && <SignInRequired title={gate.title} message={gate.message} onSignIn={() => startSignIn({ screen, tab: activeTab, then: gate.then })} />}
         {shown === 'start' && <AppStart onExplore={() => { setAuth('guest'); setActiveTab('home'); setScreen('feed') }} onSignIn={() => startSignIn({ screen: 'feed', tab: 'home' })} />}
         {shown === 'sign-in-phone' && <SignInPhone phone={phone} setPhone={setPhone} onBack={() => setScreen(signInFrom)} onContinue={() => setScreen('sign-in-code')} />}
@@ -382,6 +588,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
           <ProductDetail
             productId={productId}
             at={at}
+            withdrawn={productId === raced}
             saved={isSaved(`product:${productId}`)}
             onSave={() => toggleSave(`product:${productId}`, { screen: 'product' })}
             onShare={() => setDiscoverySheet({ kind: 'share', product: productId })}
@@ -419,7 +626,9 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
           <SellerCart
             seller={cartSeller}
             lines={carts.find(item => item.seller === cartSeller)?.lines ?? []}
-            at={signedIn ? at : null}
+            isAvailable={signedIn ? purchasable : null}
+            availabilityOf={availabilityOf}
+            held={openOrderFor(cartSeller)}
             onBack={() => setScreen('product')}
             onAllCarts={() => setScreen('multi-cart')}
             onCheckout={() => startCheckout(cartSeller)}
@@ -427,15 +636,15 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onRemove={line => setCart(lines => lines.filter(item => !sameLine(item, line)))}
           />
         )}
-        {shown === 'multi-cart' && <MultiCart carts={carts} first={cartSeller} at={signedIn ? at : null} onBack={() => setScreen('seller-cart')} onCheckout={startCheckout} />}
-        {shown === 'cart-check' && <CartCheck unavailable={unavailable} seller={checkoutSeller} sellerReady={checkoutLines.length > 0 && checkoutLines.every(line => isPurchasableAt(line.product, at))} onContinue={() => setScreen('checkout-coordinator')} onReview={seller => { setCartSeller(seller); setScreen('seller-cart') }} onAllCarts={() => setScreen('multi-cart')} />}
+        {shown === 'multi-cart' && <MultiCart carts={carts} first={cartSeller} isAvailable={signedIn ? purchasable : null} openOrderFor={openOrderFor} progress={progress} onBack={() => setScreen('seller-cart')} onCheckout={startCheckout} />}
+        {shown === 'cart-check' && <CartCheck unavailable={unavailable} availabilityOf={availabilityOf} afterSignIn={checkAfterSignIn} seller={checkoutSeller} sellerReady={checkoutLines.length > 0 && checkoutLines.every(line => purchasable(line.product))} onContinue={() => setScreen('checkout-coordinator')} onReview={seller => { setCartSeller(seller); setScreen('seller-cart') }} onAllCarts={() => setScreen('multi-cart')} />}
         {shown === 'checkout-coordinator' && <CheckoutCoordinator seller={checkoutSeller} lines={checkoutLines} others={carts.filter(item => item.seller !== checkoutSeller).map(item => item.seller)} onBack={() => setScreen('multi-cart')} onContinue={() => setScreen('seller-checkout')} />}
-        {shown === 'seller-checkout' && <SellerCheckout at={at} seller={checkoutSeller} lines={checkoutLines} fulfilment={fulfilment} setFulfilment={setFulfilment} onBack={() => setScreen('checkout-coordinator')} onPay={isCheckoutCart(checkoutSeller, checkoutLines) ? () => setScreen('payment-transition') : undefined} />}
-        {shown === 'payment-transition' && <PaymentTransition amount={paymentTotal} onBack={() => setScreen('seller-checkout')} onContinue={() => setScreen('payment-processing')} />}
-        {shown === 'payment-processing' && <PaymentProcessing amount={paymentTotal} onPaid={paid} onFailed={() => setScreen('payment-failed')} onChecking={() => setScreen('payment-checking')} />}
-        {shown === 'payment-success' && <PaymentSuccess amount={paymentTotal} onDone={() => { setActiveTab('orders'); setScreen('orders') }} />}
-        {shown === 'payment-failed' && <PaymentFailed onRetry={() => setScreen('payment-transition')} onCart={() => setScreen('seller-cart')} />}
-        {shown === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={paid} />}
+        {shown === 'seller-checkout' && <SellerCheckout at={at} seller={checkoutSeller} lines={checkoutLines} mode={checkoutMode} onMode={mode => setModeChoice(choices => ({ ...choices, [checkoutSeller]: mode }))} note={'note' in checkoutPlan ? checkoutPlan.note : undefined} onBack={() => setScreen('checkout-coordinator')} onPay={() => { setPayingRef(null); setScreen('payment-transition') }} />}
+        {shown === 'payment-transition' && <PaymentTransition seller={retrying?.seller ?? checkoutSeller} amount={retrying?.totals.total ?? checkoutTotalsAt(checkoutSeller, checkoutLines, checkoutMode, at).total} retrying={retrying} onBack={() => { if (!retrying) return setScreen('seller-checkout'); setPayingRef(retrying.ref); setScreen('payment-failed') }} onContinue={openPayment} />}
+        {shown === 'payment-processing' && payingOrder && <PaymentProcessing order={payingOrder} source={run ? run.test.label : 'Demo data'} outcome={scheduledOutcome(payingOrder, run?.test, payingOrder.attempts.length - 1)} onOutcome={resolvePayment} onChecking={() => setScreen('payment-checking')} />}
+        {shown === 'payment-success' && payingOrder && <PaymentSuccess order={payingOrder} progress={progress} next={nextUp && SELLERS[nextUp.seller].name} onNext={() => nextUp && startCheckout(nextUp.seller)} onDone={() => { setActiveTab('orders'); setScreen('orders') }} />}
+        {shown === 'payment-failed' && payingOrder && <PaymentFailed order={payingOrder} progress={progress} onRetry={() => retryPayment(payingOrder)} onCart={() => { setCartSeller(payingOrder.seller); setScreen('seller-cart') }} />}
+        {shown === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={resolvePayment} />}
         {shown === 'orders' && <OrdersList at={at} onOrder={openOrder} onChats={() => setScreen('chats')} onNotifications={() => { setNotificationsFrom('orders'); setScreen('notifications') }} />}
         {shown === 'order-detail' && <OrderDetail orderId={orderId} stage={orderStage} setStage={setOrderStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => setScreen('otp')} onClaim={openClaim} onChat={() => openConversation({ seller: ORDERS[orderId].seller, context: { order: orderId }, from: 'order-detail' })} />}
         {shown === 'delegated-recipient' && <DelegatedRecipient onBack={() => setScreen('order-detail')} onSave={() => setScreen('order-detail')} />}
@@ -509,18 +718,56 @@ function AppStart({ onExplore, onSignIn }: { onExplore: () => void; onSignIn: ()
   )
 }
 
-/** The prototype-only switch between the guest and signed-in Buyer states (WO-003; specification §2, §61). */
-function PrototypeSignInSwitch({ signedIn, onGuest, onSignedIn }: { signedIn: boolean; onGuest: () => void; onSignedIn: () => void }) {
+/**
+ * The prototype-only controls above the Buyer phone (specification §2, §61): the switch between the guest and signed-in
+ * Buyer states (WO-003), and the controls after it under the same label (the Checkout test control, WO-006).
+ */
+function PrototypeSignInSwitch({ signedIn, onGuest, onSignedIn, children }: { signedIn: boolean; onGuest: () => void; onSignedIn: () => void; children?: ReactNode }) {
   const option = (active: boolean) => `rounded-md px-3 py-1.5 text-xs font-semibold ${active ? 'bg-brand text-white' : 'text-text-secondary'}`
   return (
-    <div className="prototype-switch mb-3 flex max-w-full flex-wrap items-center justify-center gap-2" role="group" aria-label="Prototype navigation, not production UI: Buyer sign-in state">
+    <div className="prototype-switch mb-3 flex max-w-full flex-wrap items-center justify-center gap-2" role="group" aria-label="Prototype navigation, not production UI">
       <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">PROTOTYPE NAVIGATION — NOT PRODUCTION UI</span>
-      <span className="inline-flex rounded-lg border border-border bg-surface p-0.5">
+      <span className="inline-flex rounded-lg border border-border bg-surface p-0.5" role="group" aria-label="Buyer sign-in state">
         <button onClick={onGuest} aria-pressed={!signedIn} className={option(!signedIn)}>Guest</button>
         <button onClick={onSignedIn} aria-pressed={signedIn} className={option(signedIn)}>Signed in</button>
       </span>
+      {children}
     </div>
   )
+}
+
+/**
+ * The prototype-only Checkout test control (WO-006 requirement 23): it loads a session-only Checkout test run or resets
+ * it. It is never a Buyer feature. Loading waits for Load, so choosing a run never changes the screen by itself.
+ */
+function CheckoutTestControl({ active, onLoad, onReset }: { active: CheckoutTest | null; onLoad: (id: CheckoutTestId) => void; onReset: () => void }) {
+  const [chosen, setChosen] = useState<CheckoutTestId | ''>('')
+  // What a screen reader hears after Load or Reset: the phone's content changes without moving focus.
+  const [announced, setAnnounced] = useState('')
+  // Compact enough to share one row at phone widths: "B3 · Order 2 payment fails" for Scenario B3's failure run.
+  const control = 'rounded-lg border border-border bg-surface px-2 py-1.5 text-xs font-semibold text-text-secondary disabled:opacity-50'
+  const load = () => {
+    const test = CHECKOUT_TESTS.find(item => item.id === chosen)
+    if (!test) return
+    onLoad(test.id)
+    setAnnounced(`Checkout test run loaded: ${test.label}`)
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center justify-center gap-1" role="group" aria-label="Checkout test runs">
+      <select aria-label="Checkout test run" value={chosen} onChange={e => setChosen(e.target.value as CheckoutTestId)} className={control}>
+        <option value="" disabled>Checkout test…</option>
+        {CHECKOUT_TESTS.map(test => <option key={test.id} value={test.id}>{test.label.replace(/^Scenario /, '')}</option>)}
+      </select>
+      <button onClick={load} disabled={!chosen} className={control}>Load</button>
+      <button onClick={() => { onReset(); setAnnounced('Checkout test run reset') }} disabled={!active} aria-label="Reset test" className={control}>Reset</button>
+      <span className="sr-only" aria-live="polite">{announced}</span>
+    </span>
+  )
+}
+
+/** Inside the phone while a Checkout test run is loaded: everything in it is session-only prototype test state. */
+function TestRunBanner({ label }: { label: string }) {
+  return <div className="flex-shrink-0 border-b border-border bg-surface-raised px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype test · {label}</div>
 }
 
 /** What a guest sees on an account-bound screen: the sign-in requirement, never the signed-in Buyer's data (rules 3.2–3.7). */
@@ -622,16 +869,22 @@ function SignInCode({ phone, code, setCode, onBack, onVerify }: { phone: string;
   )
 }
 
-/** After sign-in, before Checkout continues: what changed in the Cart, so nothing invalid is ordered silently (rule 3.11). */
-function CartCheck({ unavailable, seller, sellerReady, onContinue, onReview, onAllCarts }: {
-  unavailable: readonly CartLine[]; seller: SellerId; sellerReady: boolean; onContinue: () => void; onReview: (seller: SellerId) => void; onAllCarts: () => void
+/**
+ * Before Checkout continues (after sign-in, or as a checkout starts): what changed in the Cart, so nothing invalid is
+ * ordered silently (rule 3.11; WO-006 requirement 24).
+ */
+function CartCheck({ unavailable, availabilityOf, afterSignIn, seller, sellerReady, onContinue, onReview, onAllCarts }: {
+  unavailable: readonly CartLine[]; availabilityOf: (id: ProductId) => string; afterSignIn: boolean; seller: SellerId; sellerReady: boolean
+  onContinue: () => void; onReview: (seller: SellerId) => void; onAllCarts: () => void
 }) {
   return (
     <>
       <Header title="Cart check" />
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="font-display text-2xl font-semibold">Some items are no longer available</div>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">We checked your cart after you signed in. No Seller Order was created.</p>
+        <div role="alert">
+          <div className="font-display text-2xl font-semibold">Some items are no longer available</div>
+          <p className="mt-2 text-sm leading-relaxed text-text-secondary">We checked your cart {afterSignIn ? 'after you signed in' : 'before checkout'}. No Seller Order was created.</p>
+        </div>
         <div className="mt-5 flex flex-col gap-3">
           {unavailable.map(line => (
             <div key={`${line.product}-${line.options.join('-')}`} className="flex gap-3 rounded-xl border border-danger/20 bg-danger-bg p-3">
@@ -639,7 +892,7 @@ function CartCheck({ unavailable, seller, sellerReady, onContinue, onReview, onA
               <span className="flex-1">
                 <span className="block text-sm font-semibold">{PRODUCTS[line.product].name}</span>
                 <span className="mt-1 block text-xs text-text-muted">{SELLERS[PRODUCTS[line.product].seller].name} · {[lineOptions(line), `Quantity ${line.quantity}`].filter(Boolean).join(' · ')}</span>
-                <span className="mt-1 block text-xs font-semibold text-danger">{availabilityText(line.product)}</span>
+                <span className="mt-1 block text-xs font-semibold text-danger">{availabilityOf(line.product)}</span>
               </span>
             </div>
           ))}
@@ -944,8 +1197,8 @@ function ProductPostCard({ productId, at, ends, onOpen }: { productId: ProductId
 
 /**
  * The Product's current price. With an active discount (DEMO_DATA › Discounts) it shows the discounted price, the
- * regular price struck through and the saving, and the end date where set. Presentation only: Cart and Checkout prices
- * belong to WO-006.
+ * regular price struck through and the saving, and the end date where set. Cart and Checkout charge the same current
+ * price (WO-006 requirement 10).
  */
 function PriceTag({ productId, size = 'sm', ends, className = '' }: { productId: ProductId; size?: 'sm' | 'lg'; ends?: boolean; className?: string }) {
   const product = PRODUCTS[productId]
@@ -1135,10 +1388,16 @@ function Toast({ message }: { message: string | null }) {
   )
 }
 
-function ProductDetail({ productId, at, onBack, onSeller, saved, onSave, onShare, onAddToCart, onChat }: { productId: ProductId; at: Moment; onBack: () => void; onSeller: () => void; saved: boolean; onSave: () => void; onShare: () => void; onAddToCart: (options: readonly string[], quantity: number) => void; onChat: () => void }) {
+function ProductDetail({ productId, at, withdrawn, onBack, onSeller, saved, onSave, onShare, onAddToCart, onChat }: {
+  productId: ProductId; at: Moment
+  /** The Checkout test run's availability race made it unavailable (WO-006 requirement 24): in that run only. */
+  withdrawn?: boolean
+  onBack: () => void; onSeller: () => void; saved: boolean; onSave: () => void; onShare: () => void; onAddToCart: (options: readonly string[], quantity: number) => void; onChat: () => void
+}) {
   const product = PRODUCTS[productId]
   // A Product that is out of stock stays viewable, but nothing offers it for purchase (rule 1.8; DEMO_DATA › Shoppable Posts).
-  const purchasable = isPurchasableAt(productId, at)
+  const purchasable = !withdrawn && isPurchasableAt(productId, at)
+  const availability = withdrawn ? 'Out of Stock' : product.availability
   const seller = SELLERS[product.seller]
   const service = sellerServiceAt(product.seller, at)
   const quality = productQualityAt(productId, at)
@@ -1156,7 +1415,7 @@ function ProductDetail({ productId, at, onBack, onSeller, saved, onSave, onShare
         <div className="p-5">
           <div className="mt-1 font-display text-2xl font-semibold leading-tight">{product.name}</div>
           <PriceTag productId={productId} size="lg" ends className="mt-2" />
-          <div className="mt-2 flex items-center gap-2 text-xs"><span className={product.availability === 'Available' ? 'text-success' : product.availability === 'Low Stock' ? 'text-warning' : 'text-text-muted'}>● {availabilityText(productId)}</span></div>
+          <div className="mt-2 flex items-center gap-2 text-xs"><span className={availability === 'Available' ? 'text-success' : availability === 'Low Stock' ? 'text-warning' : 'text-text-muted'}>● {withdrawn ? 'Currently unavailable' : availabilityText(productId)}</span></div>
 
           {product.variants.map((group, index) => (
             <div key={index}>
@@ -1512,7 +1771,7 @@ function OrderDetail({ orderId, stage, setStage, onBack, onDelegate, onScan, onO
           {courierMode && order.courier && <PriceRow label="Courier" value={currentIndex >= stages.findIndex(item => item.key === 'Courier Assigned') ? COURIERS[order.courier].name : 'Not assigned'} />}
           <PriceRow label="Product" value={formatEtb(totals.products)} />
           <PriceRow label={order.fulfilment} value={formatEtb(totals.delivery)} />
-          <PriceRow label="Adulis surcharge — 0.5%" value={formatEtb(totals.surcharge)} />
+          <PriceRow label={SURCHARGE_LABEL} value={formatEtb(totals.surcharge)} />
           <div className="mt-2 border-t border-border pt-3"><PriceRow label="Paid total" value={formatEtb(totals.total)} strong /></div>
         </div>
         <div className="mt-4 flex gap-2">
@@ -1956,16 +2215,20 @@ function AddToCartConfirmation({ product, options, quantity, onClose, onCart }: 
   )
 }
 
-function SellerCart({ seller: sellerId, lines, at, onBack, onAllCarts, onCheckout, onQuantity, onRemove }: {
+function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held, onBack, onAllCarts, onCheckout, onQuantity, onRemove }: {
   seller: SellerId; lines: readonly CartLine[]
-  /** The story moment the signed-in Buyer's Cart is checked at; a guest's Cart is checked after sign-in instead (rule 3.11). */
-  at: Moment | null
+  /** Whether the signed-in Buyer can buy a Product now; a guest's Cart is checked after sign-in instead (rule 3.11). */
+  isAvailable: ((id: ProductId) => boolean) | null
+  availabilityOf: (id: ProductId) => string
+  /** This Seller's Order waiting for payment again: it holds its items until a retry pays it (rule 5.9). */
+  held?: CheckoutOrder
   onBack: () => void; onAllCarts: () => void; onCheckout: () => void; onQuantity: (line: CartLine, quantity: number) => void; onRemove: (line: CartLine) => void
 }) {
-  // A Seller's own cart, as the Buyer built it in this session (rules 3.10, 4.1–4.3).
+  // A Seller's own cart, as the Buyer built it in this session (rules 3.10, 4.1–4.3), at the prices a new Order pays now.
   const seller = SELLERS[sellerId].name
-  const subtotal = linesSubtotal(lines)
-  const unavailable = at ? lines.filter(line => !isPurchasableAt(line.product, at)) : []
+  const subtotal = productsSubtotal(lines)
+  const unavailable = isAvailable ? lines.filter(line => !isAvailable(line.product)) : []
+  const isHeld = (line: CartLine) => !!held && held.lines.some(item => sameLine(item, line))
   return (
     <>
       <Header title={`${seller} cart`} onBack={onBack} trailing={<button onClick={onAllCarts} className="text-xs font-semibold text-brand">All carts</button>} />
@@ -1981,20 +2244,22 @@ function SellerCart({ seller: sellerId, lines, at, onBack, onAllCarts, onCheckou
         {lines.map(line => {
           const product = PRODUCTS[line.product]
           const gone = unavailable.includes(line)
+          // Items a Seller Order holds can't change while it waits for payment: its retry pays exactly what it holds.
+          const locked = isHeld(line)
           return (
             <div key={`${line.product}-${line.options.join('-')}`} className="mt-4 flex gap-3 border-b border-border pb-5">
               <Placeholder label={product.name} className="h-28 w-24 rounded-xl" />
               <div className="flex flex-1 flex-col">
                 <div className="text-sm font-semibold leading-snug">{product.name}</div>
                 <div className="mt-1 text-xs text-text-muted">{lineOptions(line)}</div>
-                <div className={`mt-2 text-sm font-bold ${gone ? 'text-danger' : 'text-brand'}`}>{gone ? availabilityText(line.product) : formatEtb(product.price)}</div>
+                <div className={`mt-2 text-sm font-bold ${gone ? 'text-danger' : 'text-brand'}`}>{gone ? availabilityOf(line.product) : <InlinePrice productId={line.product} />}</div>
                 <div className="mt-auto flex items-center justify-between">
                   <div className="inline-flex items-center rounded-lg border border-border">
-                    <button onClick={() => onQuantity(line, Math.max(1, line.quantity - 1))} aria-label={`Decrease ${product.name} quantity`} className="h-8 w-8">−</button>
+                    <button onClick={() => onQuantity(line, Math.max(1, line.quantity - 1))} disabled={locked} aria-label={`Decrease ${product.name} quantity`} className={`h-8 w-8${locked ? ' opacity-40' : ''}`}>−</button>
                     <span className="w-7 text-center text-xs font-semibold">{line.quantity}</span>
-                    <button onClick={() => onQuantity(line, line.quantity + 1)} aria-label={`Increase ${product.name} quantity`} className="h-8 w-8">+</button>
+                    <button onClick={() => onQuantity(line, line.quantity + 1)} disabled={locked} aria-label={`Increase ${product.name} quantity`} className={`h-8 w-8${locked ? ' opacity-40' : ''}`}>+</button>
                   </div>
-                  <button onClick={() => onRemove(line)} className="text-xs text-danger">Remove</button>
+                  <button onClick={() => onRemove(line)} disabled={locked} aria-label={`Remove ${product.name}`} className={`text-xs text-danger${locked ? ' opacity-40' : ''}`}>Remove</button>
                 </div>
               </div>
             </div>
@@ -2007,28 +2272,41 @@ function SellerCart({ seller: sellerId, lines, at, onBack, onAllCarts, onCheckou
         <p className="mt-3 text-xs leading-relaxed text-text-muted">Fulfilment and applicable fees are selected during checkout. This checkout creates an order with {seller} only.</p>
       </div>}
       {lines.length > 0 && <div className="border-t border-border bg-surface p-4 pb-6">
-        {unavailable.length > 0 && <p role="alert" className="mb-3 text-xs leading-relaxed text-danger">Remove the unavailable item{unavailable.length === 1 ? '' : 's'} to check out this cart.</p>}
-        <Button size="lg" onClick={onCheckout} disabled={unavailable.length > 0} style={{ width: '100%' }}>Checkout this Seller cart</Button>
+        {held
+          ? <>
+              <p className="mb-3 text-xs leading-relaxed text-text-secondary">Seller Order {held.ref} holds {held.lines.length === 1 ? 'this item' : 'these items'} until its payment succeeds. A retry stays on the same Seller Order.</p>
+              <Button size="lg" onClick={onCheckout} style={{ width: '100%' }}>Retry payment</Button>
+            </>
+          : <>
+              {unavailable.length > 0 && <p role="alert" className="mb-3 text-xs leading-relaxed text-danger">Remove the unavailable item{unavailable.length === 1 ? '' : 's'} to check out this cart.</p>}
+              <Button size="lg" onClick={onCheckout} disabled={unavailable.length > 0} style={{ width: '100%' }}>Checkout this Seller cart</Button>
+            </>}
       </div>}
     </>
   )
 }
 
-function MultiCart({ carts, first, at, onBack, onCheckout }: {
-  carts: readonly { seller: SellerId; lines: readonly CartLine[] }[]; first: SellerId; at: Moment | null; onBack: () => void; onCheckout: (seller: SellerId) => void
+function MultiCart({ carts, first, isAvailable, openOrderFor, progress, onBack, onCheckout }: {
+  carts: readonly { seller: SellerId; lines: readonly CartLine[] }[]; first: SellerId; isAvailable: ((id: ProductId) => boolean) | null
+  /** A Seller's Order waiting for payment again, if any: that Seller cart is paid by a retry (rule 5.9). */
+  openOrderFor: (seller: SellerId) => CheckoutOrder | undefined
+  progress: readonly ProgressEntry[]; onBack: () => void; onCheckout: (seller: SellerId) => void
 }) {
   // The current Seller cart goes first; every other Seller cart is reviewed separately.
   const ordered = [...carts.filter(item => item.seller === first), ...carts.filter(item => item.seller !== first)]
   const [notice, setNotice] = useState<SellerId | null>(null)
+  const status = (seller: SellerId) => { const open = openOrderFor(seller); return open && `${open.ref} · ${orderStatus(open)}` }
   return (
     <>
       <Header title="Your carts" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
         <div className="font-display text-2xl font-semibold">{ordered.length} Seller cart{ordered.length === 1 ? '' : 's'}</div>
         <p className="mt-1 text-sm text-text-muted">Each seller is checked out and confirmed separately.</p>
+        {/* Partial completion (WO-006 requirement 20): each Seller Order's own state once a coordinated checkout is under way. */}
+        {progress.length > 1 && progress.some(entry => entry.order) && <CheckoutProgress entries={progress} className="mt-4" />}
         {ordered.map((item, index) => (index === 0
-          ? <CartSummary key={item.seller} seller={item.seller} lines={item.lines} blocked={!!at && item.lines.some(line => !isPurchasableAt(line.product, at))} onCheckout={() => onCheckout(item.seller)} />
-          : <CartSummary key={item.seller} seller={item.seller} lines={item.lines} onCheckout={() => setNotice(item.seller)} actionLabel="Review separately" />))}
+          ? <CartSummary key={item.seller} seller={item.seller} lines={item.lines} status={status(item.seller)} blocked={!openOrderFor(item.seller) && !!isAvailable && item.lines.some(line => !isAvailable(line.product))} onCheckout={() => onCheckout(item.seller)} actionLabel={openOrderFor(item.seller) ? 'Retry payment' : undefined} />
+          : <CartSummary key={item.seller} seller={item.seller} lines={item.lines} status={status(item.seller)} onCheckout={() => setNotice(item.seller)} actionLabel="Review separately" />))}
         {notice && ordered[0] && <div className="mt-3 rounded-xl bg-brand-muted p-3 text-xs leading-relaxed text-brand-dark">{SELLERS[notice].name} remains a separate Seller cart. Finish or leave the {SELLERS[ordered[0].seller].name} checkout before starting this one.</div>}
         <div className="mt-5 rounded-xl border border-info/20 bg-info-bg p-3 text-xs leading-relaxed text-info">
           Adulis coordinates your carts, but each checkout creates one distinct Seller Order. Amounts, fulfilment and payment status are never combined across sellers.
@@ -2038,7 +2316,12 @@ function MultiCart({ carts, first, at, onBack, onCheckout }: {
   )
 }
 
-function CartSummary({ seller: sellerId, lines, blocked, onCheckout, actionLabel }: { seller: SellerId; lines: readonly CartLine[]; blocked?: boolean; onCheckout: () => void; actionLabel?: string }) {
+function CartSummary({ seller: sellerId, lines, status, blocked, onCheckout, actionLabel }: {
+  seller: SellerId; lines: readonly CartLine[]
+  /** The state of this Seller cart's Order waiting for payment again, if any. */
+  status?: string
+  blocked?: boolean; onCheckout: () => void; actionLabel?: string
+}) {
   const seller = SELLERS[sellerId].name
   const item = lines.map(line => PRODUCTS[line.product].name).join(' · ')
   const quantity = lines.reduce((sum, line) => sum + line.quantity, 0)
@@ -2048,8 +2331,9 @@ function CartSummary({ seller: sellerId, lines, blocked, onCheckout, actionLabel
       <div className="my-4 flex items-center gap-3">
         <Placeholder label={item} className="h-16 w-16 rounded-lg" />
         <div className="flex-1"><div className="text-sm font-semibold">{item}</div><div className="mt-1 text-xs text-text-muted">Quantity {quantity}</div></div>
-        <div className="text-sm font-bold">{formatEtb(linesSubtotal(lines))}</div>
+        <div className="text-sm font-bold">{formatEtb(productsSubtotal(lines))}</div>
       </div>
+      {status && <p className="mb-3 text-xs font-semibold text-danger">Seller Order {status}</p>}
       {blocked && <p role="alert" className="mb-3 text-xs leading-relaxed text-danger">Remove the unavailable items in this cart before checkout.</p>}
       <Button size="sm" variant="secondary" onClick={onCheckout} disabled={blocked} style={{ width: '100%' }}>{actionLabel ?? `Checkout ${seller}`}</Button>
     </div>
@@ -2068,7 +2352,7 @@ function CheckoutCoordinator({ seller: sellerId, lines, others, onBack, onContin
         <p className="mt-2 text-sm leading-relaxed text-text-secondary">You are starting one checkout for one Seller cart.{others.map(other => ` Your ${SELLERS[other].name} cart stays saved and unchanged.`)}</p>
         <div className="mt-6 rounded-2xl border border-brand/20 bg-brand-muted p-4">
           <div className="text-xs font-semibold uppercase tracking-wider text-brand-dark">Seller Order</div>
-          <div className="mt-2 flex items-center justify-between"><span className="font-semibold">{seller}</span><span className="font-bold">{formatEtb(linesSubtotal(lines))}</span></div>
+          <div className="mt-2 flex items-center justify-between"><span className="font-semibold">{seller}</span><span className="font-bold">{formatEtb(productsSubtotal(lines))}</span></div>
           <div className="mt-1 text-xs text-text-secondary">{lines.length} product{lines.length === 1 ? '' : 's'} · Fulfilment selected next</div>
         </div>
         {others.map(other => (
@@ -2086,21 +2370,21 @@ function CheckoutCoordinator({ seller: sellerId, lines, others, onBack, onContin
   )
 }
 
-function SellerCheckout({ at, seller: sellerId, lines, fulfilment: preferred, setFulfilment, onBack, onPay }: {
-  at: Moment; seller: SellerId; lines: readonly CartLine[]; fulfilment: Fulfilment; setFulfilment: (value: Fulfilment) => void; onBack: () => void
-  /** Payment continues only for DEMO_DATA's checkout cart; any other cart's payment belongs to WO-006, so no Seller Order is created. */
-  onPay?: () => void
+function SellerCheckout({ at, seller: sellerId, lines, mode, onMode, note, onBack, onPay }: {
+  at: Moment; seller: SellerId; lines: readonly CartLine[]
+  /** This Seller cart's own fulfilment choice, one the Seller offers at `at` (rule 4.3). */
+  mode: FulfilmentMode; onMode: (mode: FulfilmentMode) => void
+  /** Why payment doesn't continue from this cart, so no Seller Order is created; without one, payment continues. */
+  note?: string
+  onBack: () => void; onPay: () => void
 }) {
   // The options the Seller offers at the story moment, with its own charges. DEMO_DATA quotes no delivery time.
   const seller = SELLERS[sellerId]
   const buyer = BUYERS[BUYER]
   const options = fulfilmentOptionsAt(sellerId, at)
-  const fulfilment = options.some(option => FULFILMENT_KEY[option.mode] === preferred) ? preferred : FULFILMENT_KEY[options[0].mode]
   const courier = options.find(option => option.mode === 'Courier Delivery')
-  const products = linesSubtotal(lines)
-  const delivery = options.find(option => option.mode === FULFILMENT_MODE[fulfilment])?.charge ?? 0
-  const surcharge = adulisSurcharge(products)
-  const total = products + delivery + surcharge
+  // The Products at current prices, the Seller's charge for the mode, and the 0.5% surcharge on the Products alone (WO-006).
+  const totals = checkoutTotalsAt(sellerId, lines, mode, at)
   const detail: Record<FulfilmentMode, string> = {
     'Buyer Collection': `Collect from ${seller.name} in ${seller.area}`,
     'Seller Delivery': 'Arranged and delivered by the seller',
@@ -2112,31 +2396,36 @@ function SellerCheckout({ at, seller: sellerId, lines, fulfilment: preferred, se
       <div className="flex-1 overflow-y-auto p-4">
         <div className="rounded-xl bg-surface-raised p-3"><SellerIdentity initials={initials(seller.name)} name={seller.name} meta={`Seller Order · ${lines.length} product${lines.length === 1 ? '' : 's'}`} /></div>
         <SectionLabel>Fulfilment</SectionLabel>
-        {options.map(option => <FulfilmentOption key={option.mode} active={fulfilment === FULFILMENT_KEY[option.mode]} onClick={() => setFulfilment(FULFILMENT_KEY[option.mode])} title={option.mode} detail={detail[option.mode]} price={option.charge ? formatEtb(option.charge) : 'No delivery fee'} />)}
-        {fulfilment === 'courier' && courier && (
+        {options.map(option => <FulfilmentOption key={option.mode} active={mode === option.mode} onClick={() => onMode(option.mode)} title={option.mode} detail={detail[option.mode]} price={option.charge ? formatEtb(option.charge) : 'No delivery fee'} />)}
+        {mode === 'Courier Delivery' && courier && (
           <div className="mt-2 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">
             The {formatEtb(courier.charge)} Courier Delivery fee is shown now and is separate from the Adulis surcharge.
           </div>
         )}
-        <SectionLabel>Delivery details</SectionLabel>
-        <div className="rounded-xl border border-border p-3 text-sm">
-          <div className="font-semibold">{buyer.name}</div>
-          <div className="mt-1 text-text-secondary">{buyer.deliveryArea ?? '—'}, {MARKET.city} · {buyer.phoneMasked ?? '—'}</div>
-          <div className="mt-2 text-xs font-semibold text-text-muted">Saved delivery details</div>
-        </div>
+        {/* Buyer Collection isn't a delivery, so it shows no delivery address (WO-006 pre-commit correction 2). */}
+        {mode !== 'Buyer Collection' && (
+          <>
+            <SectionLabel>Delivery details</SectionLabel>
+            <div className="rounded-xl border border-border p-3 text-sm">
+              <div className="font-semibold">{buyer.name}</div>
+              <div className="mt-1 text-text-secondary">{buyer.deliveryArea ?? '—'}, {MARKET.city} · {buyer.phoneMasked ?? '—'}</div>
+              <div className="mt-2 text-xs font-semibold text-text-muted">Saved delivery details</div>
+            </div>
+          </>
+        )}
         <SectionLabel>Payment breakdown</SectionLabel>
         <div className="rounded-xl bg-surface-raised p-4">
-          <PriceRow label="Products" value={formatEtb(products)} />
-          <PriceRow label={FULFILMENT_MODE[fulfilment]} value={formatEtb(delivery)} />
-          <PriceRow label="Adulis surcharge — 0.5%" value={formatEtb(surcharge)} />
-          <div className="mt-3 border-t border-border pt-3"><PriceRow label="Total" value={formatEtb(total)} strong /></div>
+          <PriceRow label="Products" value={formatEtb(totals.products)} />
+          <PriceRow label={mode} value={formatEtb(totals.delivery)} />
+          <PriceRow label={SURCHARGE_LABEL} value={formatEtb(totals.surcharge)} />
+          <div className="mt-3 border-t border-border pt-3"><PriceRow label="Total" value={formatEtb(totals.total)} strong /></div>
         </div>
         <p className="mt-3 text-xs leading-relaxed text-text-muted">Payment status is established by the payment provider and Adulis backend. The seller does not confirm payment.</p>
       </div>
       <div className="border-t border-border bg-surface p-4 pb-6">
-        {onPay
-          ? <Button size="lg" onClick={onPay} style={{ width: '100%' }}>Continue to payment · {formatEtb(total)}</Button>
-          : <div className="rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary"><span className="mb-1 block font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype</span>Payment for this cart comes with the Checkout test flows (WO-006). No Seller Order is created.</div>}
+        {note
+          ? <div className="rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary"><span className="mb-1 block font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype</span>{note}</div>
+          : <Button size="lg" onClick={onPay} style={{ width: '100%' }}>Continue to payment · {formatEtb(totals.total)}</Button>}
       </div>
     </>
   )
@@ -2146,7 +2435,7 @@ function FulfilmentOption({ active, onClick, title, detail, price }: {
   active: boolean; onClick: () => void; title: string; detail: string; price: string
 }) {
   return (
-    <button onClick={onClick} className={`mb-2 flex w-full items-center gap-3 rounded-xl border p-3 text-left ${active ? 'border-brand bg-brand-muted' : 'border-border bg-surface'}`}>
+    <button onClick={onClick} aria-pressed={active} className={`mb-2 flex w-full items-center gap-3 rounded-xl border p-3 text-left ${active ? 'border-brand bg-brand-muted' : 'border-border bg-surface'}`}>
       <span className={`flex h-5 w-5 items-center justify-center rounded-full border ${active ? 'border-brand' : 'border-border-strong'}`}>{active && <span className="h-2.5 w-2.5 rounded-full bg-brand" />}</span>
       <span className="flex-1"><span className="block text-sm font-semibold">{title}</span><span className="text-xs text-text-muted">{detail}</span></span>
       <span className="text-xs font-semibold">{price}</span>
@@ -2154,7 +2443,12 @@ function FulfilmentOption({ active, onClick, title, detail, price }: {
   )
 }
 
-function PaymentTransition({ amount, onBack, onContinue }: { amount: number; onBack: () => void; onContinue: () => void }) {
+function PaymentTransition({ seller, amount, retrying, onBack, onContinue }: {
+  seller: SellerId; amount: number
+  /** The Seller Order whose payment failed: opening secure payment adds its next attempt (rule 5.9). */
+  retrying?: CheckoutOrder
+  onBack: () => void; onContinue: () => void
+}) {
   return (
     <>
       <Header title="Secure payment" onBack={onBack} />
@@ -2163,9 +2457,11 @@ function PaymentTransition({ amount, onBack, onContinue }: { amount: number; onB
         <div className="mt-5 font-display text-2xl font-semibold">Continue with payment provider</div>
         <p className="mt-2 text-sm leading-relaxed text-text-secondary">You’ll complete payment on the provider’s secure page, then return to Adulis for confirmation.</p>
         <div className="mt-6 w-full rounded-xl bg-surface-raised p-4 text-left">
-          <PriceRow label="Paying" value={SELLERS[ORDERS[CHECKOUT_CART].seller].name} />
+          <PriceRow label="Paying" value={SELLERS[seller].name} />
+          {retrying && <PriceRow label="Seller Order" value={retrying.ref} />}
           <PriceRow label="Seller Order total" value={formatEtb(amount)} strong />
         </div>
+        {retrying && <div className="mt-3 text-xs text-text-secondary">This retry is payment attempt {retrying.attempts.length + 1} for the same Seller Order.</div>}
         <div className="mt-4 text-xs text-text-muted">Adulis does not ask for payment screenshots. Payment truth comes from the provider and backend.</div>
       </div>
       <div className="p-4 pb-6"><Button size="lg" onClick={onContinue} style={{ width: '100%' }}>Open secure payment</Button></div>
@@ -2173,19 +2469,25 @@ function PaymentTransition({ amount, onBack, onContinue }: { amount: number; onB
   )
 }
 
-function PaymentProcessing({ amount, onPaid, onFailed, onChecking }: { amount: number; onPaid: () => void; onFailed: () => void; onChecking: () => void }) {
+function PaymentProcessing({ order, source, outcome, onOutcome, onChecking }: {
+  order: CheckoutOrder
+  /** Where the attempt's deterministic outcome comes from: the demo data, or the test run. */
+  source: string
+  outcome: 'Paid' | 'Failed'; onOutcome: () => void; onChecking: () => void
+}) {
+  const attempt = order.attempts[order.attempts.length - 1]
   return (
     <PaymentStateShell
       tone="info"
       title="Processing payment"
       description="The payment provider is processing your payment. Keep this screen open and do not pay again."
     >
-      <div className="w-full rounded-xl bg-surface-raised p-4 text-left"><PriceRow label="Seller" value={SELLERS[ORDERS[CHECKOUT_CART].seller].name} /><PriceRow label="Amount" value={formatEtb(amount)} strong /></div>
+      <div className="w-full rounded-xl bg-surface-raised p-4 text-left"><PriceRow label="Seller" value={SELLERS[order.seller].name} /><PriceRow label="Seller Order" value={order.ref} /><PriceRow label="Payment attempt" value={attempt.ref} /><PriceRow label="Amount" value={formatEtb(order.totals.total)} strong /></div>
       <div className="mt-8 w-full border-t border-border pt-4">
         <div className="mb-2 text-xs font-semibold text-text-muted">Prototype payment outcome</div>
-        <div className="grid grid-cols-3 gap-2">
-          <Button size="sm" onClick={onPaid}>Paid</Button>
-          <Button size="sm" variant="tertiary" onClick={onFailed}>Failed</Button>
+        <p className="mb-2 text-xs leading-relaxed text-text-muted">{source}: {attempt.ref} {outcome === 'Paid' ? 'succeeds' : 'fails'}.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <Button size="sm" onClick={onOutcome}>{outcome}</Button>
           <Button size="sm" variant="tertiary" onClick={onChecking}>Checking</Button>
         </div>
       </div>
@@ -2193,35 +2495,86 @@ function PaymentProcessing({ amount, onPaid, onFailed, onChecking }: { amount: n
   )
 }
 
-function PaymentSuccess({ amount, onDone }: { amount: number; onDone: () => void }) {
+function PaymentSuccess({ order, progress, next, onNext, onDone }: {
+  order: CheckoutOrder
+  /** The coordinated checkout's Seller Orders, when it covers more than one (WO-006 requirement 19). */
+  progress: readonly ProgressEntry[]
+  /** The next Seller cart to check out, if any. */
+  next?: string
+  onNext: () => void; onDone: () => void
+}) {
+  const paid = order.attempts[order.attempts.length - 1]
   return (
-    <PaymentStateShell tone="success" title="Payment confirmed" description="The provider confirmed your payment. Your Seller Order has now been created.">
+    <PaymentStateShell tone="success" title="Payment confirmed" description="The provider confirmed your payment. Your Seller Order is now Paid.">
       <div className="w-full rounded-2xl border border-success/20 bg-success-bg p-4 text-left">
         <div className="text-xs font-semibold uppercase tracking-wider text-success">Seller Order confirmed</div>
-        <div className="mt-2 font-display text-xl font-semibold">{SELLERS[ORDERS[CHECKOUT_CART].seller].name}</div>
-        <div className="mt-1 text-sm text-text-secondary">Order {CHECKOUT_CART} · Paid</div>
-        <div className="mt-4 border-t border-success/20 pt-3"><PriceRow label="Paid total" value={formatEtb(amount)} strong /></div>
+        <div className="mt-2 font-display text-xl font-semibold">{SELLERS[order.seller].name}</div>
+        <div className="mt-1 text-sm text-text-secondary">Order {order.ref} · Paid</div>
+        {order.test && <div className="mt-1 text-xs text-text-muted">Prototype test Order · not a production ID</div>}
+        <div className="mt-4 border-t border-success/20 pt-3"><PriceRow label="Payment attempt" value={paid.ref} /><PriceRow label="Paid total" value={formatEtb(order.totals.total)} strong /></div>
       </div>
-      <Button size="lg" onClick={onDone} style={{ width: '100%', marginTop: 24 }}>Done</Button>
+      {progress.length > 1 && <CheckoutProgress entries={progress} className="mt-4" />}
+      {next
+        ? <div className="mt-6 flex w-full flex-col gap-2">
+            <Button size="lg" onClick={onNext}>Continue with {next}</Button>
+            <Button size="lg" variant="tertiary" onClick={onDone}>Done</Button>
+          </div>
+        : <Button size="lg" onClick={onDone} style={{ width: '100%', marginTop: 24 }}>Done</Button>}
     </PaymentStateShell>
   )
 }
 
-function PaymentFailed({ onRetry, onCart }: { onRetry: () => void; onCart: () => void }) {
+function PaymentFailed({ order, progress, onRetry, onCart }: { order: CheckoutOrder; progress: readonly ProgressEntry[]; onRetry: () => void; onCart: () => void }) {
+  // The failed attempt belongs to its Seller Order, which isn't paid yet: a retry is its next attempt (rule 5.9).
+  const failed = order.attempts[order.attempts.length - 1]
+  const entry = progress.length > 1 ? progress.find(item => item.order?.ref === order.ref) : undefined
   return (
-    <PaymentStateShell tone="danger" title="Payment failed" description="The provider could not complete this payment. No Seller Order was created and your cart is still saved.">
-      <div className="w-full rounded-xl bg-danger-bg p-4 text-left text-sm text-danger">No charge was confirmed by the payment provider.</div>
+    <PaymentStateShell tone="danger" title="Payment failed" description={`The provider could not complete this payment. Seller Order ${order.ref} is not paid yet, and a retry stays on the same Seller Order.`}>
+      <div role="alert" className="w-full rounded-xl bg-danger-bg p-4 text-left text-sm text-danger">Payment attempt {failed.ref} failed. No charge was confirmed by the payment provider.</div>
+      {entry && <CheckoutProgress entries={progress} className="mt-4" />}
       <div className="mt-6 flex w-full flex-col gap-2">
-        <Button size="lg" onClick={onRetry}>Try payment again</Button>
-        <Button size="lg" variant="tertiary" onClick={onCart}>Return to {SELLERS[ORDERS[CHECKOUT_CART].seller].name} cart</Button>
+        <Button size="lg" onClick={onRetry}>{entry ? `Retry Order ${entry.number}` : 'Retry payment'}</Button>
+        <Button size="lg" variant="tertiary" onClick={onCart}>Return to {SELLERS[order.seller].name} cart</Button>
       </div>
     </PaymentStateShell>
+  )
+}
+
+/**
+ * A coordinated checkout's progress (WO-006 requirements 19–20): each Seller Order with its own state, in words as well
+ * as colour. The count is coordination only, never one cross-Seller Order's state.
+ */
+function CheckoutProgress({ entries, className = '' }: { entries: readonly ProgressEntry[]; className?: string }) {
+  const paid = entries.filter(entry => orderStatus(entry.order) === 'PAID').length
+  const tone: Record<OrderStatus, string> = { PAID: 'text-success', 'PAYMENT FAILED': 'text-danger', 'NOT YET PAID': 'text-text-muted' }
+  const mark: Record<OrderStatus, string> = { PAID: '✓', 'PAYMENT FAILED': '×', 'NOT YET PAID': '○' }
+  return (
+    <div className={`w-full rounded-xl border border-border bg-surface p-3 text-left ${className}`}>
+      <div role="status" className="text-sm font-semibold text-text-primary">{paid === entries.length ? 'Your orders are confirmed' : `${paid} of ${entries.length} orders paid`}</div>
+      <ul className="mt-2 flex flex-col gap-2">
+        {entries.map(entry => {
+          const status = orderStatus(entry.order)
+          return (
+            <li key={entry.number} className="flex items-start justify-between gap-3 text-xs">
+              <span className="min-w-0">
+                <span className="block font-semibold text-text-primary">Order {entry.number} · {SELLERS[entry.seller].name}</span>
+                {entry.order && <span className="block font-mono text-[10px] text-text-muted">{entry.order.ref}</span>}
+              </span>
+              <span className={`whitespace-nowrap text-right font-bold ${tone[status]}`}>
+                <span aria-hidden="true">{mark[status]} </span>{status}
+                {status === 'PAID' && entry.order && <span className="block font-normal text-text-muted">{formatEtb(entry.order.totals.total)}</span>}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 
 function PaymentChecking({ onRefresh, onDone }: { onRefresh: () => void; onDone: () => void }) {
   return (
-    <PaymentStateShell tone="warning" title="Checking payment" description="The provider response is delayed. Adulis is reconciling with the provider before creating a Seller Order.">
+    <PaymentStateShell tone="warning" title="Checking payment" description="The provider response is delayed. Adulis is reconciling with the provider before your Seller Order's payment is confirmed.">
       <div className="w-full rounded-xl bg-warning-bg p-4 text-left">
         <div className="text-sm font-semibold text-warning">Do not pay again</div>
         <div className="mt-1 text-xs leading-relaxed text-text-secondary">We’ll use the provider and backend result as the source of truth. A seller cannot mark this payment as paid.</div>
@@ -2243,8 +2596,10 @@ function PaymentStateShell({ tone, title, description, children }: {
     danger: 'bg-danger-bg text-danger',
     warning: 'bg-warning-bg text-warning',
   }[tone]
+  // Centred while it fits; once a coordinated checkout's progress makes it taller than the phone, it starts at the top
+  // and scrolls, so nothing above the fold is cut off.
   return (
-    <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-8 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center-safe overflow-y-auto px-6 py-8 text-center">
       <span className={`flex h-16 w-16 items-center justify-center rounded-full ${toneClass}`}>{tone === 'success' ? <CheckIcon /> : tone === 'danger' ? '×' : <ProcessingIcon />}</span>
       <div className="mt-5 font-display text-2xl font-semibold">{title}</div>
       <p className="mb-7 mt-2 text-sm leading-relaxed text-text-secondary">{description}</p>
