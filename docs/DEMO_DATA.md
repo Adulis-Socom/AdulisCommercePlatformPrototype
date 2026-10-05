@@ -53,7 +53,7 @@ The primary story belongs to the three showcase Sellers, Maya and Daniel K. Supp
 
 On Friday 2 October 2026, Maya Tesfaye sees the Linen Overshirt in Addis Atelier's "Autumn Layers" Shoppable Post. In one coordinated checkout she buys it, together with the Hydrating Face Cream from Nura Glow, as two separate Seller Orders: ADU-24091 and ADU-24092. She also buys a Phone Stand from Volt House (ADU-24093, Seller Delivery).
 
-Daniel K. delivers ADU-24091 to Maya, then ADU-24092 to her sister Liya, whom Maya has authorized to receive it. Late in the afternoon Volt House delivers the Phone Stand itself. Maya then reviews ADU-24091.
+Daniel K. delivers ADU-24091 to Maya, then ADU-24092 to her sister Liya, whom Maya has authorized to receive it. Late in the afternoon Volt House delivers the Phone Stand itself. Maya then reviews ADU-24091. Then she buys Wide-Leg Trousers from Addis Atelier for Buyer Collection and collects them at the Bole studio just before it closes (ADU-24094).
 
 Earlier that morning Maya opened a Claim about trousers from an earlier Addis Atelier order and reported a misleading Volt House post. The Founders resolve both in the Operator Console. Volt House, a NEW Seller, approves Daniel into its Courier pool.
 
@@ -73,7 +73,7 @@ Storefront share links use these handles only. No production Adulis Storefront d
 
 The Courier Delivery charges (Addis Atelier ETB 180.00; Nura Glow ETB 150.00; Volt House ETB 200.00 once it approves Daniel K. in Flow F) are demo-data values only. They don't establish a platform-wide Courier pricing policy. Each equals that Seller's Courier compensation (specification §52).
 
-Totals are as at 10:25. Each Order completed later on 2 October adds one to its Seller's completed count: Addis Atelier 129 from 14:52, Nura Glow 413 from 16:05 and Volt House 10 from 17:05.
+Totals are as at 10:25. Each Order completed later on 2 October adds one to its Seller's completed count: Addis Atelier 129 from 14:52 and 130 from 17:56, Nura Glow 413 from 16:05 and Volt House 10 from 17:05.
 
 **Addis Atelier** (`SEL-ADDIS-ATELIER`)
 
@@ -303,7 +303,7 @@ Captions:
 - Follows Addis Atelier and Nura Glow, not Volt House.
 - Saved discovery area: Kazanchis. See Buyer Home channels for what each channel shows her.
 - Recent searches: "linen", "lip tint". Zero-result example query: "tripod".
-- Carts: empty at 10:25. Her carts were checked out at 10:05 (Addis Atelier), 10:07 (Nura Glow) and 10:15 (Volt House).
+- Carts: empty at 10:25. Her carts were checked out at 10:05 (Addis Atelier), 10:07 (Nura Glow) and 10:15 (Volt House). Later she checks out an Addis Atelier cart for Buyer Collection at 17:30 (`ADU-24094`).
 - Collections, all private (rule 2.6):
   - `COL-MAYA-SAVED` "Saved" (the default Collection):
     - `PRD-NG-004` Vitamin C Serum;
@@ -446,6 +446,7 @@ All amounts are in ETB. Every Order is Paid by payment-provider confirmation; no
 | `ADU-24091` | Maya | Addis Atelier | Linen Overshirt, M, Natural ×1 | 2,450.00 | Courier Delivery 180.00 | 12.25 | 2,642.25 | 2 Oct 10:05 | Paid |
 | `ADU-24092` | Maya | Nura Glow | Hydrating Face Cream 50 ml ×1 | 1,350.00 | Courier Delivery 150.00 | 6.75 | 1,506.75 | 2 Oct 10:07 | Preparing |
 | `ADU-24093` | Maya | Volt House | Phone Stand, Grey ×1 | 650.00 | Seller Delivery 100.00 | 3.25 | 753.25 | 2 Oct 10:15 | Paid |
+| `ADU-24094` | Maya | Addis Atelier | Wide-Leg Trousers, M, Charcoal ×1 | 2,100.00 | Buyer Collection (free) | 10.50 | 2,110.50 | 2 Oct 17:30 | Not yet placed |
 
 `ADU-24091` is the specification's checkout example: Products 2,450.00, Courier Delivery 180.00, surcharge 12.25, Total 2,642.25.
 
@@ -478,6 +479,7 @@ State histories (rules 4.4–4.7). Each Order passes only through its own fulfil
 - `ADU-24091` (Courier Delivery): Paid 2 Oct 10:05 → Preparing 10:40 → Ready for Courier 13:30 → Courier Assigned 13:37 → Pickup Verified 14:14 → Out for Delivery 14:16 → Delivery Handoff 14:48 → Completed 14:52.
 - `ADU-24092` (Courier Delivery): Paid 2 Oct 10:07 → Preparing 10:20 → Ready for Courier 13:45 → Courier Assigned 14:58 → Pickup Verified 15:24 → Out for Delivery 15:26 → Delivery Handoff → Completed 16:05. Liya Tesfaye, the authorized recipient, scans the Delivery QR.
 - `ADU-24093` (Seller Delivery): Paid 2 Oct 10:15 → Preparing 11:30 → Ready for Seller Delivery 16:00 → Out for Seller Delivery 16:40 → Delivery Handoff 17:03 → Completed 17:05. Volt House (Ermias B.) displays the Delivery QR at Maya's address and she scans it.
+- `ADU-24094` (Buyer Collection): Paid 2 Oct 17:30 → Preparing 17:40 → Ready for Collection 17:50 → Collection Handoff 17:55 → Completed 17:56. At the Bole studio, Addis Atelier (Abel T.) displays the Collection QR and Maya scans it.
 
 Reviews and Claims by Order:
 
@@ -491,6 +493,26 @@ Reviews and Claims by Order:
 - `ADU-24091`: `REV-1003`, written in Flow I.
 - `ADU-24092`: eligible for review from 16:05. The review right is Maya's, not Liya's.
 - `ADU-24093`: eligible for review from 17:05; not reviewed.
+- `ADU-24094`: eligible for review from 17:56; not reviewed.
+
+**Maya's Buyer Collection Order (`ADU-24094`)**
+
+This scenario exists to provide canonical coverage for WO-006A Buyer Collection final Handoff (Flow M). It's a new Order: no earlier Order, no Samuel A. Order and no Checkout test Order was reassigned to Maya.
+
+- Buyer: Maya (`BUY-MAYA-TESFAYE`), who collects it herself. There's no authorized recipient (delegate).
+- Seller: Addis Atelier (`SEL-ADDIS-ATELIER`), in Market `MKT-ET`.
+- Item: `PRD-AA-002` Wide-Leg Trousers, Size M, Colour Charcoal, quantity 1.
+- Amounts: Products ETB 2,100.00; Buyer Collection ETB 0.00; Adulis surcharge (0.5% of Products) ETB 10.50; Total ETB 2,110.50.
+- Payment: one attempt, `PAY-24094-01`, Paid at 17:30 on payment-provider confirmation. No Seller or Operator action sets PAID (rules 5.1–5.5).
+- Collection: at Addis Atelier's Bole studio (Bole, Addis Ababa), within its collection hours, Monday–Saturday 10:00–18:00. The dataset holds the location at that level only: no street address, building number, coordinates, map place ID or pickup instructions.
+- No Courier: no Delivery Offer, Courier assignment, Pickup Handoff or location checkpoint (rule 9.6).
+- Timeline, 2 October: 17:30 Paid; 17:40 Preparing; 17:50 Ready for Collection; 17:55 Maya and Abel T. meet at the Bole studio, and he opens the Collection Handoff and displays the Collection QR; 17:56 Maya scans it, the final Collection Handoff is verified and the Order is Completed.
+- Final Handoff: Addis Atelier (Abel T., `STF-AA-02`) displays the Collection QR and Maya scans it (rule 8.9). QR is the canonical successful method. The QR is issued only at the meeting, at 17:55: not at Checkout, at payment, while Preparing or because the Order reached Ready for Collection. It's short-lived, single-use, Order-bound, Market-bound, Handoff-purpose-bound, presenter/recipient-bound where supported, and replay-invalid after the accepted verification. The dataset records no credential value or cryptography.
+- OTP fallback context for WO-006A: if the QR scan can't complete, Maya enters the verification code sent to her phone. No OTP or Manual Verification event is recorded; Manual Verification stays Operator-only emergency recovery (rules 8.3–8.6).
+- Completion: only the verified final Collection Handoff completes the Order. Payment, preparation, Ready for Collection, Maya opening the Order and her arrival at the studio don't.
+- Review: eligible for review from 17:56; not reviewed. This per-Order review eligibility is the prototype-data representation of the rule that a qualifying verified final Buyer-facing Handoff creates exactly one Review Grant for the Order Buyer (rule 11.1): one grant, Maya's, available, with no Review written. The dataset has no separate Review Grant record or identifier. Likewise, the final Handoff is recorded on the Order, in its state history and handoff evidence, with no separate Handoff record or identifier.
+- Aggregates: Addis Atelier's completed Orders reach 130 from 17:56 (see Sellers). No rating changes. Stock is recorded as at 10:25 (see Products), so no stock or availability changes.
+- Conversation and notifications: no new conversation or message. `ADU-24094` becomes an Order context in `CNV-MAYA-AA` once it's paid (see Conversations). Maya gets Order Paid and Ready for Collection notifications, and Addis Atelier a New Paid Order notification (see Notifications).
 
 ### Claims
 
@@ -559,7 +581,7 @@ The message about Liya is coordination only. The authorization itself is the del
 
 **Context selector options** (rules 12.5–12.6), at 10:25:
 
-- `CNV-MAYA-AA`: General / Seller; Product Posts `PRD-AA-001` to `PRD-AA-005`; Shoppable Posts `SHP-AA-001` to `SHP-AA-005`; Orders `ADU-23921`, `ADU-23978` and `ADU-24091`. `PRD-AA-006`, `SHP-AA-006` and `SHP-AA-007` join after 12:30 (Flow E).
+- `CNV-MAYA-AA`: General / Seller; Product Posts `PRD-AA-001` to `PRD-AA-005`; Shoppable Posts `SHP-AA-001` to `SHP-AA-005`; Orders `ADU-23921`, `ADU-23978` and `ADU-24091`. `PRD-AA-006`, `SHP-AA-006` and `SHP-AA-007` join after 12:30 (Flow E). `ADU-24094` joins once it's paid at 17:30.
 - `CNV-MAYA-NG`: General / Seller; Product Posts `PRD-NG-001` to `PRD-NG-005`; Shoppable Posts `SHP-NG-001` to `SHP-NG-004` (`SHP-NG-005` is a Draft); Orders `ADU-23864` and `ADU-24092`.
 - `CNV-SAMUEL-AA`, on Samuel A.'s side: General / Seller; the same Addis Atelier Product Posts and Shoppable Posts; Order `ADU-24041` only.
 
@@ -728,6 +750,11 @@ All times are EAT. 10:25 on 2 October is the **default canonical demo snapshot**
 | 17:03 | Volt House (Ermias B.) opens Delivery Handoff for `ADU-24093` and displays the Delivery QR at Maya's address | |
 | 17:05 | Maya scans it: Delivery Verified, Order Completed; no location checkpoint (rule 9.6) | |
 | 17:20 | Maya reviews `ADU-24091` (`REV-1003`) | I |
+| 17:30 | `ADU-24094` paid (Addis Atelier, Buyer Collection), `PAY-24094-01` | |
+| 17:40 | Addis Atelier starts preparing `ADU-24094` | |
+| 17:50 | Addis Atelier marks `ADU-24094` Ready for Collection | M |
+| 17:55 | At the Bole studio, Abel T. opens the Collection Handoff and displays the Collection QR to Maya | M |
+| 17:56 | Maya scans it: Collection Handoff verified, Order Completed; Maya is eligible to review `ADU-24094` | M |
 
 ### Records created during the demo
 
@@ -745,6 +772,7 @@ All times are EAT. 10:25 on 2 October is the **default canonical demo snapshot**
   - Published, but not eligible for For You.
   - Caption: "This season's linen swatches, straight from the studio."
 - `REV-1003` and `DEC-1001`: see Reviews and Claims.
+- `ADU-24094`, Maya's Buyer Collection Order (Flow M): see Seller Orders.
 
 ### Demo flows and the records they use
 
@@ -762,19 +790,23 @@ All times are EAT. 10:25 on 2 October is the **default canonical demo snapshot**
 | J — Claim | `CLM-1002` on `ADU-23978` → `DEC-1001` |
 | K — Moderation | `MOD-1001` on `SHP-VH-004` |
 | L — Chatbot escalation | Question on `PRD-AA-001` → `CNV-MAYA-AA` → Addis Atelier Seller Companion Inbox |
+| M — Buyer Collection Final Handoff | `ADU-24094`: Addis Atelier (Abel T.) → Maya, at the Bole studio. M1: Ready for Collection (17:50). M2: Abel T. displays the Collection QR (17:55) and Maya scans it (17:56). M3: Collection Handoff verified, Order Completed, Maya eligible for review (17:56) |
 
 These mappings are exact. No individual screen may substitute a different Seller, Product, Order, Courier, Claim or Buyer without a documented scenario reason.
+
+Flow M is canonical demo-flow metadata only. The prototype's guided flows don't include it until WO-006A implements the Buyer Collection final Handoff.
 
 ### Notifications
 
 Notifications are generated from the events above. They don't create facts of their own (specification §54).
 
 - **Maya:**
-  - Order Paid: `ADU-24091`, `ADU-24092`, `ADU-24093`.
+  - Order Paid: `ADU-24091`, `ADU-24092`, `ADU-24093`, `ADU-24094`.
   - `ADU-24091` Ready for Courier (13:30), then Courier Assigned (13:37).
   - `ADU-24092` Ready for Courier (13:45), then Courier Assigned (14:58).
   - Delivery action for `ADU-24091`, "Courier is ready to complete delivery" (14:48).
   - `ADU-24093` Ready for Seller Delivery (16:00), then a Delivery action, "Volt House is ready to complete delivery" (17:03).
+  - `ADU-24094` Ready for Collection (17:50).
   - Claim status: `CLM-1002` Under Review (10:50), then Resolved (11:45).
   - Review reminder for `ADU-23978`.
 - **Addis Atelier:**
@@ -783,6 +815,7 @@ Notifications are generated from the events above. They don't create facts of th
   - Buyer message (10:12).
   - Low stock, `PRD-AA-003` (2 left).
   - Pickup verified, `ADU-24091` (14:14).
+  - New Paid Order `ADU-24094` (17:30).
 - **Nura Glow:**
   - New Paid Order `ADU-24092` (10:07).
   - Courier offer/assignment issue (13:50): Daniel K. can't accept the offer while he has an active delivery (rule 6.3).
@@ -891,6 +924,10 @@ No open dataset decisions remain. The 15 primary Product names were approved on 
   - Added: the Seller Console Home record of Shoppable Posts needing action (`SHP-AA-005` only).
   - Changed: the guest state uses the Guest/default discovery ranking rather than describing Maya's lists as viewer-independent; Report submission needs sign-in; the temporary Cart survives sign-in as transient session state. The map-pin, deadline and Product performance notes now state the approved terms.
   - Confirmed, with no value changed: `SCV-1001`'s dates, the Cotton Shirt Dress sale at its regular price, the four record-specific deadlines and the map pins.
+- 2026-10-05: Canonical Maya Buyer Collection scenario recorded for WO-006A; status unchanged (APPROVED).
+  - Added: `ADU-24094`, Maya's Buyer Collection Order with Addis Atelier (Wide-Leg Trousers, M, Charcoal ×1; ETB 2,110.50), paid at 17:30 and completed at 17:56, after the previous 17:20 story horizon; its notifications; and Flow M — Buyer Collection Final Handoff, which has no guided steps until WO-006A.
+  - At the Bole studio, Addis Atelier (Abel T.) displays the Collection QR and Maya scans it. QR is the canonical successful method, the verified final Handoff completes the Order, and Maya's review eligibility from 17:56 represents exactly one available Review Grant. No Review is written.
+  - Changed: Addis Atelier reaches 130 completed Orders from 17:56, and the story summary, Maya's checkouts, the `CNV-MAYA-AA` context options and the 2 October timeline include the new Order. No Samuel A. Order or other earlier Order was reassigned, and nothing at or before 17:20 changed.
 
 ## Related documents
 

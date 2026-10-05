@@ -2,7 +2,7 @@
 
 **Purpose.** This holds the approved implementation work orders for the prototype, listed in the order they are to be executed. Implement only what an approved work order covers.
 
-**Status.** Execution order approved — 2026-10-02 (WO-001 to WO-011), and amended on 2026-10-04 to add WO-006A between WO-006 and WO-007. Bodies drafted on 2026-10-02 from the approved documents, then updated the same day with the approved work-order decisions and the final decisions. On 2026-10-04, approved amendments discovered during WO-002 extended WO-004 and WO-006 and added WO-006A, and a cleanup the same day made WO-006A PENDING DECISION. APPROVED FOR IMPLEMENTATION: WO-001 to WO-006 and WO-007 to WO-011. PENDING DECISION: WO-006A. Implementation progress is recorded separately, under Implementation progress.
+**Status.** Execution order approved — 2026-10-02 (WO-001 to WO-011), and amended on 2026-10-04 to add WO-006A between WO-006 and WO-007. Bodies drafted on 2026-10-02 from the approved documents, then updated the same day with the approved work-order decisions and the final decisions. On 2026-10-04, approved amendments discovered during WO-002 extended WO-004 and WO-006 and added WO-006A, and a cleanup the same day made WO-006A PENDING DECISION. On 2026-10-05 its decision was recorded in DEMO_DATA.md: the canonical Maya Buyer Collection scenario, `ADU-24094` (2 October, Paid 17:30 to Completed 17:56). APPROVED FOR IMPLEMENTATION: WO-001 to WO-006, WO-006A and WO-007 to WO-011. PENDING DECISION: none. Implementation progress is recorded separately, under Implementation progress.
 
 ## Execution order
 
@@ -22,7 +22,7 @@ The work orders below are listed in execution order. The sequence was set on 202
 
 On 2026-10-04 the sequence was amended to add WO-006A after WO-006 and before WO-007, without renumbering any existing work order. WO-006A records an explicit approved amendment discovered during WO-002. The execution order is now WO-001, WO-002, WO-003, WO-004, WO-005, WO-006, WO-006A, WO-007, WO-008, WO-009, WO-010 and WO-011.
 
-Because execution is sequential, a work order that is PENDING DECISION holds back every work order after it until its decisions are recorded. WO-006A is PENDING DECISION and stays in the sequence. WO-003 to WO-006 come before it and aren't blocked by its decision; WO-007 to WO-011 can't start until WO-006A is complete.
+Because execution is sequential, a work order that is PENDING DECISION holds back every work order after it until its decisions are recorded. WO-006A's decision was recorded on 2026-10-05 (the canonical Maya Buyer Collection scenario `ADU-24094`, 2 October, Paid 17:30 to Completed 17:56), so no work order is pending. WO-007 to WO-011 can't start until WO-006A is complete.
 
 ## Implementation progress
 
@@ -34,7 +34,7 @@ Implementation progress is separate from approval status (see Work-order convent
 - WO-004 — IMPLEMENTED AND MERGED
 - WO-005 — IMPLEMENTED AND MERGED
 - WO-006 — IMPLEMENTED AND MERGED
-- WO-006A — NOT STARTED / BLOCKED ON CANONICAL MAYA BUYER COLLECTION SCENARIO
+- WO-006A — NOT STARTED / READY
 - WO-007 — NOT STARTED
 - WO-008 — NOT STARTED
 - WO-009 — NOT STARTED
@@ -670,16 +670,25 @@ It also provides a deterministic Checkout testing environment on the three demo 
 
 ### WO-006A — Buyer Final Handoff Verification
 
-**STATUS.** PENDING DECISION. Missing decision:
+**STATUS.** APPROVED FOR IMPLEMENTATION. Its decision, the canonical Maya Buyer Collection scenario, was recorded in DEMO_DATA on 2026-10-05 (DD *Seller Orders*, DD *Story timeline*, DD *Demo flows and the records they use*). WO-006A's Buyer Collection final Handoff uses exactly this scenario:
 
-1. **A canonical Maya Buyer Collection scenario.** A canonical Maya Buyer Collection scenario must be approved in DEMO_DATA before WO-006A is executed. The approved canonical dataset currently has Buyer Collection Orders for Samuel A., not Maya, and the Buyer app's primary signed-in demo Buyer is Maya (DD *Seller Orders*, DD *Buyer*). Do not use another Buyer's Order in Maya's Buyer app:
-   - `ADU-23952` must not be used as Maya's Order;
-   - `ADU-24041` must not be used as Maya's Order;
-   - another Buyer's Order must never be exposed in Maya's Buyer app.
+- Buyer: Maya (`BUY-MAYA-TESFAYE`), who receives the Order herself; no authorized recipient.
+- Order: `ADU-24094`. Payment: `PAY-24094-01`, its one provider-confirmed attempt.
+- Seller: Addis Atelier (`SEL-ADDIS-ATELIER`). Product: `PRD-AA-002` Wide-Leg Trousers, M / Charcoal ×1. Total ETB 2,110.50.
+- Fulfilment mode: Buyer Collection, at Addis Atelier's Bole studio. No Courier.
+- Timestamps, 2 October 2026: Paid 17:30 → Preparing 17:40 → Ready for Collection 17:50 → Collection Handoff 17:55 → Completed 17:56.
+- Collection QR handoff: the Seller displays and Maya scans. At 17:55 Abel T. (`STF-AA-02`) displays the Collection QR at the Bole studio; at 17:56 Maya scans it. The final Handoff is recorded on `ADU-24094` itself, with no separate Handoff identifier.
+- OTP fallback context: if the QR scan can't complete, Maya enters the verification code sent to her phone. DEMO_DATA records no OTP or Manual Verification event; the canonical success is QR.
+- Completion state: Completed at 17:56, by the verified final Collection Handoff only.
+- Review Grant: Maya is eligible for review from 17:56; not reviewed. That per-Order eligibility is the dataset's one Review Grant for her, with no separate Review Grant identifier.
+- Affected canonical aggregates: Addis Atelier's completed Orders reach 130 from 17:56. Nothing at or before 17:20 changes.
+- Flow: M — Buyer Collection Final Handoff, mapped in DEMO_DATA only; WO-006A implements its screens.
 
-   Before WO-006A implementation, an approved Buyer Collection scenario must define: Buyer; Order ID; Seller; Product(s); fulfilment mode; relevant timestamps; Collection QR handoff; OTP fallback context; completion state; any affected canonical aggregates. None of these values is set here.
+Do not use another Buyer's Order in Maya's Buyer app:
 
-WO-003 to WO-006 are not blocked by this decision. WO-006A stays in the execution order while PENDING DECISION.
+- `ADU-23952` must not be used as Maya's Order;
+- `ADU-24041` must not be used as Maya's Order;
+- another Buyer's Order must never be exposed in Maya's Buyer app.
 
 **OBJECTIVE.** Complete the Buyer/delegate side of the canonical final-Handoff flows in the Buyer app. The current prototype Buyer scanner is Courier-specific and does not support the approved Seller Delivery and Buyer Collection final handoffs.
 
@@ -692,7 +701,7 @@ WO-003 to WO-006 are not blocked by this decision. WO-006A stays in the executio
 **DEPENDENCIES.**
 
 - Execution position: after WO-006, before WO-007, so WO-001 to WO-006 are complete when it starts. Existing work orders WO-007 to WO-011 aren't renumbered.
-- A canonical Maya Buyer Collection scenario approved in DEMO_DATA.md: not yet approved (see STATUS).
+- A canonical Maya Buyer Collection scenario approved in DEMO_DATA.md: recorded on 2026-10-05 as `ADU-24094`, Paid 17:30 to Completed 17:56 on 2 October (DD *Seller Orders*, DD *Story timeline*). Satisfied.
 
 **IN SCOPE.**
 
@@ -716,7 +725,7 @@ WO-003 to WO-006 are not blocked by this decision. WO-006A stays in the executio
 **DATA REQUIREMENTS.**
 
 - DD *Buyer* (Maya, and Liya Tesfaye as the delegated recipient for `ADU-24092` only), DD *Seller Orders* (each Order's state history, and who displays and who scans each final QR) and DD *Story timeline*.
-- For Buyer Collection, the canonical Maya Buyer Collection scenario once DEMO_DATA.md records it (see STATUS). Another Buyer's Order is never exposed in Maya's Buyer app.
+- For Buyer Collection, the canonical Maya Buyer Collection scenario `ADU-24094` (DD *Seller Orders*): Paid 17:30, Ready for Collection 17:50, Collection Handoff 17:55 and Completed 17:56 on 2 October (DD *Story timeline*), and Flow M (DD *Demo flows and the records they use*). Another Buyer's Order is never exposed in Maya's Buyer app.
 
 **VISUAL / UX REQUIREMENTS.**
 
@@ -1147,6 +1156,7 @@ WO-003 to WO-006 are not blocked by this decision. WO-006A stays in the executio
 - 2026-10-05: Post-WO-004 reconciliation. Implementation progress records WO-004 — Buyer Home / Discovery / FYP Rebuild as implemented and merged into main; WO-005 is next. WO-003's availability-revalidation rule is preserved. Already-unavailable Products can no longer be added to Cart, so deterministic coverage of the "became unavailable after add-to-cart" race is assigned to WO-006 as requirement 24, with acceptance criterion 11, in addition to its existing scenarios. WO-006A's blocker is unchanged. No approval status, dependency, execution order or canonical demo record changed; WO-005 to WO-011, including WO-006A, are not started.
 - 2026-10-05: Post-WO-005 reconciliation. Implementation progress records WO-005 — Buyer–Seller Chat Context Rebuild as implemented and merged into main; WO-006 is next. WO-006's requirement 24 remains the approved deterministic availability-race coverage. WO-006A's blocker is unchanged. No approval status, dependency, execution order, canonical demo record or later work order changed; WO-006 to WO-011, including WO-006A, are not started.
 - 2026-10-05: Post-WO-006 reconciliation. Implementation progress records WO-006 — Single-Seller and Multi-Seller Checkout Test Flows as implemented and merged into main. WO-006A is next but remains blocked pending a canonical Maya Buyer Collection scenario, as its progress line now states; a separate canonical-data reconciliation will handle that blocker. No approval status, canonical demo record, dependency or execution order changed; WO-006A to WO-011 are not started.
+- 2026-10-05: WO-006A's canonical-data blocker resolved. DEMO_DATA.md now records a canonical Maya Buyer Collection Order with Addis Atelier, `ADU-24094`, after the previous 17:20 story horizon. Addis Atelier displays the Collection QR and Maya scans it; QR is the canonical successful path, the verified final Handoff completes the Order, and exactly one Review Grant becomes available to Maya. WO-006A is now APPROVED FOR IMPLEMENTATION and pinned to that scenario; it remains NOT STARTED and is ready for implementation. No Samuel A. Order or other earlier Order was reassigned, and no dependency or execution order changed.
 
 ## Related documents
 

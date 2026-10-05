@@ -209,6 +209,18 @@ const ORDER_RECORDS = {
     discoveredVia: 'Search',
     finalHandoff: { method: 'QR', displayedBy: 'STF-VH-01' },
   },
+  // Maya's Buyer Collection Order (Flow M): at the Bole studio Abel T. displays the Collection QR and Maya scans it.
+  'ADU-24094': {
+    buyer: 'BUY-MAYA-TESFAYE', seller: 'SEL-ADDIS-ATELIER', fulfilment: 'Buyer Collection',
+    lines: [{ product: 'PRD-AA-002', options: ['M', 'Charcoal'], quantity: 1 }],
+    payments: paidOnce,
+    history: [
+      { state: 'Paid', at: '2026-10-02T17:30:00+03:00' }, { state: 'Preparing', at: '2026-10-02T17:40:00+03:00' },
+      { state: 'Ready for Collection', at: '2026-10-02T17:50:00+03:00' }, { state: 'Collection Handoff', at: '2026-10-02T17:55:00+03:00', by: 'STF-AA-02' },
+      { state: 'Completed', at: '2026-10-02T17:56:00+03:00' },
+    ],
+    finalHandoff: { method: 'QR', displayedBy: 'STF-AA-02' },
+  },
 } satisfies Record<string, OrderRecord>
 
 export type OrderId = keyof typeof ORDER_RECORDS

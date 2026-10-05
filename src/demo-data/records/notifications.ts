@@ -38,6 +38,7 @@ export const NOTIFICATIONS: readonly NotificationRecord[] = [
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Order Paid', order: 'ADU-24091' } },
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Order Paid', order: 'ADU-24092' } },
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Order Paid', order: 'ADU-24093' } },
+  { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Order Paid', order: 'ADU-24094' } },
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Order status', order: 'ADU-24091', state: 'Ready for Courier' } },
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Order status', order: 'ADU-24091', state: 'Courier Assigned' } },
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Order status', order: 'ADU-24092', state: 'Ready for Courier' } },
@@ -45,6 +46,7 @@ export const NOTIFICATIONS: readonly NotificationRecord[] = [
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Delivery action', order: 'ADU-24091' } },
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Order status', order: 'ADU-24093', state: 'Ready for Seller Delivery' } },
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Delivery action', order: 'ADU-24093' } },
+  { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Order status', order: 'ADU-24094', state: 'Ready for Collection' } },
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Claim status', claim: 'CLM-1002', state: 'Under Review' } },
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Claim status', claim: 'CLM-1002', state: 'Resolved' } },
   { recipient: 'BUY-MAYA-TESFAYE', event: { kind: 'Review reminder', order: 'ADU-23978' } },
@@ -54,6 +56,7 @@ export const NOTIFICATIONS: readonly NotificationRecord[] = [
   { recipient: 'SEL-ADDIS-ATELIER', event: { kind: 'Buyer message', conversation: 'CNV-MAYA-AA', messageIndex: 4 } },
   { recipient: 'SEL-ADDIS-ATELIER', event: { kind: 'Low stock', product: 'PRD-AA-003' } },
   { recipient: 'SEL-ADDIS-ATELIER', event: { kind: 'Pickup verified', order: 'ADU-24091' } },
+  { recipient: 'SEL-ADDIS-ATELIER', event: { kind: 'New Paid Order', order: 'ADU-24094' } },
   // Nura Glow
   { recipient: 'SEL-NURA-GLOW', event: { kind: 'New Paid Order', order: 'ADU-24092' } },
   { recipient: 'SEL-NURA-GLOW', event: { kind: 'Courier offer issue', order: 'ADU-24092' } },
