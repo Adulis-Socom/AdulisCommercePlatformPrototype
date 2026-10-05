@@ -193,6 +193,11 @@ export function nearbyAt(area: string, at: Moment = DEFAULT_SNAPSHOT): Shoppable
   return (NEARBY_PROXIMITY[area] ?? []).flatMap(seller => sellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at) && hasAvailableTagAt(id, at)))
 }
 
+/** The discovery areas a Buyer can choose for Nearby: those in the demo proximity metadata (rules 2.9, 2.14). */
+export function discoveryAreas(): string[] {
+  return Object.keys(NEARBY_PROXIMITY)
+}
+
 /** The Sellers Buyers can see: the primary showcase Sellers (Nile Loom is operations-only). */
 export function buyerVisibleSellers(): SellerId[] {
   return showcaseSellers()
@@ -203,9 +208,14 @@ export function buyerVisibleProductsAt(at: Moment = DEFAULT_SNAPSHOT): ProductId
   return buyerVisibleSellers().flatMap(seller => sellerProductsAt(seller, at))
 }
 
+/** Whether Buyers can see the Product at `at`, and so open its Product Post. It may still be out of stock (rule 1.8). */
+export function isBuyerVisibleAt(product: ProductId, at: Moment = DEFAULT_SNAPSHOT): boolean {
+  return buyerVisibleProductsAt(at).includes(product)
+}
+
 /** Whether a Buyer can buy the Product at `at`: Buyers can see it and it isn't out of stock (rule 3.11 revalidates a Cart with this). */
 export function isPurchasableAt(product: ProductId, at: Moment = DEFAULT_SNAPSHOT): boolean {
-  return buyerVisibleProductsAt(at).includes(product) && PRODUCTS[product].availability !== 'Out of Stock'
+  return isBuyerVisibleAt(product, at) && PRODUCTS[product].availability !== 'Out of Stock'
 }
 
 /** The Shoppable Posts Buyers can see at `at` (published, not restricted), in ID order. */
@@ -213,16 +223,16 @@ export function buyerVisiblePostsAt(at: Moment = DEFAULT_SNAPSHOT): ShoppablePos
   return buyerVisibleSellers().flatMap(seller => sellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at)))
 }
 
-/** Discounts (rule 2.11): Products with an active discount, largest discount first, then the larger ETB saving. */
+/** Discounts (rule 2.11): Buyer-visible Products with an active discount, largest discount first, then the larger ETB saving. */
 export function discountsAt(at: Moment = DEFAULT_SNAPSHOT): ProductId[] {
   const saving = (id: ProductId) => PRODUCTS[id].price - currentPrice(id)
-  return byId(PRODUCT_IDS.filter(id => activeDiscount(id) && productExistsAt(id, at)))
+  return byId(buyerVisibleProductsAt(at).filter(id => activeDiscount(id)))
     .sort((a, b) => (activeDiscount(b)?.percent ?? 0) - (activeDiscount(a)?.percent ?? 0) || saving(b) - saving(a))
 }
 
-/** Locally Made (rules 2.12–2.13): marked Products, the available ones in ID order, then those out of stock. */
+/** Locally Made (rules 2.12–2.13): Buyer-visible marked Products, the available ones in ID order, then those out of stock. */
 export function locallyMadeAt(at: Moment = DEFAULT_SNAPSHOT): ProductId[] {
-  const marked = byId(PRODUCT_IDS.filter(id => PRODUCTS[id].locallyMade && productExistsAt(id, at)))
+  const marked = byId(buyerVisibleProductsAt(at).filter(id => PRODUCTS[id].locallyMade))
   return [...marked.filter(id => PRODUCTS[id].availability !== 'Out of Stock'), ...marked.filter(id => PRODUCTS[id].availability === 'Out of Stock')]
 }
 
