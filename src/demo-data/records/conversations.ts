@@ -7,10 +7,19 @@ import type { ShoppablePostId } from './posts.ts'
 import type { ProductId } from './products.ts'
 import type { SellerId, StaffId } from './sellers.ts'
 
-export type MessageContext = { readonly product: ProductId } | { readonly post: ShoppablePostId } | { readonly order: OrderId }
+/**
+ * What a message is about (rule 12.2): General / Seller, which names no record, or a Product Post, a Shoppable Post or an
+ * Order. It belongs to the message, never to the conversation. DEMO_DATA's messages are each about a record.
+ */
+export type MessageContext = { readonly general: true } | { readonly product: ProductId } | { readonly post: ShoppablePostId } | { readonly order: OrderId }
 
 export interface MessageRecord {
   readonly at: Timestamp
+  /**
+   * Orders messages that share `at` (0 when absent), as a Moment's sequence orders events. DEMO_DATA's messages have
+   * none; a message sent in a prototype session takes that surface's next number, so the last one sent is the newest.
+   */
+  readonly sequence?: number
   /** The Buyer, or the Seller team member who replied (Buyers see the Seller; Seller surfaces show the member). */
   readonly from: 'buyer' | StaffId
   readonly context: MessageContext

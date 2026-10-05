@@ -4,19 +4,19 @@ import { PhoneInput, SearchInput, Textarea, TextInput } from '../components/ui/I
 import { Skeleton } from '../components/ui/Overlay'
 import {
   PhoneFrame, BottomNav, IconHome, IconShop, IconHeart, IconOrders, IconUser,
-  IconSearch, IconChevronRight,
+  IconSearch, IconChevronDown, IconChevronRight,
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
-  BUYERS, CHATBOTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DEMO_CARTS, GUEST_STATE, MARKET, MODERATION_CASES, ORDERS,
-  ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
-  activeDiscount, adulisSurcharge, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, claimStateAt, claimSubmitted, claimsForOrder, currentPrice, describeFulfilment,
-  discountsAt, discoveryAreas, followingAt, forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDayMonth, formatEtb, fulfilmentOptionsAt, happenedBefore,
-  initials, isBuyerVisibleAt, isPurchasableAt, lineOptions, locallyMadeAt, messagesAt, nearbyAt,
-  notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, productQualityAt, reviewsAt, sellerPostsAt, sellerProductsAt,
-  sellerServiceAt, shortName, stateTime, trustAt, trustLabel,
-  type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FulfilmentMode, type ModerationId, type Moment, type NotificationRecord, type OrderId,
-  type OrderLine, type OrderState, type ProductId, type SellerId, type ShoppablePostId, type Timestamp,
+  BUYERS, CHATBOTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
+  MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
+  activeDiscount, adulisSurcharge, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, claimStateAt, claimSubmitted, claimsForOrder,
+  contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, followingAt,
+  forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDayMonth, formatEtb, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
+  isContextChoiceAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt,
+  productQualityAt, reviewsAt, sameContext, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, trustAt, trustLabel,
+  type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FulfilmentMode, type MessageContext, type MessageRecord, type ModerationId, type Moment,
+  type NotificationRecord, type OrderId, type OrderLine, type OrderState, type ProductId, type SellerId, type ShoppablePostId, type Timestamp,
 } from '../demo-data'
 
 type TabKey = 'home' | 'shop' | 'saved' | 'orders' | 'you'
@@ -49,6 +49,12 @@ type Intent = { screen: Screen; tab?: TabKey; channel?: Channel; then?: 'checkou
 type DiscoverySheet = { kind: 'products'; featured?: ProductId } | { kind: 'more'; channel?: Channel } | { kind: 'share'; product?: ProductId }
 /** A line of the temporary prototype Cart: transient session state, never a canonical record (rule 3.12). */
 type CartLine = OrderLine
+/**
+ * The conversation Chat opens, by Seller (one per Buyer and Seller, rule 12.1); the context its composer starts on: the
+ * entry point's own record, otherwise General / Seller; and where Back returns. The context is the composer's, never the
+ * conversation's.
+ */
+type ChatEntry = { seller: SellerId; context: MessageContext; from: Screen }
 
 const FULFILMENT_MODE: Record<Fulfilment, FulfilmentMode> = { collection: 'Buyer Collection', seller: 'Seller Delivery', courier: 'Courier Delivery' }
 const FULFILMENT_KEY: Record<FulfilmentMode, Fulfilment> = { 'Buyer Collection': 'collection', 'Seller Delivery': 'seller', 'Courier Delivery': 'courier' }
@@ -224,7 +230,10 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [sellerId, setSellerId] = useState<SellerId>(SHOPPABLE_POSTS[focus?.post ?? SURFACE_DEFAULTS.post].seller)
   const [orderId, setOrderId] = useState<OrderId>(focus?.order ?? SURFACE_DEFAULTS.order)
   const [collectionId, setCollectionId] = useState<CollectionId>(COLLECTION_IDS.find(id => COLLECTIONS[id].owner === BUYER)!)
-  const [chatSellerId, setChatSellerId] = useState<SellerId>(CONVERSATIONS[focus?.conversation ?? SURFACE_DEFAULTS.conversation].seller)
+  const [chat, setChat] = useState<ChatEntry>({ seller: CONVERSATIONS[focus?.conversation ?? SURFACE_DEFAULTS.conversation].seller, context: GENERAL_CONTEXT, from: 'chats' })
+  // The messages Maya sends in this session, per conversation, each with the context it was sent with (rule 12.3). They
+  // are transient: DEMO_DATA never changes, and a reset remounts the app without them.
+  const [sentMessages, setSentMessages] = useState<Partial<Record<ConversationId, readonly MessageRecord[]>>>({})
   const [claimIssue, setClaimIssue] = useState('')
   const [claimId, setClaimId] = useState<ClaimId | undefined>(upcomingClaim(focus?.order ?? SURFACE_DEFAULTS.order, story.moment))
   const [orderStage, setOrderStage] = useState<OrderState>(orderStateAt(focus?.order ?? SURFACE_DEFAULTS.order, story.moment) ?? 'Paid')
@@ -246,7 +255,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const openProduct = (id: ProductId) => { setDiscoverySheet(null); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
   const openSeller = (id: SellerId) => { setSellerId(id); setScreen('seller') }
   const openOrder = (id: OrderId) => { setOrderId(id); setOrderStage(orderStateAt(id, at) ?? 'Paid'); setScreen('order-detail') }
-  const openConversation = (seller: SellerId) => { setChatSellerId(seller); setScreen('conversation') }
+  const openConversation = (entry: ChatEntry) => { setChat(entry); setScreen('conversation') }
   const openClaim = () => { setClaimId(upcomingClaim(orderId, at)); setScreen('claim-start') }
   const paid = () => { advanceTo(paidAt(CHECKOUT_CART)); setScreen('payment-success') }
   const handoffVerified = () => { const done = stateTime(orderId, 'Completed'); if (done) advanceTo(done); setScreen('delivery-confirmed') }
@@ -379,12 +388,13 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onBack={() => setScreen(productFrom)}
             onSeller={() => openSeller(PRODUCTS[productId].seller)}
             onAddToCart={(options, quantity) => { addToCart({ product: productId, options, quantity }); setAddedToCart({ product: productId, options, quantity }) }}
-            // Only a Seller with a chatbot has one to ask; otherwise Chat opens the conversation with the Seller.
+            // Only a Seller with a chatbot has one to ask; otherwise Chat opens the conversation with the Seller, its
+            // composer on this Product Post (WO-005). A guest signs in first and then arrives there.
             onChat={() => {
               const seller = PRODUCTS[productId].seller
-              const chat: Screen = CHATBOTS[seller] ? 'chatbot' : 'conversation'
-              setChatSellerId(seller)
-              requireSignIn('Sign in to chat with sellers', { screen: chat }, () => setScreen(chat))
+              const next: Screen = CHATBOTS[seller] ? 'chatbot' : 'conversation'
+              setChat({ seller, context: { product: productId }, from: 'product' })
+              requireSignIn('Sign in to chat with sellers', { screen: next }, () => setScreen(next))
             }}
           />
         )}
@@ -427,7 +437,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'payment-failed' && <PaymentFailed onRetry={() => setScreen('payment-transition')} onCart={() => setScreen('seller-cart')} />}
         {shown === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={paid} />}
         {shown === 'orders' && <OrdersList at={at} onOrder={openOrder} onChats={() => setScreen('chats')} onNotifications={() => { setNotificationsFrom('orders'); setScreen('notifications') }} />}
-        {shown === 'order-detail' && <OrderDetail orderId={orderId} stage={orderStage} setStage={setOrderStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => setScreen('otp')} onClaim={openClaim} onChat={() => openConversation(ORDERS[orderId].seller)} />}
+        {shown === 'order-detail' && <OrderDetail orderId={orderId} stage={orderStage} setStage={setOrderStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => setScreen('otp')} onClaim={openClaim} onChat={() => openConversation({ seller: ORDERS[orderId].seller, context: { order: orderId }, from: 'order-detail' })} />}
         {shown === 'delegated-recipient' && <DelegatedRecipient onBack={() => setScreen('order-detail')} onSave={() => setScreen('order-detail')} />}
         {shown === 'qr-scanner' && <DeliveryScanner onBack={() => setScreen('order-detail')} onCamera={() => setScreen('qr-camera')} onOtp={() => setScreen('otp')} />}
         {shown === 'qr-camera' && <ScannerCamera onBack={() => setScreen('qr-scanner')} onScan={() => setScreen('qr-verifying')} />}
@@ -439,8 +449,8 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'claim-start' && <ClaimStart orderId={orderId} issue={claimIssue} setIssue={setClaimIssue} onBack={() => setScreen('order-detail')} onContinue={() => setScreen('claim-form')} />}
         {shown === 'claim-form' && <ClaimForm claimId={claimId} issue={claimIssue} onBack={() => setScreen('claim-start')} onSubmit={() => { if (claimId) advanceTo(claimSubmitted(claimId)); setScreen('claim-status') }} />}
         {shown === 'claim-status' && <ClaimStatus orderId={orderId} claimId={claimId} at={at} onDone={() => setScreen('order-detail')} />}
-        {shown === 'chats' && <ChatList at={at} onBack={() => setScreen('orders')} onConversation={openConversation} />}
-        {shown === 'conversation' && <Conversation sellerId={chatSellerId} at={at} onBack={() => setScreen('chats')} />}
+        {shown === 'chats' && <ChatList at={at} sent={sentMessages} onBack={() => setScreen('orders')} onConversation={seller => openConversation({ seller, context: GENERAL_CONTEXT, from: 'chats' })} />}
+        {shown === 'conversation' && <Conversation sellerId={chat.seller} startContext={chat.context} at={at} sent={sentMessages} onSend={(conversation, message) => setSentMessages(all => ({ ...all, [conversation]: [...(all[conversation] ?? []), { ...message, sequence: Object.values(all).reduce((n, list) => n + (list?.length ?? 0), 0) + 1 }] }))} onBack={() => setScreen(chat.from)} />}
         {shown === 'chatbot' && <Chatbot productId={productId} onBack={() => setScreen('product')} onEscalate={advanceTo} />}
         {shown === 'notifications' && <Notifications at={at} onBack={() => setScreen(notificationsFrom)} onOrder={openOrder} />}
         {shown === 'you' && <YouProfile at={at} onSeller={openSeller} />}
@@ -1726,16 +1736,12 @@ function ClaimStatus({ orderId, claimId, at, onDone }: { orderId: OrderId; claim
   )
 }
 
-// The Buyer's conversation with a Seller, if there is one (one per Buyer and Seller, rule 12.1).
-function conversationWith(sellerId: SellerId): ConversationId | undefined {
-  return CONVERSATION_IDS.find(id => CONVERSATIONS[id].buyer === BUYER && CONVERSATIONS[id].seller === sellerId)
-}
-
-function ChatList({ at, onBack, onConversation }: { at: Moment; onBack: () => void; onConversation: (seller: SellerId) => void }) {
-  // The Buyer's conversations with messages by the story moment, latest first. DEMO_DATA records no read state.
+function ChatList({ at, sent, onBack, onConversation }: { at: Moment; sent: Partial<Record<ConversationId, readonly MessageRecord[]>>; onBack: () => void; onConversation: (seller: SellerId) => void }) {
+  // The Buyer's conversations with messages by the story moment, latest first. Each previews its newest message: one
+  // Maya sent in this session, if she has, otherwise DEMO_DATA's last. DEMO_DATA records no read state.
   const threads = CONVERSATION_IDS.filter(id => CONVERSATIONS[id].buyer === BUYER)
-    .flatMap(id => { const last = messagesAt(id, at).pop(); return last ? [{ id, last }] : [] })
-    .sort((a, b) => b.last.at.localeCompare(a.last.at))
+    .flatMap(id => { const last = effectiveMessagesAt(id, at, sent[id]).pop(); return last ? [{ id, last }] : [] })
+    .sort((a, b) => byMessageTime(b.last, a.last))
   return (
     <>
       <Header title="Messages" onBack={onBack} />
@@ -1750,32 +1756,99 @@ function ChatList({ at, onBack, onConversation }: { at: Moment; onBack: () => vo
   )
 }
 
-function Conversation({ sellerId, at, onBack }: { sellerId: SellerId; at: Moment; onBack: () => void }) {
-  const [context, setContext] = useState('Order')
-  const [message, setMessage] = useState('')
-  const [sent, setSent] = useState(false)
-  // The messages so far (none with a Seller the Buyer hasn't messaged), and their most recent Order for the Order chip.
-  const conversation = conversationWith(sellerId)
-  const messages = conversation ? messagesAt(conversation, at) : []
-  const latestOrder = ordersAt({ buyer: BUYER, seller: sellerId }, at).sort((a, b) => paidAt(b).localeCompare(paidAt(a)))[0]
+/**
+ * Maya's one conversation with the Seller (rule 12.1). Every message shows the context it was sent with (specification
+ * §22). The composer's context is this screen's state, never the conversation's, and changing it changes no message
+ * (rule 12.3).
+ */
+function Conversation({ sellerId, startContext, at, sent, onSend, onBack }: {
+  sellerId: SellerId; startContext: MessageContext; at: Moment; sent: Partial<Record<ConversationId, readonly MessageRecord[]>>
+  onSend: (conversation: ConversationId, message: MessageRecord) => void; onBack: () => void
+}) {
+  // Maya has no conversation with some Sellers (DEMO_DATA › Conversations), and the prototype starts none.
+  const conversation = conversationBetween(BUYER, sellerId)
+  // The composer starts on the entry point's record when the selector offers it (rules 12.5–12.6), else on General / Seller.
+  const [context, setContext] = useState<MessageContext>(() => (conversation && isContextChoiceAt(conversation, startContext, at) ? startContext : GENERAL_CONTEXT))
+  const [text, setText] = useState('')
+  const [choosing, setChoosing] = useState(false)
+  const seller = SELLERS[sellerId].name
+  // DEMO_DATA's messages so far, then this session's, in time order.
+  const messages = conversation ? effectiveMessagesAt(conversation, at, sent[conversation]) : []
+  const send = () => {
+    const body = text.trim()
+    if (!conversation || !body) return
+    onSend(conversation, { at: at.at, from: 'buyer', context, text: body })
+    setText('')
+  }
+  // A message just sent comes into view; opening the conversation keeps its place.
+  const list = useRef<HTMLDivElement>(null)
+  const shown = useRef(messages.length)
+  useEffect(() => {
+    if (messages.length > shown.current) list.current?.scrollTo({ top: list.current.scrollHeight })
+    shown.current = messages.length
+  }, [messages.length])
   return (
     <>
-      <Header title={SELLERS[sellerId].name} onBack={onBack} />
+      <Header title={seller} onBack={onBack} />
       <div className="border-b border-border bg-warning-bg px-4 py-2 text-[10px] leading-relaxed text-text-secondary">Chat helps coordination, but messages do not change payment, order, fulfilment or handoff truth.</div>
-      <div className="flex gap-2 overflow-x-auto border-b border-border p-3">
-        {['Product', 'Post', 'Order'].map(item => <Choice key={item} active={context === item} onClick={() => setContext(item)}>{item === 'Order' && latestOrder ? `Order ${latestOrder}` : item}</Choice>)}
-      </div>
-      <div className="flex-1 overflow-y-auto bg-surface-raised p-4">
-        {messages.map((m, index) => (
-          <div key={index} className={`${m.from === 'buyer' ? 'ml-auto rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface shadow-sm'} ${index ? 'mt-3' : ''} max-w-[78%] rounded-2xl p-3 text-sm`}>{m.text}</div>
-        ))}
-        {sent && <div className="ml-auto mt-3 max-w-[78%] rounded-2xl rounded-tr-sm bg-brand p-3 text-sm text-white">{message || 'Thanks for the update.'}</div>}
-      </div>
-      <div className="flex items-center gap-2 border-t border-border bg-surface p-3 pb-5">
-        <div className="flex-1"><TextInput value={message} onChange={e => setMessage(e.target.value)} placeholder={`Message about ${context.toLowerCase()}`} /></div>
-        <Button size="md" onClick={() => setSent(true)}>Send</Button>
-      </div>
+      {conversation ? <>
+        <div ref={list} role="list" aria-label="Messages" className="flex-1 overflow-y-auto bg-surface-raised p-4">
+          {messages.map((m, index) => <ChatMessage key={index} message={m} spaced={index > 0} />)}
+        </div>
+        <div className="border-t border-border bg-surface p-3 pb-5">
+          <button onClick={() => setChoosing(true)} aria-haspopup="dialog" aria-label={`Talking about: ${contextSubject(context)}. Change`} className="mb-2 inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand bg-brand-muted px-3 py-1 text-left text-xs font-semibold text-brand-dark">
+            <span>Talking about: {contextSubject(context)}</span>
+            <IconChevronDown size={12} />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex-1"><TextInput aria-label="Message" value={text} onChange={e => setText(e.target.value)} placeholder={'general' in context ? `Message ${seller}` : `Message about ${contextSubject(context)}`} /></div>
+            <Button size="md" onClick={send}>Send</Button>
+          </div>
+        </div>
+        {choosing && <ContextSheet choices={contextChoicesAt(conversation, at)} selected={context} onSelect={setContext} onClose={() => setChoosing(false)} />}
+      </> : (
+        <div className="flex-1 bg-surface-raised p-4">
+          <div className="rounded-xl bg-surface p-4 text-sm leading-relaxed text-text-secondary">
+            <span className="mb-1 block font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype</span>
+            {shortName(BUYERS[BUYER].name)} has no conversation with {seller} in the demo data, so the prototype doesn't start one.
+          </div>
+        </div>
+      )}
     </>
+  )
+}
+
+/** A message with the chip of the context it was sent with (specification §22). Maya sees the Seller, never the team member. */
+function ChatMessage({ message, spaced }: { message: MessageRecord; spaced?: boolean }) {
+  const mine = message.from === 'buyer'
+  return (
+    <div role="listitem" className={`${mine ? 'ml-auto items-end' : 'items-start'} ${spaced ? 'mt-3' : ''} flex max-w-[78%] flex-col`}>
+      <span className="mb-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-semibold text-text-secondary">Talking about: {contextSubject(message.context)}</span>
+      <div className={`${mine ? 'rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface shadow-sm'} rounded-2xl p-3 text-sm`}>{message.text}</div>
+    </div>
+  )
+}
+
+/** "Talking about": the composer's context choices, exactly the conversation's at the story moment (rules 12.5–12.6). */
+function ContextSheet({ choices, selected, onSelect, onClose }: { choices: readonly MessageContext[]; selected: MessageContext; onSelect: (context: MessageContext) => void; onClose: () => void }) {
+  return (
+    <BottomSheet title="Talking about" onClose={onClose}>
+      {dismiss => CONTEXT_GROUPS.map(group => {
+        const options = choices.filter(choice => group.kind in choice).map(choice => {
+          const current = sameContext(choice, selected)
+          return (
+            <button key={contextKey(choice)} autoFocus={current} aria-current={current ? 'true' : undefined} onClick={() => { onSelect(choice); dismiss() }} className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm ${current ? 'bg-brand-muted font-semibold text-brand-dark' : 'text-text-primary'}`}>
+              {contextSubject(choice)}
+              {current && <CheckIconSmall />}
+            </button>
+          )
+        })
+        if (!options.length) return null
+        return 'label' in group
+          ? <div key={group.kind} role="group" aria-labelledby={`context-group-${group.kind}`} className="mt-4"><div id={`context-group-${group.kind}`} className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-text-muted">{group.label}</div>{options}</div>
+          : <div key={group.kind}>{options}</div>
+      })}
+    </BottomSheet>
   )
 }
 
@@ -1784,14 +1857,14 @@ function Chatbot({ productId, onBack, onEscalate }: { productId: ProductId; onBa
   const [escalated, setEscalated] = useState(false)
   const seller = SELLERS[PRODUCTS[productId].seller].name
   // The Seller's chatbot answers only its configured answers. DEMO_DATA's question to it is unmatched, so the Buyer
-  // is offered Talk to Seller; the question then continues in the conversation with the Seller.
-  const conversation = conversationWith(PRODUCTS[productId].seller)
+  // is offered Talk to Seller; the question then continues in the conversation with the Seller, with its own context.
+  const conversation = conversationBetween(BUYER, PRODUCTS[productId].seller)
   const question = conversation && CONVERSATIONS[conversation].messages.find(m => m.escalatedFromChatbot)
   return (
     <>
       <Header title={`${seller} chatbot`} onBack={onBack} />
       <div className="flex-1 overflow-y-auto bg-surface-raised p-4">
-        {asked && question && <div className="ml-auto max-w-[84%] rounded-2xl rounded-tr-sm bg-brand p-3 text-sm text-white">{question.text}</div>}
+        {asked && question && <div role="list" aria-label="Messages"><ChatMessage message={question} /></div>}
         {escalated && <div className="mt-3 rounded-xl bg-success-bg p-3 text-sm font-semibold text-success">Escalated to {seller} · Seller Companion Inbox</div>}
       </div>
       <div className="border-t border-border bg-surface p-4 pb-6">

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { AdulisLogo } from '../App'
 import { Button } from '../components/ui/Button'
 import { StatusBadge } from '../components/ui/Badge'
@@ -12,17 +12,17 @@ import {
 } from './ShellHelpers'
 import { useStory } from '../StoryClock'
 import {
-  BUYERS, CHATBOTS, CLAIMS, CLAIM_IDS, CONTENT_PERFORMANCE_7D, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, DEFAULT_SNAPSHOT, HANDOFF_REVIEWS,
-  INSIGHTS_7D, MARKET, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS, SELLER_SESSIONS, SELLER_SETTINGS,
-  SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, VOLT_HOUSE_PREPUBLICATION,
-  activeDiscount, awaitingSellerReplyAt, claimStateAt, claimSubmitted, claimsForOrder, completedForSellerAt, contextOptionsAt, courierAvailabilityAt,
-  courierCompensationAt, currentPrice, formatAge, formatCalendarDate, formatClock, formatDate, formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday,
-  fulfilmentOptionsAt, happenedBefore, isForYouEligibleAt, lineOptions, messagesAt, moderationIssuesAt, onAdulisSince, orderStateAt, orderTotals, ordersAt,
-  ordersRequiringPreparationAt, paidAt,
+  BUYERS, CHATBOTS, CLAIMS, CLAIM_IDS, CONTENT_PERFORMANCE_7D, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, DEFAULT_SNAPSHOT,
+  GENERAL_CONTEXT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS,
+  SELLER_SESSIONS, SELLER_SETTINGS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, VOLT_HOUSE_PREPUBLICATION,
+  activeDiscount, awaitingSellerReplyAt, byMessageTime, claimStateAt, claimSubmitted, claimsForOrder, completedForSellerAt, contextChoicesAt, contextKey,
+  contextSubject, courierAvailabilityAt, courierCompensationAt, currentPrice, effectiveMessagesAt, formatAge, formatCalendarDate, formatClock, formatDate,
+  formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, isForYouEligibleAt, lineOptions, messagesAt,
+  moderationIssuesAt, onAdulisSince, orderStateAt, orderTotals, ordersAt, ordersRequiringPreparationAt, paidAt,
   paymentReference, postsNeedingAttentionAt, preparationAt, prepublicationCards, prepublicationSnapshotFor, productQualityAt, relationshipStatusAt, restrictionAt,
-  reviewsAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, showcaseSellers, stateTime, trustAt,
-  type ClaimId, type ClaimState, type ConversationId, type CourierId, type MessageContext, type Moment, type OrderId, type OrderState, type ProductId,
-  type SellerId, type ShoppablePostId,
+  reviewsAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, sessionStaffOn, shortName, showcaseSellers, stateTime, trustAt,
+  type ClaimId, type ClaimState, type ConversationId, type CourierId, type MessageContext, type MessageRecord, type Moment, type OrderId, type OrderState,
+  type ProductId, type SellerId, type ShoppablePostId,
 } from '../demo-data'
 
 type NavKey = 'home' | 'orders' | 'products' | 'content' | 'inbox' | 'claims' | 'reviews' | 'trust' | 'insights' | 'store' | 'couriers' | 'automation' | 'settings'
@@ -104,11 +104,6 @@ function sellerThreads(sellerId: SellerId, at: Moment) {
   return CONVERSATION_IDS.filter(id => CONVERSATIONS[id].seller === sellerId)
     .flatMap(id => { const last = messagesAt(id, at).pop(); return last ? [{ id, last }] : [] })
     .sort((a, b) => b.last.at.localeCompare(a.last.at))
-}
-
-/** The Order, Product or Shoppable Post identifier a message was sent about, as the inbox chip shows it. */
-function contextId(context: MessageContext) {
-  return 'order' in context ? context.order : 'product' in context ? context.product : context.post
 }
 
 /** 'Today · HH:MM' on the story day, otherwise the day and month with the time. */
@@ -725,40 +720,69 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   // The Seller's conversations at the story moment, marked while the Buyer awaits a reply.
   const threads = sellerThreads(sellerId, at)
   const [selected, setSelected] = useState<ConversationId | undefined>(threads[0]?.id)
-  const [context, setContext] = useState('Order')
+  // The reply's context is the composer's, never the conversation's. It starts on General / Seller in each conversation,
+  // so one Buyer's Order is never carried into another Buyer's conversation (rule 12.6).
+  const [context, setContext] = useState<MessageContext>(GENERAL_CONTEXT)
   const [reply, setReply] = useState('')
-  const [sent, setSent] = useState<string[]>([])
+  // Replies sent in this session, per conversation, each with its context and the team member with the Seller Console
+  // session (DEMO_DATA › Seller Console Settings). They are transient: a reset remounts the Console without them.
+  const [sent, setSent] = useState<Partial<Record<ConversationId, readonly MessageRecord[]>>>({})
+  const staff = sessionStaffOn(sellerId, 'Seller Console')
+  const selectId = useId()
   // A chatbot escalation is the Buyer's unmatched question to the Seller's chatbot, still awaiting the Seller's reply.
   const escalationOf = (id?: ConversationId) => { const last = id && messagesAt(id, at).pop(); return last && last.from === 'buyer' && last.escalatedFromChatbot ? last : undefined }
   const [escalated, setEscalated] = useState(!!escalationOf(selected))
+  const open = (id: ConversationId) => { setSelected(id); setContext(GENERAL_CONTEXT); setEscalated(!!escalationOf(id)) }
   const send = () => {
-    if (!reply.trim()) return
-    setSent(messages => [...messages, reply])
+    const text = reply.trim()
+    if (!text || !selected || !staff) return
+    setSent(all => ({ ...all, [selected]: [...(all[selected] ?? []), { at: at.at, sequence: Object.values(all).reduce((n, list) => n + (list?.length ?? 0), 0) + 1, from: staff, context, text }] }))
     setReply('')
   }
   const name = (id: ConversationId) => shortName(BUYERS[CONVERSATIONS[id].buyer].name)
-  const options = selected ? contextOptionsAt(selected, at) : undefined
-  const latestOrder = options?.orders.slice().sort((a, b) => paidAt(b).localeCompare(paidAt(a)))[0]
+  const choices = selected ? contextChoicesAt(selected, at) : []
   const question = escalationOf(selected)
+  // DEMO_DATA's messages so far, then this session's replies, in time order.
+  const messages = selected ? effectiveMessagesAt(selected, at, sent[selected]) : []
+  // Each row previews its conversation's newest message, a reply sent in this session included, so its text and chip come
+  // from the same message. Latest first.
+  const rows = threads.flatMap(({ id }) => { const last = effectiveMessagesAt(id, at, sent[id]).pop(); return last ? [{ id, last }] : [] })
+    .sort((a, b) => byMessageTime(b.last, a.last))
+  // A reply just sent comes into view; opening a conversation keeps its place.
+  const list = useRef<HTMLDivElement>(null)
+  const shown = useRef({ conversation: selected, count: messages.length })
+  useEffect(() => {
+    if (shown.current.conversation === selected && messages.length > shown.current.count) list.current?.scrollTo({ top: list.current.scrollHeight })
+    shown.current = { conversation: selected, count: messages.length }
+  }, [selected, messages.length])
   return (
     <div className="flex h-full min-h-[680px]">
       <div className="w-80 flex-shrink-0 border-r border-border bg-surface">
         <div className="border-b border-border p-4"><div className="font-display text-xl font-semibold">Inbox</div><div className="mt-3"><SearchInput placeholder="Search conversations" /></div></div>
         {threads.length === 0 && <p className="p-6 text-center text-sm text-text-muted">No conversations</p>}
-        {threads.map(({ id, last }) => <button key={id} onClick={() => { setSelected(id); setEscalated(!!escalationOf(id)) }} className={`flex w-full gap-3 border-b border-border p-4 text-left ${selected === id ? 'bg-brand-muted' : ''}`}><AvatarText name={name(id)} /><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="text-sm font-semibold">{name(id)}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="mt-1 block truncate text-xs text-text-muted">{last.text}</span><span className="mt-2 inline-flex rounded-full bg-surface-raised px-2 py-0.5 font-mono text-[9px] text-text-secondary">{contextId(last.context)}</span></span>{awaitingSellerReplyAt(id, at) && <span role="img" aria-label="Needs reply" title="Needs reply" className="mt-1 h-2 w-2 rounded-full bg-brand" />}</button>)}
+        {rows.map(({ id, last }) => <button key={id} onClick={() => open(id)} className={`flex w-full gap-3 border-b border-border p-4 text-left ${selected === id ? 'bg-brand-muted' : ''}`}><AvatarText name={name(id)} /><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="text-sm font-semibold">{name(id)}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="mt-1 block truncate text-xs text-text-muted">{last.text}</span><span className="mt-2 inline-flex rounded-full bg-surface-raised px-2 py-0.5 text-[10px] text-text-secondary">Talking about: {contextSubject(last.context)}</span></span>{awaitingSellerReplyAt(id, at) && <span role="img" aria-label="Needs reply" title="Needs reply" className="mt-1 h-2 w-2 rounded-full bg-brand" />}</button>)}
       </div>
       {selected && <div className="flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-border bg-surface px-5 py-3"><div className="flex items-center gap-3"><AvatarText name={name(selected)} /><span><span className="block text-sm font-semibold">{name(selected)}</span><span className="text-xs text-text-muted">Buyer–Seller relationship thread</span></span></div>{escalated && <StatusBadge status="open" customLabel="Chatbot escalated" />}</div>
-        <div className="flex gap-2 border-b border-border bg-surface px-5 py-3">{['Product', 'Post', 'Order'].map(value => <Pill key={value} active={context === value} onClick={() => setContext(value)}>{value === 'Product' ? `Product · ${options?.products[0] ?? '—'}` : value === 'Post' ? `Post · ${options?.posts[0] ?? '—'}` : `Order · ${latestOrder ?? '—'}`}</Pill>)}</div>
         {escalated && question && <div className="flex items-center gap-3 bg-warning-bg px-5 py-3 text-xs text-text-secondary"><span className="font-semibold text-warning">Chatbot escalation</span><span>The chatbot had no approved answer for “{question.text}” A human Seller reply is requested.</span><button onClick={() => setEscalated(false)} className="ml-auto font-semibold text-brand">Mark handled</button></div>}
-        <div className="flex-1 overflow-y-auto bg-surface-raised p-5">
-          {messagesAt(selected, at).map((m, index) => <ChatBubble key={index} mine={m.from !== 'buyer'}>{m.text}</ChatBubble>)}
-          {sent.map((message, index) => <ChatBubble key={index} mine>{message}</ChatBubble>)}
+        <div ref={list} role="list" aria-label="Messages" className="flex-1 overflow-y-auto bg-surface-raised p-5">
+          {messages.map((m, index) => <ChatBubble key={index} mine={m.from !== 'buyer'} context={m.context} author={m.from === 'buyer' ? undefined : shortName(STAFF[m.from].name)}>{m.text}</ChatBubble>)}
         </div>
         <div className="border-t border-border bg-surface p-4">
           {/* DEMO_DATA defines no preparation lead time, so no quick reply quotes one. */}
           <div className="mb-3 flex gap-2 overflow-x-auto"><span className="text-xs font-semibold text-text-muted">Quick Replies</span>{['Courier assigned', 'Please check your Order'].map(value => <button key={value} onClick={() => setReply(value)} className="rounded-full bg-surface-raised px-3 py-1 text-xs text-text-secondary">{value}</button>)}</div>
-          <div className="flex gap-2"><div className="flex-1"><TextInput value={reply} onChange={event => setReply(event.target.value)} placeholder={`Reply as ${SELLERS[sellerId].name} about this ${context}`} /></div><Button onClick={send}>Send Reply</Button></div>
+          {/* The reply's context: exactly this conversation's choices at the story moment (rules 12.5–12.6). */}
+          <div className="mb-3 flex items-center gap-3">
+            <label htmlFor={selectId} className="text-xs font-semibold text-text-secondary">Talking about</label>
+            <select id={selectId} value={contextKey(context)} onChange={event => setContext(choices.find(choice => contextKey(choice) === event.target.value) ?? GENERAL_CONTEXT)} className="h-11 min-w-0 max-w-md flex-1 rounded-lg border border-border bg-surface px-3 text-sm font-normal text-text-primary">
+              {CONTEXT_GROUPS.map(group => {
+                const options = choices.filter(choice => group.kind in choice).map(choice => <option key={contextKey(choice)} value={contextKey(choice)}>{contextSubject(choice)}</option>)
+                if (!options.length) return null
+                return 'label' in group ? <optgroup key={group.kind} label={group.label}>{options}</optgroup> : options
+              })}
+            </select>
+          </div>
+          <div className="flex gap-2"><div className="flex-1"><TextInput aria-label="Reply" value={reply} onChange={event => setReply(event.target.value)} placeholder={'general' in context ? `Reply as ${SELLERS[sellerId].name}` : `Reply as ${SELLERS[sellerId].name} about ${contextSubject(context)}`} /></div><Button onClick={send}>Send Reply</Button></div>
           <div className="mt-2 text-[10px] text-text-muted">Human Seller reply · Chat does not establish payment, fulfilment, handoff, or claim truth.</div>
         </div>
       </div>}
@@ -1105,8 +1129,14 @@ function AvatarText({ name, large }: { name: string; large?: boolean }) {
   return <span className={`flex flex-shrink-0 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark ${large ? 'h-14 w-14 text-base' : 'h-10 w-10 text-xs'}`}>{initials}</span>
 }
 
-function ChatBubble({ children, mine }: { children: ReactNode; mine?: boolean }) {
-  return <div className={`mb-3 max-w-[70%] rounded-2xl p-3 text-sm shadow-sm ${mine ? 'ml-auto rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface'}`}>{children}</div>
+/** A message with the chip of the context it was sent with (specification §22), and the team member who sent the Seller's. */
+function ChatBubble({ children, mine, context, author }: { children: ReactNode; mine?: boolean; context: MessageContext; author?: string }) {
+  return (
+    <div role="listitem" className={`mb-3 flex max-w-[70%] flex-col ${mine ? 'ml-auto items-end' : 'items-start'}`}>
+      <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px]">{author && <span className="font-semibold text-text-secondary">{author}</span>}<span className="rounded-full border border-border bg-surface px-2 py-0.5 text-text-secondary">Talking about: {contextSubject(context)}</span></div>
+      <div className={`rounded-2xl p-3 text-sm shadow-sm ${mine ? 'rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface'}`}>{children}</div>
+    </div>
+  )
 }
 
 function InsightCard({ label, value, change }: { label: string; value: string; change: string }) {

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../components/ui/Button'
 import { Textarea, TextInput } from '../components/ui/Input'
 import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
@@ -7,13 +7,14 @@ import {
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
-  BUYERS, CLAIMS, CLAIM_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, MARKET, ORDERS, ORDER_TIMELINES, PRODUCTS, SELLERS,
-  SHOPPABLE_POSTS, SURFACE_DEFAULTS,
-  awaitingSellerReplyAt, claimStateAt, completedForSellerAt, courierAvailabilityAt, courierCompensationAt, formatAge, formatClock, formatClockShort, formatDate,
-  formatDayMonth, formatEtb, happenedBefore, initials, lineOptions, messagesAt, notificationTime, notificationsAt, ordersAt, orderStateAt,
-  orderTotals, paidAt, preparationAt, readyStateFor, relationshipStatusAt, sellerProductsAt, shortName, showcaseSellers, stateTime,
-  type ClaimId, type ConversationId, type CourierId, type MessageContext, type Moment, type NotificationRecord, type OrderId, type OrderState,
-  type SellerId,
+  BUYERS, CLAIMS, CLAIM_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, GENERAL_CONTEXT, MARKET, ORDERS, ORDER_TIMELINES,
+  PRODUCTS, SELLERS, STAFF, SURFACE_DEFAULTS,
+  awaitingSellerReplyAt, byMessageTime, claimStateAt, completedForSellerAt, contextChoicesAt, contextKey, contextSubject, courierAvailabilityAt,
+  courierCompensationAt, effectiveMessagesAt, formatAge, formatClock, formatClockShort, formatDate, formatDayMonth, formatEtb, happenedBefore, initials,
+  lineOptions, messagesAt, notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, preparationAt, readyStateFor, relationshipStatusAt,
+  sameContext, sellerProductsAt, sellerReplyDueAt, sessionStaffOn, shortName, showcaseSellers, stateTime,
+  type ClaimId, type ConversationId, type CourierId, type MessageContext, type MessageRecord, type Moment, type NotificationRecord, type OrderId,
+  type OrderState, type SellerId, type Timestamp,
 } from '../demo-data'
 
 type TabKey = 'alerts' | 'orders' | 'inbox' | 'more'
@@ -86,13 +87,6 @@ function alertFor(n: NotificationRecord): { tone: Tone; title: string; detail: s
   }
 }
 
-/** The message's context, as the conversation chip shows it. */
-function contextLabel(context: MessageContext) {
-  if ('order' in context) return `Order · ${context.order}`
-  if ('product' in context) return `Product Post · ${PRODUCTS[context.product].name}`
-  return `Shoppable Post · ${SHOPPABLE_POSTS[context.post].title}`
-}
-
 export default function MobileSellerCompanion({ demoTarget }: { demoTarget?: string }) {
   // The story moment of the guided-flow step (the 10:25 snapshot otherwise); it moves past each documented event the
   // Seller performs here. The Companion opens on the step's Seller (the default Seller otherwise), and the Seller
@@ -131,6 +125,9 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
   const [stage, setStage] = useState<OrderStage>(initialOrder ? companionStage(initialOrder, at) : 'paid')
   const [courierId, setCourierId] = useState<CourierId>((initialOrder && ORDERS[initialOrder].courier) ?? SURFACE_DEFAULTS.courier)
   const [conversationId, setConversationId] = useState<ConversationId | undefined>(initialConversation)
+  // Replies sent from the Companion in this session, per conversation, each with the context it was sent with. They are
+  // transient: a reset remounts the Companion without them.
+  const [sentReplies, setSentReplies] = useState<Partial<Record<ConversationId, readonly MessageRecord[]>>>({})
   const [claimId, setClaimId] = useState<ClaimId | undefined>(openClaims(sellerId, at)[0])
   const [consoleNotice, setConsoleNotice] = useState(false)
   const [notice, setNotice] = useState<string>()
@@ -179,7 +176,7 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
           <div className="flex-1 overflow-y-auto">
             {activeTab === 'alerts' && <AlertsTab sellerId={sellerId} at={at} onOrder={openOrder} onClaim={openClaim} onConversation={openConversation} onLowStock={() => selectTab('more')} />}
             {activeTab === 'orders' && <OrdersTab sellerId={sellerId} at={at} onOrder={openOrder} />}
-            {activeTab === 'inbox' && <InboxTab sellerId={sellerId} at={at} onConversation={openConversation} onClaim={openClaim} />}
+            {activeTab === 'inbox' && <InboxTab sellerId={sellerId} at={at} sent={sentReplies} onConversation={openConversation} onClaim={openClaim} />}
             {activeTab === 'more' && <MoreTab sellerId={sellerId} at={at} notice={consoleNotice} onConsole={() => setConsoleNotice(true)} />}
           </div>
           <BottomNav items={TABS.map(tab => ({ ...tab, badge: badges[tab.key] }))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-brand)" />
@@ -210,7 +207,7 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
       {screen === 'pickup-qr' && <SellerPickupQr courierId={courierId} onBack={backToOrder} onVerified={() => { advance('Pickup Verified'); setScreen('pickup-verified') }} />}
       {screen === 'pickup-verified' && orderId && <PickupVerified orderId={orderId} courierId={courierId} at={at} onContinue={() => { setStage('pickup'); setScreen('delivery') }} />}
       {screen === 'delivery' && orderId && <DeliveryStatus orderId={orderId} courierId={courierId} stage={stage} onBack={backToOrder} onAdvance={() => { advance('Out for Delivery'); setStage('delivery') }} />}
-      {screen === 'conversation' && conversationId && <BuyerConversation conversationId={conversationId} at={at} onBack={() => { setActiveTab('inbox'); setScreen('tabs') }} />}
+      {screen === 'conversation' && conversationId && <BuyerConversation conversationId={conversationId} at={at} sent={sentReplies[conversationId] ?? []} onSend={message => setSentReplies(all => ({ ...all, [conversationId]: [...(all[conversationId] ?? []), { ...message, sequence: Object.values(all).reduce((n, list) => n + (list?.length ?? 0), 0) + 1 }] }))} onDocumentedReply={advanceTo} onBack={() => { setActiveTab('inbox'); setScreen('tabs') }} />}
       {screen === 'claim' && claimId && <ClaimResponse claimId={claimId} at={at} onBack={() => { setActiveTab('inbox'); setScreen('tabs') }} />}
       {switcherOpen && <SellerSwitcher current={sellerId} onClose={() => setSwitcherOpen(false)} onSelect={id => { setSwitcherOpen(false); if (id !== sellerId) onSwitchSeller(id) }} />}
     </div>
@@ -621,18 +618,24 @@ function HandoffVerified({ orderId, at, method, onContinue }: { orderId: OrderId
   )
 }
 
-function InboxTab({ sellerId, at, onConversation, onClaim }: { sellerId: SellerId; at: Moment; onConversation: (id: ConversationId) => void; onClaim: (id: ClaimId) => void }) {
-  // The Seller's conversations, latest first, marked while the Buyer awaits a reply; then Claims awaiting a response.
+function InboxTab({ sellerId, at, sent, onConversation, onClaim }: {
+  sellerId: SellerId; at: Moment; sent: Partial<Record<ConversationId, readonly MessageRecord[]>>; onConversation: (id: ConversationId) => void; onClaim: (id: ClaimId) => void
+}) {
+  // The Seller's conversations, latest first, marked while the Buyer awaits a reply; then Claims awaiting a response. Each
+  // row previews its conversation's newest message, a reply sent in this session included, so its text and chip come from
+  // the same message.
   const threads = sellerThreads(sellerId, at)
+  const rows = threads.flatMap(({ id }) => { const last = effectiveMessagesAt(id, at, sent[id]).pop(); return last ? [{ id, last }] : [] })
+    .sort((a, b) => byMessageTime(b.last, a.last))
   const claims = openClaims(sellerId, at)
   if (threads.length === 0 && claims.length === 0) return (
     <div className="px-6 py-16 text-center"><div className="font-display text-lg font-semibold">Inbox is empty</div><p className="mt-1 text-sm text-text-muted">Buyer conversations and Claims that need your response appear here.</p></div>
   )
   return (
     <div>
-      {threads.map(({ id, last }) => {
+      {rows.map(({ id, last }) => {
         const buyer = BUYERS[CONVERSATIONS[id].buyer].name
-        return <button key={id} onClick={() => onConversation(id)} className="flex w-full items-center gap-3 border-b border-border p-4 text-left"><Avatar initials={initials(buyer)} /><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="font-semibold">{shortName(buyer)}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="block truncate text-xs text-text-muted">{last.text}</span><span className="mt-1 inline-block rounded-full bg-brand-muted px-2 py-0.5 text-[10px] text-brand-dark">{contextLabel(last.context)}</span></span>{awaitingSellerReplyAt(id, at) && <span role="img" aria-label="Needs reply" title="Needs reply" className="h-2 w-2 rounded-full bg-brand" />}</button>
+        return <button key={id} onClick={() => onConversation(id)} className="flex w-full items-center gap-3 border-b border-border p-4 text-left"><Avatar initials={initials(buyer)} /><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="font-semibold">{shortName(buyer)}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="block truncate text-xs text-text-muted">{last.text}</span><span className="mt-1 inline-block rounded-full bg-brand-muted px-2 py-0.5 text-[10px] text-brand-dark">Talking about: {contextSubject(last.context)}</span></span>{awaitingSellerReplyAt(id, at) && <span role="img" aria-label="Needs reply" title="Needs reply" className="h-2 w-2 rounded-full bg-brand" />}</button>
       })}
       {claims.map(id => {
         const buyer = BUYERS[ORDERS[CLAIMS[id].order].buyer].name
@@ -643,27 +646,86 @@ function InboxTab({ sellerId, at, onConversation, onClaim }: { sellerId: SellerI
   )
 }
 
-function BuyerConversation({ conversationId, at, onBack }: { conversationId: ConversationId; at: Moment; onBack: () => void }) {
-  const [context, setContext] = useState('Order')
-  const [message, setMessage] = useState('')
-  const [sent, setSent] = useState(false)
-  // The messages so far: the Seller team's are this side's. The Order chip names the pair's most recent Order.
+function BuyerConversation({ conversationId, at, sent, onSend, onDocumentedReply, onBack }: {
+  conversationId: ConversationId; at: Moment; sent: readonly MessageRecord[]; onSend: (message: MessageRecord) => void
+  onDocumentedReply: (at: Timestamp) => void; onBack: () => void
+}) {
   const { buyer, seller } = CONVERSATIONS[conversationId]
-  const latestOrder = ordersAt({ buyer, seller }, at).sort((a, b) => paidAt(b).localeCompare(paidAt(a)))[0]
+  // The team member with the Companion session replies (DEMO_DATA › Seller Console Settings). When a guided-flow step
+  // stops just before that member's documented reply (Flow L at 11:48), the composer holds it with its context, and
+  // sending it is that event; any other reply is this session's own.
+  const staff = sessionStaffOn(seller, 'Seller Companion')
+  const due = sellerReplyDueAt(conversationId, at)
+  const documented = due && due.from === staff ? due : undefined
+  // The composer's context is this screen's state, never the conversation's: General / Seller unless a reply is due.
+  const [context, setContext] = useState<MessageContext>(documented?.context ?? GENERAL_CONTEXT)
+  const [message, setMessage] = useState(documented?.text ?? '')
+  const [choosing, setChoosing] = useState(false)
+  // DEMO_DATA's messages so far, then this session's replies, in time order. The Seller team's are this side's.
+  const messages = effectiveMessagesAt(conversationId, at, sent)
+  const send = () => {
+    if (!message || !staff) return
+    if (documented && message === documented.text && sameContext(context, documented.context)) onDocumentedReply(documented.at)
+    else onSend({ at: at.at, from: staff, context, text: message })
+    setMessage('')
+  }
+  // A reply just sent comes into view; opening the conversation keeps its place.
+  const list = useRef<HTMLDivElement>(null)
+  const shown = useRef(messages.length)
+  useEffect(() => {
+    if (messages.length > shown.current) list.current?.scrollTo({ top: list.current.scrollHeight })
+    shown.current = messages.length
+  }, [messages.length])
   return (
     <>
       <ScreenHeader title={shortName(BUYERS[buyer].name)} onBack={onBack} />
       <div className="border-b border-border bg-warning-bg px-4 py-2 text-[10px] leading-relaxed text-text-secondary">Chat supports coordination. It does not change payment, pickup, delivery, claim, or Order truth.</div>
-      <div className="flex gap-2 overflow-x-auto border-b border-border p-3">{['Product', 'Post', 'Order'].map(item => <Pill key={item} active={context === item} onClick={() => setContext(item)}>{item === 'Order' && latestOrder ? latestOrder : item}</Pill>)}</div>
-      <div className="flex-1 overflow-y-auto bg-surface-raised p-4">
-        {messagesAt(conversationId, at).map((m, index) => <Bubble key={index} mine={m.from !== 'buyer'}>{m.text}</Bubble>)}
-        {sent && <Bubble mine>{message || 'Thank you.'}</Bubble>}
+      <div ref={list} role="list" aria-label="Messages" className="flex-1 overflow-y-auto bg-surface-raised p-4">
+        {messages.map((m, index) => <Bubble key={index} mine={m.from !== 'buyer'} context={m.context} author={m.from === 'buyer' ? undefined : shortName(STAFF[m.from].name)}>{m.text}</Bubble>)}
       </div>
       <div className="border-t border-border bg-surface p-3 pb-5">
+        <button onClick={() => setChoosing(true)} aria-haspopup="dialog" aria-label={`Talking about: ${contextSubject(context)}. Change`} className="mb-2 inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand bg-brand-muted px-3 py-1 text-left text-xs font-semibold text-brand-dark"><span>Talking about: {contextSubject(context)}</span><IconChevronDown size={12} /></button>
         <div className="mb-2 flex gap-2 overflow-x-auto"><Pill onClick={() => setMessage('Your order is ready for courier pickup.')}>Order ready</Pill><Pill onClick={() => setMessage('A courier has been assigned.')}>Courier assigned</Pill></div>
-        <div className="flex gap-2"><div className="flex-1 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary">{message || `Message about ${context.toLowerCase()}`}</div><Button size="sm" onClick={() => setSent(true)}>Send</Button></div>
+        <div className="flex gap-2"><div className="flex-1 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary">{message || ('general' in context ? `Message ${shortName(BUYERS[buyer].name)}` : `Message about ${contextSubject(context)}`)}</div><Button size="sm" onClick={send}>Send</Button></div>
       </div>
+      {choosing && <ContextSheet choices={contextChoicesAt(conversationId, at)} selected={context} onSelect={setContext} onClose={() => setChoosing(false)} />}
     </>
+  )
+}
+
+/**
+ * "Talking about", as a sheet inside the phone: the reply's context choices, exactly the conversation's at the story
+ * moment (rules 12.5–12.6). Escape closes it, and closing returns focus to its opener.
+ */
+function ContextSheet({ choices, selected, onSelect, onClose }: { choices: readonly MessageContext[]; selected: MessageContext; onSelect: (context: MessageContext) => void; onClose: () => void }) {
+  const [trigger] = useState(() => document.activeElement)
+  const dismiss = () => {
+    onClose()
+    if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus()
+  }
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Talking about" className="absolute inset-0 z-30 flex flex-col justify-end bg-black/40" onKeyDown={event => { if (event.key === 'Escape') dismiss() }}>
+      <button aria-label="Close" className="flex-1" onClick={dismiss} />
+      <div className="max-h-[85%] overflow-y-auto rounded-t-3xl bg-surface px-4 pb-8 pt-3">
+        <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-border-strong" />
+        <div className="mb-2 font-display text-lg font-semibold">Talking about</div>
+        {CONTEXT_GROUPS.map(group => {
+          const options = choices.filter(choice => group.kind in choice).map(choice => {
+            const current = sameContext(choice, selected)
+            return (
+              <button key={contextKey(choice)} autoFocus={current} aria-current={current ? 'true' : undefined} onClick={() => { onSelect(choice); dismiss() }} className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm ${current ? 'bg-brand-muted font-semibold text-brand-dark' : 'text-text-primary'}`}>
+                {contextSubject(choice)}
+                {current && <span className="text-xs font-semibold text-brand">Current</span>}
+              </button>
+            )
+          })
+          if (!options.length) return null
+          return 'label' in group
+            ? <div key={group.kind} role="group" aria-labelledby={`reply-context-${group.kind}`} className="mt-4"><div id={`reply-context-${group.kind}`} className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-text-muted">{group.label}</div>{options}</div>
+            : <div key={group.kind}>{options}</div>
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -722,8 +784,14 @@ function Avatar({ initials }: { initials: string }) {
   return <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-brand-muted text-xs font-bold text-brand-dark">{initials}</span>
 }
 
-function Bubble({ children, mine }: { children: ReactNode; mine?: boolean }) {
-  return <div className={`mb-3 max-w-[82%] rounded-2xl p-3 text-sm shadow-sm ${mine ? 'ml-auto rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface'}`}>{children}</div>
+/** A message with the chip of the context it was sent with (specification §22), and the team member who sent the Seller's. */
+function Bubble({ children, mine, context, author }: { children: ReactNode; mine?: boolean; context: MessageContext; author?: string }) {
+  return (
+    <div role="listitem" className={`mb-3 flex max-w-[82%] flex-col ${mine ? 'ml-auto items-end' : 'items-start'}`}>
+      <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px]">{author && <span className="font-semibold text-text-secondary">{author}</span>}<span className="rounded-full border border-border bg-surface px-2 py-0.5 text-text-secondary">Talking about: {contextSubject(context)}</span></div>
+      <div className={`rounded-2xl p-3 text-sm shadow-sm ${mine ? 'rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface'}`}>{children}</div>
+    </div>
+  )
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {

@@ -6,8 +6,8 @@ import { DEFAULT_SNAPSHOT, happenedBefore } from './time.ts'
 import type { CalendarDate, Moment, Timestamp } from './time.ts'
 import { ORDER_TIMELINES } from './types.ts'
 import type { ClaimState, CourierAvailability, FulfilmentMode, OrderState, TrustLevel } from './types.ts'
-import { SELLERS, VOLT_HOUSE_PREPUBLICATION } from './records/sellers.ts'
-import type { SellerId } from './records/sellers.ts'
+import { SELLERS, SELLER_SESSIONS, STAFF, VOLT_HOUSE_PREPUBLICATION } from './records/sellers.ts'
+import type { SellerId, StaffId } from './records/sellers.ts'
 import { PRODUCTS, PRODUCT_IDS } from './records/products.ts'
 import type { ProductId, ProductRecord } from './records/products.ts'
 import { SHOPPABLE_POSTS, SHOPPABLE_POST_IDS } from './records/posts.ts'
@@ -22,8 +22,8 @@ import { REVIEWS, REVIEW_IDS } from './records/reviews.ts'
 import type { ReviewId } from './records/reviews.ts'
 import { CLAIMS } from './records/claims.ts'
 import type { ClaimId } from './records/claims.ts'
-import { CONVERSATIONS } from './records/conversations.ts'
-import type { ConversationId, MessageRecord } from './records/conversations.ts'
+import { CONVERSATIONS, CONVERSATION_IDS } from './records/conversations.ts'
+import type { ConversationId, MessageContext, MessageRecord } from './records/conversations.ts'
 import { HANDOFF_REVIEWS, MODERATION_CASES } from './records/operations.ts'
 import type { ModerationId } from './records/operations.ts'
 import { NOTIFICATIONS } from './records/notifications.ts'
@@ -447,8 +447,27 @@ export function claimLine(claim: ClaimId): OrderLine {
 
 // ---------- Conversations ----------
 
+/** The Buyer's conversation with the Seller, if they have one: never more than one per Buyer and Seller (rule 12.1). */
+export function conversationBetween(buyer: BuyerId, seller: SellerId): ConversationId | undefined {
+  return CONVERSATION_IDS.find(id => CONVERSATIONS[id].buyer === buyer && CONVERSATIONS[id].seller === seller)
+}
+
 export function messagesAt(conversation: ConversationId, at: Moment = DEFAULT_SNAPSHOT): MessageRecord[] {
   return CONVERSATIONS[conversation].messages.filter(message => happenedBefore(message.at, at))
+}
+
+/** Time order for messages: by `at`, then by `sequence`, so DEMO_DATA's (which have none) come first when times tie. */
+export function byMessageTime(a: MessageRecord, b: MessageRecord): number {
+  return a.at.localeCompare(b.at) || (a.sequence ?? 0) - (b.sequence ?? 0)
+}
+
+/**
+ * What a conversation shows on a surface: DEMO_DATA's messages so far, then the messages that surface sent in this
+ * prototype session, in time order. Its newest message is the one the conversation's list row previews, body and
+ * context alike. The session's messages are the surface's own; DEMO_DATA never changes.
+ */
+export function effectiveMessagesAt(conversation: ConversationId, at: Moment = DEFAULT_SNAPSHOT, session: readonly MessageRecord[] = []): MessageRecord[] {
+  return [...messagesAt(conversation, at), ...session].sort(byMessageTime)
 }
 
 /** The conversation's latest message is the Buyer's: it is waiting for the Seller's reply. */
@@ -467,6 +486,59 @@ export function contextOptionsAt(conversation: ConversationId, at: Moment = DEFA
     posts: sellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at)),
     orders: ordersAt({ buyer, seller }, at),
   }
+}
+
+/** General / Seller: a message about the Buyer–Seller relationship, naming no Product Post, Shoppable Post or Order. */
+export const GENERAL_CONTEXT: MessageContext = { general: true }
+
+/** The record a context names, as one value: 'general', or the record's kind and identifier ('order:…'). */
+export function contextKey(context: MessageContext): string {
+  if ('product' in context) return `product:${context.product}`
+  if ('post' in context) return `post:${context.post}`
+  if ('order' in context) return `order:${context.order}`
+  return 'general'
+}
+
+export function sameContext(a: MessageContext, b: MessageContext): boolean {
+  return contextKey(a) === contextKey(b)
+}
+
+/**
+ * The context selector's choices for the conversation at `at`, in DEMO_DATA's order: General / Seller, then the Product
+ * Posts, the Shoppable Posts and the Orders of contextOptionsAt (rules 12.5–12.6).
+ */
+export function contextChoicesAt(conversation: ConversationId, at: Moment = DEFAULT_SNAPSHOT): MessageContext[] {
+  const { products, posts, orders } = contextOptionsAt(conversation, at)
+  return [GENERAL_CONTEXT, ...products.map(product => ({ product })), ...posts.map(post => ({ post })), ...orders.map(order => ({ order }))]
+}
+
+/** Whether the conversation's selector offers the context at `at`: another Seller's record or another Buyer's Order never is. */
+export function isContextChoiceAt(conversation: ConversationId, context: MessageContext, at: Moment = DEFAULT_SNAPSHOT): boolean {
+  return contextChoicesAt(conversation, at).some(choice => sameContext(choice, context))
+}
+
+/** What a context chip names, in the specification §22 form: the Product's name, '<title> Shoppable Post' or 'Order <reference>'. */
+export function contextSubject(context: MessageContext): string {
+  if ('product' in context) return PRODUCTS[context.product].name
+  if ('post' in context) return `${SHOPPABLE_POSTS[context.post].title} Shoppable Post`
+  if ('order' in context) return `Order ${context.order}`
+  return 'General / Seller'
+}
+
+/** The team member with a session on the Seller's Console or Companion (DEMO_DATA › Seller Console Settings › Sessions & Devices). */
+export function sessionStaffOn(seller: SellerId, surface: 'Seller Console' | 'Seller Companion'): StaffId | undefined {
+  return SELLER_SESSIONS.find(session => session.surface === surface && STAFF[session.staff].seller === seller)?.staff
+}
+
+/**
+ * The Seller team's documented reply due at `at`: the conversation's next message, when it is a reply and `at` is its own
+ * time. A guided-flow step stops just before its first documented event (scenario/flows.ts), so this is the reply that
+ * step's Seller sends, such as Flow L's at 11:48. None is due at any other moment, so sending one never moves the story
+ * past another event.
+ */
+export function sellerReplyDueAt(conversation: ConversationId, at: Moment = DEFAULT_SNAPSHOT): MessageRecord | undefined {
+  const next = CONVERSATIONS[conversation].messages.find(message => !happenedBefore(message.at, at))
+  return next && next.from !== 'buyer' && next.at === at.at ? next : undefined
 }
 
 // ---------- Notifications ----------
