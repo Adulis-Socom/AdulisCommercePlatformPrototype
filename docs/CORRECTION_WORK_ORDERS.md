@@ -26,7 +26,7 @@ Because execution is sequential, a work order that is PENDING DECISION holds bac
 
 ## Implementation progress
 
-Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-05:
+Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-06:
 
 - WO-001 — IMPLEMENTED AND MERGED
 - WO-002 — IMPLEMENTED AND MERGED
@@ -34,7 +34,7 @@ Implementation progress is separate from approval status (see Work-order convent
 - WO-004 — IMPLEMENTED AND MERGED
 - WO-005 — IMPLEMENTED AND MERGED
 - WO-006 — IMPLEMENTED AND MERGED
-- WO-006A — NOT STARTED / READY
+- WO-006A — IMPLEMENTED AND MERGED
 - WO-007 — NOT STARTED
 - WO-008 — NOT STARTED
 - WO-009 — NOT STARTED
@@ -1157,6 +1157,7 @@ Do not use another Buyer's Order in Maya's Buyer app:
 - 2026-10-05: Post-WO-005 reconciliation. Implementation progress records WO-005 — Buyer–Seller Chat Context Rebuild as implemented and merged into main; WO-006 is next. WO-006's requirement 24 remains the approved deterministic availability-race coverage. WO-006A's blocker is unchanged. No approval status, dependency, execution order, canonical demo record or later work order changed; WO-006 to WO-011, including WO-006A, are not started.
 - 2026-10-05: Post-WO-006 reconciliation. Implementation progress records WO-006 — Single-Seller and Multi-Seller Checkout Test Flows as implemented and merged into main. WO-006A is next but remains blocked pending a canonical Maya Buyer Collection scenario, as its progress line now states; a separate canonical-data reconciliation will handle that blocker. No approval status, canonical demo record, dependency or execution order changed; WO-006A to WO-011 are not started.
 - 2026-10-05: WO-006A's canonical-data blocker resolved. DEMO_DATA.md now records a canonical Maya Buyer Collection Order with Addis Atelier, `ADU-24094`, after the previous 17:20 story horizon. Addis Atelier displays the Collection QR and Maya scans it; QR is the canonical successful path, the verified final Handoff completes the Order, and exactly one Review Grant becomes available to Maya. WO-006A is now APPROVED FOR IMPLEMENTATION and pinned to that scenario; it remains NOT STARTED and is ready for implementation. No Samuel A. Order or other earlier Order was reassigned, and no dependency or execution order changed.
+- 2026-10-06: Post-WO-006A reconciliation. Implementation progress records WO-006A — Buyer Final Handoff Verification as implemented and merged into main. The Buyer-facing final Handoff is complete for Courier Delivery, Seller Delivery and Buyer Collection, and Flow M — Buyer Collection Final Handoff is implemented. The method hierarchy is preserved: QR primary, OTP fallback, Manual Verification Operator-only emergency recovery. The presenter displays the final QR and the recipient scans it. No canonical demo record changed during implementation. WO-007 is next and remains not started. No approval status, work-order body, dependency or execution order changed.
 
 ## Related documents
 

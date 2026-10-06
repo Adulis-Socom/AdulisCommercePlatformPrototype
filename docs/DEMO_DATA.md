@@ -794,7 +794,7 @@ All times are EAT. 10:25 on 2 October is the **default canonical demo snapshot**
 
 These mappings are exact. No individual screen may substitute a different Seller, Product, Order, Courier, Claim or Buyer without a documented scenario reason.
 
-Flow M is canonical demo-flow metadata only. The prototype's guided flows don't include it until WO-006A implements the Buyer Collection final Handoff.
+Flow M is canonical demo-flow metadata. Since WO-006A, the prototype's guided flows include it.
 
 ### Notifications
 
@@ -928,6 +928,8 @@ No open dataset decisions remain. The 15 primary Product names were approved on 
   - Added: `ADU-24094`, Maya's Buyer Collection Order with Addis Atelier (Wide-Leg Trousers, M, Charcoal ×1; ETB 2,110.50), paid at 17:30 and completed at 17:56, after the previous 17:20 story horizon; its notifications; and Flow M — Buyer Collection Final Handoff, which has no guided steps until WO-006A.
   - At the Bole studio, Addis Atelier (Abel T.) displays the Collection QR and Maya scans it. QR is the canonical successful method, the verified final Handoff completes the Order, and Maya's review eligibility from 17:56 represents exactly one available Review Grant. No Review is written.
   - Changed: Addis Atelier reaches 130 completed Orders from 17:56, and the story summary, Maya's checkouts, the `CNV-MAYA-AA` context options and the 2 October timeline include the new Order. No Samuel A. Order or other earlier Order was reassigned, and nothing at or before 17:20 changed.
+- 2026-10-06: Post-WO-006A reconciliation; status unchanged (APPROVED).
+  - Changed: the Flow M note now records that, since WO-006A, the prototype's guided flows include Flow M. No record, value, mapping or story time changed.
 
 ## Related documents
 
