@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { AdulisLogo } from '../App'
 import { Button } from '../components/ui/Button'
 import { StatusBadge } from '../components/ui/Badge'
@@ -6,7 +6,7 @@ import { Skeleton } from '../components/ui/Overlay'
 import { SearchInput, Textarea, TextInput } from '../components/ui/Input'
 import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
 import {
-  ConsoleTopBar, SidebarItem, SidebarSeparator,
+  ConsoleTopBar, SidebarItem, SidebarSeparator, useDrawer,
   IconGrid, IconOrders, IconPackage, IconImage, IconInbox,
   IconChart, IconStore, IconBot, IconSettings, IconShield, IconFlag, IconTruck,
 } from './ShellHelpers'
@@ -137,10 +137,14 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState<OrderId | null>(null)
+  // The top bar's menu button opens the navigation as a drawer: on a phone the only navigation, on a tablet the full,
+  // labelled navigation beside the icon rail (index.css; spec §4).
+  const drawer = useDrawer()
 
   const navigate = (key: NavKey) => {
     setActiveNav(key)
     setSelectedOrder(null)
+    drawer.close()
   }
   // Switching Seller keeps the section and drops everything chosen for the previous Seller.
   const switchSeller = (id: SellerId) => {
@@ -158,23 +162,25 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
 
   return (
     <div className="seller-console flex" style={{ height: '100%', background: 'var(--color-background)' }}>
-      <aside className="seller-console-sidebar flex flex-shrink-0 flex-col border-r transition-all duration-300" style={{ width: sidebarOpen ? 220 : 52, background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+      <aside id={drawer.id} {...drawer.panelProps('Seller Console navigation')} className={`seller-console-sidebar flex flex-shrink-0 flex-col border-r transition-all duration-300${drawer.open ? ' is-open' : ''}`} style={{ width: sidebarOpen ? 220 : 52, background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
         <div className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-border px-3">
           <AdulisLogo size={24} />
-          {sidebarOpen && <div className="seller-console-sidebar-copy min-w-0 flex-1"><p className="truncate text-xs font-semibold text-text-primary">Seller Console</p><p className="truncate text-xs text-text-muted">{SELLERS[sellerId].name}</p></div>}
-          <button onClick={() => setSidebarOpen(open => !open)} aria-label={sidebarOpen ? 'Collapse Seller Console navigation' : 'Expand Seller Console navigation'} className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted"><CollapseIcon open={sidebarOpen} /></button>
+          {(sidebarOpen || drawer.open) && <div className="seller-console-sidebar-copy min-w-0 flex-1"><p className="truncate text-xs font-semibold text-text-primary">Seller Console</p><p className="truncate text-xs text-text-muted">{SELLERS[sellerId].name}</p></div>}
+          <button onClick={() => setSidebarOpen(open => !open)} aria-label={sidebarOpen ? 'Collapse Seller Console navigation' : 'Expand Seller Console navigation'} className="console-collapse-button flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted"><CollapseIcon open={sidebarOpen} /></button>
+          <button ref={drawer.closeRef} onClick={drawer.close} aria-label="Close Seller Console navigation" className="console-drawer-close flex-shrink-0 items-center justify-center rounded-lg text-lg text-text-muted">×</button>
         </div>
         <nav className="flex flex-1 flex-col overflow-y-auto py-2">
-          {PRIMARY_NAV.map(item => <SidebarItem key={item.key} label={sidebarOpen ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => navigate(item.key)} badge={badges[item.key]} />)}
+          {PRIMARY_NAV.map(item => <SidebarItem key={item.key} label={sidebarOpen || drawer.open ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => navigate(item.key)} badge={badges[item.key]} />)}
           <SidebarSeparator />
-          {SECONDARY_NAV.map(item => <SidebarItem key={item.key} label={sidebarOpen ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => navigate(item.key)} />)}
+          {SECONDARY_NAV.map(item => <SidebarItem key={item.key} label={sidebarOpen || drawer.open ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => navigate(item.key)} />)}
         </nav>
       </aside>
+      {drawer.open && <div className="console-drawer-backdrop" aria-hidden="true" onClick={drawer.close} />}
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <ConsoleTopBar sellerName={SELLERS[sellerId].name} sellerSelector sellerOptions={sellerOptions} selectedSeller={sellerId} onSelectSeller={switchSeller} />
+        <ConsoleTopBar sellerName={SELLERS[sellerId].name} sellerSelector sellerOptions={sellerOptions} selectedSeller={sellerId} onSelectSeller={switchSeller} menu={drawer.menu('Open Seller Console navigation')} />
         {/* Keyed by Seller: each panel starts again from the selected Seller's records. */}
-        <div key={sellerId} className="flex-1 overflow-y-auto">
+        <div key={sellerId} className="seller-console-content flex-1 overflow-y-auto">
           {activeNav === 'home' && <HomePanel sellerId={sellerId} at={at} onOpenOrder={id => { setActiveNav('orders'); setSelectedOrder(id) }} onOpenOrders={() => navigate('orders')} onOpenContent={() => navigate('content')} />}
           {activeNav === 'orders' && (selectedOrder ? <OrderDetail orderId={selectedOrder} at={at} onBack={() => setSelectedOrder(null)} /> : <OrdersPanel sellerId={sellerId} at={at} onOpenOrder={setSelectedOrder} />)}
           {activeNav === 'products' && <ProductsPanel sellerId={sellerId} at={at} />}
@@ -343,9 +349,9 @@ function OrdersPanel({ sellerId, at, onOpenOrder }: { sellerId: SellerId; at: Mo
 
 function OrdersTable({ rows, at, onOpenOrder }: { rows: OrderId[]; at: Moment; onOpenOrder: (id: OrderId) => void }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-      <div className="grid grid-cols-[130px_1fr_160px_120px_110px_20px] gap-4 bg-surface-raised px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted"><span>Seller Order</span><span>Product / Buyer</span><span>Status</span><span>Total</span><span>Age</span><span /></div>
-      {rows.map(id => <button key={id} onClick={() => onOpenOrder(id)} className="grid w-full grid-cols-[130px_1fr_160px_120px_110px_20px] items-center gap-4 border-t border-border px-5 py-4 text-left hover:bg-surface-raised"><span className="font-mono text-xs font-semibold">{id}</span><span><span className="block text-sm font-semibold">{orderItems(id)}</span><span className="text-xs text-text-muted">{shortName(BUYERS[ORDERS[id].buyer].name)}</span></span><span><StatusBadge {...stateBadge(orderStateAt(id, at)!)} size="sm" />{prepareByLabel(id, at) && <span className="mt-1 block text-[10px] text-text-muted">{prepareByLabel(id, at)}</span>}</span><span className="text-sm font-semibold">{formatEtb(orderTotals(id).total)}</span><span className="text-xs text-text-muted">{formatAge(paidAt(id), at.at)}</span><span>›</span></button>)}
+    <div className="rtable rtable-scroll overflow-hidden rounded-2xl border border-border bg-surface" style={{ '--rtable-min': '720px' } as CSSProperties}>
+      <div className="rtable-head grid grid-cols-[130px_1fr_160px_120px_110px_20px] gap-4 bg-surface-raised px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted"><span>Seller Order</span><span>Product / Buyer</span><span>Status</span><span>Total</span><span>Age</span><span /></div>
+      {rows.map(id => <button key={id} onClick={() => onOpenOrder(id)} className="rtable-row grid w-full grid-cols-[130px_1fr_160px_120px_110px_20px] items-center gap-4 border-t border-border px-5 py-4 text-left hover:bg-surface-raised"><span className="rtable-primary font-mono text-xs font-semibold">{id}</span><span data-label="Product / Buyer"><span className="block text-sm font-semibold">{orderItems(id)}</span><span className="text-xs text-text-muted">{shortName(BUYERS[ORDERS[id].buyer].name)}</span></span><span data-label="Status"><StatusBadge {...stateBadge(orderStateAt(id, at)!)} size="sm" />{prepareByLabel(id, at) && <span className="mt-1 block text-[10px] text-text-muted">{prepareByLabel(id, at)}</span>}</span><span data-label="Total" className="text-sm font-semibold">{formatEtb(orderTotals(id).total)}</span><span data-label="Age" className="text-xs text-text-muted">{formatAge(paidAt(id), at.at)}</span><span className="rtable-end">›</span></button>)}
     </div>
   )
 }
@@ -481,12 +487,12 @@ function ProductsList({ sellerId, at, onOpen, onCreate }: { sellerId: SellerId; 
     <div className="mx-auto max-w-7xl p-8">
       <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">Products</h1><p className="mt-1 text-sm text-text-muted">Manage canonical Products and their single-Product commerce posts.</p></div><Button onClick={onCreate}>Create Product</Button></div>
       <div className="mb-5 flex items-center gap-3"><div className="w-80"><SearchInput value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} placeholder="Search Products" /></div><Segmented options={[['all', 'All'], ['published', 'Published'], ['draft', 'Drafts']]} active={status} onChange={setStatus} small /></div>
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-        <div className="grid grid-cols-[72px_1.5fr_1fr_120px_130px_100px_90px_20px] gap-4 bg-surface-raised px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted"><span>Media</span><span>Product</span><span>Performance</span><span>Price</span><span>Inventory</span><span>Variants</span><span>Status</span><span /></div>
+      <div className="rtable rtable-scroll overflow-hidden rounded-2xl border border-border bg-surface" style={{ '--rtable-min': '780px' } as CSSProperties}>
+        <div className="rtable-head grid grid-cols-[72px_1.5fr_1fr_120px_130px_100px_90px_20px] gap-4 bg-surface-raised px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted"><span>Media</span><span>Product</span><span>Performance</span><span>Price</span><span>Inventory</span><span>Variants</span><span>Status</span><span /></div>
         {rows.map((id, index) => {
           const performance = PRODUCT_PERFORMANCE_7D[id]
           const discount = activeDiscount(id)
-          return <button key={id} onClick={() => onOpen(id)} className="grid w-full grid-cols-[72px_1.5fr_1fr_120px_130px_100px_90px_20px] items-center gap-4 border-t border-border px-5 py-4 text-left hover:bg-surface-raised"><ProductThumb index={index} /><span><span className="block text-sm font-semibold">{PRODUCTS[id].name}</span><span className="font-mono text-[10px] text-text-muted">{id}</span></span>{performance ? <span><span className="block text-xs font-semibold">{formatEtb(performance.gmv)}</span><span className="text-[10px] text-text-muted"><span className="whitespace-nowrap">{performance.views.toLocaleString('en-US')} views</span> · <span className="whitespace-nowrap">{performance.unitsSold} sold</span></span></span> : <span className="text-xs text-text-secondary">—</span>}<span><span className="block text-sm font-semibold">{formatEtb(currentPrice(id))}</span>{discount && <span className="text-[10px] text-text-muted"><s>{formatEtb(PRODUCTS[id].price)}</s> · {discount.percent}% off</span>}</span><span><span className={PRODUCTS[id].availability !== 'Available' ? 'block text-xs font-semibold text-warning' : 'block text-xs text-text-secondary'}>{PRODUCTS[id].stock} available</span><span className="text-[10px] text-text-muted">{availabilityLabel(id)}</span></span><span className="text-xs text-text-secondary">{variantCount(id)}</span><StatusBadge status="published" size="sm" /><span>›</span></button>
+          return <button key={id} onClick={() => onOpen(id)} className="rtable-row grid w-full grid-cols-[72px_1.5fr_1fr_120px_130px_100px_90px_20px] items-center gap-4 border-t border-border px-5 py-4 text-left hover:bg-surface-raised"><ProductThumb index={index} className="rtable-media" /><span className="rtable-primary"><span className="block text-sm font-semibold">{PRODUCTS[id].name}</span><span className="font-mono text-[10px] text-text-muted">{id}</span></span>{performance ? <span data-label="Performance"><span className="block text-xs font-semibold">{formatEtb(performance.gmv)}</span><span className="text-[10px] text-text-muted"><span className="whitespace-nowrap">{performance.views.toLocaleString('en-US')} views</span> · <span className="whitespace-nowrap">{performance.unitsSold} sold</span></span></span> : <span data-label="Performance" className="text-xs text-text-secondary">—</span>}<span data-label="Price"><span className="block text-sm font-semibold">{formatEtb(currentPrice(id))}</span>{discount && <span className="text-[10px] text-text-muted"><s>{formatEtb(PRODUCTS[id].price)}</s> · {discount.percent}% off</span>}</span><span data-label="Inventory"><span className={PRODUCTS[id].availability !== 'Available' ? 'block text-xs font-semibold text-warning' : 'block text-xs text-text-secondary'}>{PRODUCTS[id].stock} available</span><span className="text-[10px] text-text-muted">{availabilityLabel(id)}</span></span><span data-label="Variants" className="text-xs text-text-secondary">{variantCount(id)}</span><span className="rtable-cell" data-label="Status"><StatusBadge status="published" size="sm" /></span><span className="rtable-end">›</span></button>
         })}
         {rows.length === 0 && <div className="border-t border-border px-5 py-8 text-center text-sm text-text-muted">No Products in this view</div>}
       </div>
@@ -666,7 +672,7 @@ function ShoppablePreview({ seller, caption, productCount, hotspots }: { seller:
 
 // A Product's variant groups as DEMO_DATA gives them: one price per Product, with no inventory tracking defined.
 function VariantEditor({ productId }: { productId: ProductId | null }) {
-  return <div className="overflow-hidden rounded-xl border border-border"><div className="grid grid-cols-[1fr_1.5fr_120px_100px] gap-3 bg-surface-raised px-4 py-2 text-[10px] font-semibold uppercase text-text-muted"><span>Option</span><span>Values</span><span>Price impact</span><span>Inventory</span></div>{(productId ? PRODUCTS[productId].variants : []).map((group, index) => <div key={index} className="grid grid-cols-[1fr_1.5fr_120px_100px] gap-3 border-t border-border px-4 py-3 text-xs"><span>{group.name ?? '—'}</span><span>{group.options.join(', ')}</span><span>None</span><span>—</span></div>)}<button className="w-full border-t border-border px-4 py-3 text-left text-xs font-semibold text-brand">+ Add variant option</button></div>
+  return <div className="rtable overflow-hidden rounded-xl border border-border"><div className="rtable-head grid grid-cols-[1fr_1.5fr_120px_100px] gap-3 bg-surface-raised px-4 py-2 text-[10px] font-semibold uppercase text-text-muted"><span>Option</span><span>Values</span><span>Price impact</span><span>Inventory</span></div>{(productId ? PRODUCTS[productId].variants : []).map((group, index) => <div key={index} className="rtable-row grid grid-cols-[1fr_1.5fr_120px_100px] gap-3 border-t border-border px-4 py-3 text-xs"><span data-label="Option">{group.name ?? '—'}</span><span data-label="Values">{group.options.join(', ')}</span><span data-label="Price impact">None</span><span data-label="Inventory">—</span></div>)}<button className="w-full border-t border-border px-4 py-3 text-left text-xs font-semibold text-brand">+ Add variant option</button></div>
 }
 
 function VariantTable({ productId }: { productId: ProductId }) {
@@ -679,12 +685,12 @@ function CheckOption({ label, checked }: { label: string; checked?: boolean }) {
 }
 
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
-  return <button onClick={onChange} disabled={disabled} className={`relative h-6 w-11 rounded-full transition-colors ${checked ? 'bg-brand' : 'bg-border-strong'} ${disabled ? 'opacity-50' : ''}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${checked ? 'left-6' : 'left-1'}`} /></button>
+  return <button onClick={onChange} disabled={disabled} className={`console-toggle relative h-6 w-11 rounded-full transition-colors ${checked ? 'bg-brand' : 'bg-border-strong'} ${disabled ? 'opacity-50' : ''}`}><span className={`console-toggle-knob absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${checked ? 'left-6' : 'left-1'}`} /></button>
 }
 
-function ProductThumb({ index }: { index: number }) {
+function ProductThumb({ index, className }: { index: number; className?: string }) {
   const colors = ['from-brand-muted to-warning-bg', 'from-warning-bg to-brand-muted', 'from-success-bg to-courier-muted', 'from-surface-raised to-border']
-  return <span className={`block h-12 w-12 rounded-lg bg-gradient-to-br ${colors[index % colors.length]}`} />
+  return <span className={`block h-12 w-12 rounded-lg bg-gradient-to-br ${colors[index % colors.length]}${className ? ` ${className}` : ''}`} />
 }
 
 function ProductMedia({ large, muted }: { large?: boolean; muted?: boolean }) {
@@ -732,7 +738,9 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   // A chatbot escalation is the Buyer's unmatched question to the Seller's chatbot, still awaiting the Seller's reply.
   const escalationOf = (id?: ConversationId) => { const last = id && messagesAt(id, at).pop(); return last && last.from === 'buyer' && last.escalatedFromChatbot ? last : undefined }
   const [escalated, setEscalated] = useState(!!escalationOf(selected))
-  const open = (id: ConversationId) => { setSelected(id); setContext(GENERAL_CONTEXT); setEscalated(!!escalationOf(id)) }
+  // On a phone the Inbox drills in: the list, then the chosen conversation with a way back (index.css; spec §4).
+  const [phoneView, setPhoneView] = useState<'list' | 'conversation'>('list')
+  const open = (id: ConversationId) => { setSelected(id); setContext(GENERAL_CONTEXT); setEscalated(!!escalationOf(id)); setPhoneView('conversation') }
   const send = () => {
     const text = reply.trim()
     if (!text || !selected || !staff) return
@@ -756,14 +764,14 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
     shown.current = { conversation: selected, count: messages.length }
   }, [selected, messages.length])
   return (
-    <div className="flex h-full min-h-[680px]">
-      <div className="w-80 flex-shrink-0 border-r border-border bg-surface">
+    <div className="seller-inbox flex h-full min-h-[680px]" data-phone-view={phoneView}>
+      <div className="seller-inbox-list w-80 flex-shrink-0 border-r border-border bg-surface">
         <div className="border-b border-border p-4"><div className="font-display text-xl font-semibold">Inbox</div><div className="mt-3"><SearchInput placeholder="Search conversations" /></div></div>
         {threads.length === 0 && <p className="p-6 text-center text-sm text-text-muted">No conversations</p>}
         {rows.map(({ id, last }) => <button key={id} onClick={() => open(id)} className={`flex w-full gap-3 border-b border-border p-4 text-left ${selected === id ? 'bg-brand-muted' : ''}`}><AvatarText name={name(id)} /><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="text-sm font-semibold">{name(id)}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="mt-1 block truncate text-xs text-text-muted">{last.text}</span><span className="mt-2 inline-flex rounded-full bg-surface-raised px-2 py-0.5 text-[10px] text-text-secondary">Talking about: {contextSubject(last.context)}</span></span>{awaitingSellerReplyAt(id, at) && <span role="img" aria-label="Needs reply" title="Needs reply" className="mt-1 h-2 w-2 rounded-full bg-brand" />}</button>)}
       </div>
-      {selected && <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border bg-surface px-5 py-3"><div className="flex items-center gap-3"><AvatarText name={name(selected)} /><span><span className="block text-sm font-semibold">{name(selected)}</span><span className="text-xs text-text-muted">Buyer–Seller relationship thread</span></span></div>{escalated && <StatusBadge status="open" customLabel="Chatbot escalated" />}</div>
+      {selected && <div className="seller-inbox-thread flex flex-1 flex-col overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border bg-surface px-5 py-3"><div className="flex items-center gap-3"><button onClick={() => setPhoneView('list')} aria-label="Back to conversations" className="seller-inbox-back flex-shrink-0 items-center justify-center rounded-lg text-lg font-semibold text-brand">←</button><AvatarText name={name(selected)} /><span><span className="block text-sm font-semibold">{name(selected)}</span><span className="text-xs text-text-muted">Buyer–Seller relationship thread</span></span></div>{escalated && <StatusBadge status="open" customLabel="Chatbot escalated" />}</div>
         {escalated && question && <div className="flex items-center gap-3 bg-warning-bg px-5 py-3 text-xs text-text-secondary"><span className="font-semibold text-warning">Chatbot escalation</span><span>The chatbot had no approved answer for “{question.text}” A human Seller reply is requested.</span><button onClick={() => setEscalated(false)} className="ml-auto font-semibold text-brand">Mark handled</button></div>}
         <div ref={list} role="list" aria-label="Messages" className="flex-1 overflow-y-auto bg-surface-raised p-5">
           {messages.map((m, index) => <ChatBubble key={index} mine={m.from !== 'buyer'} context={m.context} author={m.from === 'buyer' ? undefined : shortName(STAFF[m.from].name)}>{m.text}</ChatBubble>)}
@@ -820,9 +828,9 @@ function ContentPerformance({ sellerId, at }: { sellerId: SellerId; at: Moment }
   const show = (value?: number) => (value === undefined ? '—' : value.toLocaleString('en-US'))
   const rows = sellerPostsAt(sellerId, at).flatMap(id => { const figures = CONTENT_PERFORMANCE_7D[id]; return figures ? [{ id, figures }] : [] })
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-      <div className="grid grid-cols-[1.6fr_130px_repeat(6,1fr)] gap-3 bg-surface-raised px-5 py-3 text-[9px] font-semibold uppercase tracking-wider text-text-muted"><span>Shoppable Post</span><span>Eligibility</span><span>Impressions</span><span>Saves</span><span>Tag clicks</span><span>Product views</span><span>Checkout starts</span><span>Paid Orders influenced</span></div>
-      {rows.map(({ id, figures }) => <div key={id} className="grid grid-cols-[1.6fr_130px_repeat(6,1fr)] items-center gap-3 border-t border-border px-5 py-4 text-xs"><span className="font-semibold">{SHOPPABLE_POSTS[id].title}</span><EligibilityBadge eligible={isForYouEligibleAt(id, at)} /><span>{show(figures.impressions)}</span><span>{show(figures.saves)}</span><span>{show(figures.tagClicks)}</span><span>{show(figures.productViews)}</span><span>{show(figures.checkoutStarts)}</span><span className="font-semibold text-brand">{show(figures.paidOrdersInfluenced)}</span></div>)}
+    <div className="rtable overflow-hidden rounded-2xl border border-border bg-surface">
+      <div className="rtable-head grid grid-cols-[1.6fr_130px_repeat(6,1fr)] gap-3 bg-surface-raised px-5 py-3 text-[9px] font-semibold uppercase tracking-wider text-text-muted"><span>Shoppable Post</span><span>Eligibility</span><span>Impressions</span><span>Saves</span><span>Tag clicks</span><span>Product views</span><span>Checkout starts</span><span>Paid Orders influenced</span></div>
+      {rows.map(({ id, figures }) => <div key={id} className="rtable-row grid grid-cols-[1.6fr_130px_repeat(6,1fr)] items-center gap-3 border-t border-border px-5 py-4 text-xs"><span className="rtable-primary font-semibold">{SHOPPABLE_POSTS[id].title}</span><span className="rtable-cell" data-label="Eligibility"><EligibilityBadge eligible={isForYouEligibleAt(id, at)} /></span><span data-label="Impressions">{show(figures.impressions)}</span><span data-label="Saves">{show(figures.saves)}</span><span data-label="Tag clicks">{show(figures.tagClicks)}</span><span data-label="Product views">{show(figures.productViews)}</span><span data-label="Checkout starts">{show(figures.checkoutStarts)}</span><span data-label="Paid Orders influenced" className="font-semibold text-brand">{show(figures.paidOrdersInfluenced)}</span></div>)}
     </div>
   )
 }
@@ -1001,7 +1009,7 @@ function CouriersPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
           <div className="flex items-start justify-between"><div className="flex items-center gap-4"><AvatarText name={courier.name} large /><span><span className="block font-display text-2xl font-semibold">{courier.name}</span><span className="text-xs text-text-muted">Seller Courier relationship · {seller}</span></span></div><StatusBadge status={tab === 'approved' ? 'active' : tab === 'suspended' ? 'suspended' : 'pending'} customLabel={tab === 'approved' ? 'Approved' : tab === 'suspended' ? 'Suspended' : tab === 'applications' ? 'Application' : 'Invited'} /></div>
           <div className="mt-6 grid grid-cols-3 gap-4"><Field label="Availability" value={courierAvailabilityAt(relationship.courier, at)} /><Field label="Seller relationship" value={meta(relationship)} /><Field label="Terms" value="Per accepted delivery" /></div>
           <SectionLabelInline>Compensation</SectionLabelInline>
-          <div className="flex items-end gap-3"><div className="w-56"><TextInput label="Future delivery compensation (ETB)" value={compensation} onChange={event => setCompensation(event.target.value)} hint="Applies only to future offers." /></div><Button variant="tertiary" onClick={() => setAction(`Future compensation updated to ETB ${compensation}`)}>Update Future Compensation</Button></div>
+          <div className="flex flex-wrap items-end gap-3"><div className="w-56"><TextInput label="Future delivery compensation (ETB)" value={compensation} onChange={event => setCompensation(event.target.value)} hint="Applies only to future offers." /></div><Button variant="tertiary" onClick={() => setAction(`Future compensation updated to ETB ${compensation}`)}>Update Future Compensation</Button></div>
           <SectionLabelInline>Seller-relevant history</SectionLabelInline>
           <div className="grid grid-cols-3 gap-3"><MetricBlock label={`Completed for ${seller}`} value={String(completedForSellerAt(relationship.courier, sellerId, at))} /><MetricBlock label="Verified pickup" value="—" /><MetricBlock label="On-time handoff" value="—" /></div>
           <div className="mt-5 rounded-xl bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">Only this Seller relationship and work completed for {seller} are visible. Relationships with other Sellers are private and not shown.</div>
@@ -1241,7 +1249,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function Segmented({ options, active, onChange, small }: { options: [string, string][]; active: string; onChange: (value: string) => void; small?: boolean }) {
-  return <div className="flex rounded-xl bg-surface-raised p-1">{options.map(([value, label]) => <button key={value} onClick={() => onChange(value)} className={`rounded-lg font-semibold ${small ? 'px-2.5 py-1.5 text-[10px]' : 'px-4 py-2 text-xs'} ${active === value ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted'}`}>{label}</button>)}</div>
+  return <div className="console-segmented flex rounded-xl bg-surface-raised p-1">{options.map(([value, label]) => <button key={value} onClick={() => onChange(value)} className={`rounded-lg font-semibold ${small ? 'px-2.5 py-1.5 text-[10px]' : 'px-4 py-2 text-xs'} ${active === value ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted'}`}>{label}</button>)}</div>
 }
 
 function CollapseIcon({ open }: { open: boolean }) {

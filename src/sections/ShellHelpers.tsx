@@ -1,6 +1,6 @@
 /** Shared structural primitives for Adulis product shell prototypes. */
 
-import { useRef, useState, ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, ReactNode, type KeyboardEvent, type Ref } from 'react'
 import { initials } from '../demo-data'
 
 /* ─── Phone Frame ─── */
@@ -178,6 +178,50 @@ export interface SellerOption<T extends string> {
   detail: string
 }
 
+/** The navigation drawer's trigger: shown by index.css only where the console's navigation is a drawer. */
+export interface ConsoleMenu {
+  label: string
+  open: boolean
+  controls: string
+  onToggle: () => void
+  buttonRef: Ref<HTMLButtonElement>
+}
+
+/**
+ * A console's navigation drawer (spec §4): both consoles' navigation on a phone, and the Seller Console's full navigation
+ * beside its icon rail on a tablet. The top bar's menu button opens it; while open it is a modal
+ * dialog that keeps keyboard focus inside, and Escape, its close button, the backdrop or choosing a destination close it,
+ * returning focus to the menu button. The menu button exists only where index.css shows the drawer, so on wider screens
+ * it never opens and closing is a no-op.
+ */
+export function useDrawer() {
+  const [open, setOpen] = useState(false)
+  const id = useId()
+  const trigger = useRef<HTMLButtonElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => { if (open) closeRef.current?.focus() }, [open])
+  const close = () => {
+    if (!open) return
+    setOpen(false)
+    trigger.current?.focus()
+  }
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') { event.stopPropagation(); close(); return }
+    if (event.key !== 'Tab') return
+    const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(el => el.offsetParent !== null && !el.hasAttribute('disabled'))
+    const first = focusable[0], last = focusable[focusable.length - 1]
+    if (!first || !last) return
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+  }
+  return {
+    id, open, close, closeRef,
+    menu: (label: string): ConsoleMenu => ({ label, open, controls: id, onToggle: () => setOpen(value => !value), buttonRef: trigger }),
+    panelProps: (label: string) => (open ? { role: 'dialog', 'aria-modal': true, 'aria-label': label, onKeyDown } : {}),
+  }
+}
+
 /** With `sellerOptions` and `onSelectSeller`, the Seller selector's chevron opens a menu of those Sellers. */
 export function ConsoleTopBar<T extends string>({
   sellerName,
@@ -186,6 +230,7 @@ export function ConsoleTopBar<T extends string>({
   sellerOptions,
   selectedSeller,
   onSelectSeller,
+  menu,
 }: {
   sellerName?: string
   sellerSelector?: boolean
@@ -193,6 +238,7 @@ export function ConsoleTopBar<T extends string>({
   sellerOptions?: readonly SellerOption<T>[]
   selectedSeller?: T
   onSelectSeller?: (id: T) => void
+  menu?: ConsoleMenu
 }) {
   const bg = dark ? 'var(--color-operator-surface)' : 'var(--color-surface)'
   const border = dark ? 'var(--color-operator-border)' : 'var(--color-border)'
@@ -203,12 +249,27 @@ export function ConsoleTopBar<T extends string>({
 
   return (
     <header
-      className="flex-shrink-0 flex items-center gap-3 px-5 border-b"
+      className="console-topbar flex-shrink-0 flex items-center gap-3 px-5 border-b"
       style={{ height: 56, background: bg, borderColor: border }}
     >
+      {menu && (
+        <button
+          ref={menu.buttonRef}
+          type="button"
+          onClick={menu.onToggle}
+          aria-label={menu.label}
+          aria-expanded={menu.open}
+          aria-controls={menu.controls}
+          className="console-menu-button flex-shrink-0 items-center justify-center rounded-lg"
+          style={{ width: 44, height: 44, color: text }}
+        >
+          <IconMenu size={18} />
+        </button>
+      )}
+
       {/* Search */}
       <div
-        className="flex items-center gap-2 flex-1 max-w-sm rounded-lg px-3"
+        className="console-search flex items-center gap-2 flex-1 max-w-sm rounded-lg px-3"
         style={{ height: 34, background: raised, color: muted }}
       >
         <IconSearch size={14} />
@@ -275,7 +336,7 @@ function SellerMenu<T extends string>({ sellerName, options, selected, onSelect,
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Seller: ${sellerName}. Switch Seller`}
-        className="flex items-center gap-2"
+        className="console-seller-menu flex items-center gap-2"
       >
         <span
           className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
@@ -283,7 +344,7 @@ function SellerMenu<T extends string>({ sellerName, options, selected, onSelect,
         >
           {initials(sellerName)}
         </span>
-        <span className="text-sm font-medium" style={{ color: text }}>{sellerName}</span>
+        <span className="console-seller-name text-sm font-medium" style={{ color: text }}>{sellerName}</span>
         <span style={{ color: muted }}>
           <IconChevronDown size={14} />
         </span>
@@ -330,7 +391,7 @@ function SellerMenu<T extends string>({ sellerName, options, selected, onSelect,
 function TopBarIcon({ children, dark }: { children: ReactNode; dark?: boolean }) {
   return (
     <button
-      className="flex items-center justify-center rounded-lg transition-colors"
+      className="console-topbar-icon flex items-center justify-center rounded-lg transition-colors"
       style={{ width: 32, height: 32, color: dark ? 'var(--color-operator-muted)' : 'var(--color-text-muted)' }}
     >
       {children}
@@ -339,6 +400,13 @@ function TopBarIcon({ children, dark }: { children: ReactNode; dark?: boolean })
 }
 
 /* ─── Icon set ─── */
+export function IconMenu({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M2.5 4h11M2.5 8h11M2.5 12h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  )
+}
 export function IconSearch({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">

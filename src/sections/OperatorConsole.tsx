@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { SearchInput, Textarea, TextInput } from '../components/ui/Input'
 import {
-  ConsoleTopBar, SidebarItem, SidebarSeparator, SidebarGroupLabel,
+  ConsoleTopBar, SidebarItem, SidebarSeparator, SidebarGroupLabel, useDrawer,
   IconGrid, IconFlag, IconShield, IconUsers, IconKey, IconClipboard,
   IconActivity, IconGlobe, IconSearch, IconOrders, IconCheck,
 } from './ShellHelpers'
@@ -138,6 +138,10 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [soloState, setSoloState] = useState<SoloState>('inactive')
+  // On a phone the sidebar is a drawer, opened from the top bar's menu button (index.css; spec §4).
+  const drawer = useDrawer()
+  const open = (key: NavKey) => { setActiveNav(key); drawer.close() }
+  const labelled = sidebarOpen || drawer.open
   // The story moment of the guided-flow step (the 10:25 snapshot otherwise). Queue badges count its open work.
   const { moment: at } = useStory()
   const work = workItems(at)
@@ -150,23 +154,27 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
 
   return (
     <div className="operator-console flex" style={{ height: '100%', background: BG }}>
-      <aside className="flex flex-shrink-0 flex-col border-r transition-all duration-300" style={{ width: sidebarOpen ? 240 : 52, background: SURFACE, borderColor: BORDER }}>
+      <aside id={drawer.id} {...drawer.panelProps('Operator navigation')} className={`operator-console-sidebar flex flex-shrink-0 flex-col border-r transition-all duration-300${drawer.open ? ' is-open' : ''}`} style={{ width: sidebarOpen ? 240 : 52, background: SURFACE, borderColor: BORDER }}>
         <div className="flex h-14 flex-shrink-0 items-center gap-2 border-b px-3" style={{ borderColor: BORDER }}>
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${ACCENT}20` }}><AdulisLogo size={18} /></div>
-          {sidebarOpen && <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold" style={{ color: TEXT }}>Operator Console</p><p className="truncate text-xs" style={{ color: MUTED }}>Adulis Platform</p></div>}
-          <button onClick={() => setSidebarOpen(open => !open)} aria-label={sidebarOpen ? 'Collapse Operator navigation' : 'Expand Operator navigation'} className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded" style={{ color: MUTED }}><CollapseIcon open={sidebarOpen} /></button>
+          {labelled && <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold" style={{ color: TEXT }}>Operator Console</p><p className="truncate text-xs" style={{ color: MUTED }}>Adulis Platform</p></div>}
+          <button onClick={() => setSidebarOpen(open => !open)} aria-label={sidebarOpen ? 'Collapse Operator navigation' : 'Expand Operator navigation'} className="console-collapse-button flex h-6 w-6 flex-shrink-0 items-center justify-center rounded" style={{ color: MUTED }}><CollapseIcon open={sidebarOpen} /></button>
+          <button ref={drawer.closeRef} onClick={drawer.close} aria-label="Close Operator navigation" className="console-drawer-close flex-shrink-0 items-center justify-center rounded-lg text-lg" style={{ color: MUTED }}>×</button>
         </div>
         <nav className="flex flex-1 flex-col overflow-y-auto py-2">
-          {NAV_STRUCTURE.map((group, index) => <div key={group.group ?? index}>{group.group && sidebarOpen && <SidebarGroupLabel label={group.group} dark />}{!group.group && index > 0 && <SidebarSeparator dark />}{group.items.map(item => <SidebarItem key={item.key} label={sidebarOpen ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => setActiveNav(item.key)} dark badge={badges[item.key]} />)}</div>)}
+          {NAV_STRUCTURE.map((group, index) => <div key={group.group ?? index}>{group.group && labelled && <SidebarGroupLabel label={group.group} dark />}{!group.group && index > 0 && <SidebarSeparator dark />}{group.items.map(item => <SidebarItem key={item.key} label={labelled ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => open(item.key)} dark badge={badges[item.key]} />)}</div>)}
         </nav>
-        {sidebarOpen && (soloState === 'active'
+        {labelled && (soloState === 'active'
           ? <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}><p className="text-xs font-semibold" style={{ color: 'var(--color-danger)' }}>EXCEPTIONAL SOLO COVERAGE</p><p className="mt-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>Audited · Expires in 42m</p></div>
           : <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: `${ACCENT}40`, background: `${ACCENT}10` }}><p className="text-xs font-semibold" style={{ color: ACCENT }}>PRIVILEGED SESSION</p><p className="mt-1 text-xs" style={{ color: MUTED }}>Reasoned access · Audit logging · Named actions only</p></div>)}
       </aside>
+      {drawer.open && <div className="console-drawer-backdrop" aria-hidden="true" onClick={drawer.close} />}
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <ConsoleTopBar dark />
-        <div className="flex-1 overflow-y-auto">
+        <ConsoleTopBar dark menu={drawer.menu('Open Operator navigation')} />
+        <div className="operator-content flex-1 overflow-y-auto">
+          {/* Below desktop widths (index.css): the Operator Console stays desktop-first (spec §4). */}
+          <p className="operator-desktop-note" role="note">Desktop recommended</p>
           {activeNav === 'overview' && <OverviewPanel at={at} work={work} onQueue={() => setActiveNav('work-queue')} />}
           {isQueueNav(activeNav) && <WorkQueuePanel key={activeNav} at={at} work={work} initialQueue={queueForNav(activeNav)} />}
           {activeNav === 'search-global' && <SearchPanel at={at} mode="global" />}
@@ -252,11 +260,11 @@ function WorkQueuePanel({ at, work, initialQueue }: { at: Moment; work: WorkItem
         <DarkSelect label="Assignment" value={assignment} options={['All', 'Unassigned', 'Assigned']} onChange={setAssignment} />
         <DarkSelect label="Status" value={status} options={['All', ...new Set(work.map(item => item.state))]} onChange={setStatus} />
       </div>
-      <div className="overflow-hidden rounded-2xl border" style={{ borderColor: BORDER, background: SURFACE }}>
-        <div className="grid grid-cols-[70px_150px_110px_1.5fr_90px_70px_120px_130px_150px] gap-3 px-4 py-3 text-[9px] font-semibold uppercase tracking-wider" style={{ background: RAISED, color: MUTED }}><span>Priority</span><span>Queue</span><span>Case</span><span>Subject</span><span>Market</span><span>Age</span><span>Assigned To</span><span>Workflow State</span><span>Actions</span></div>
+      <div className="rtable rtable-scroll overflow-hidden rounded-2xl border" style={{ borderColor: BORDER, background: SURFACE, '--rtable-min': '1180px' } as CSSProperties}>
+        <div className="rtable-head grid grid-cols-[70px_150px_110px_1.5fr_90px_70px_120px_130px_150px] gap-3 px-4 py-3 text-[9px] font-semibold uppercase tracking-wider" style={{ background: RAISED, color: MUTED }}><span>Priority</span><span>Queue</span><span>Case</span><span>Subject</span><span>Market</span><span>Age</span><span>Assigned To</span><span>Workflow State</span><span>Actions</span></div>
         {rows.map(item => {
           const isClaimed = claimed.includes(item.caseRef)
-          return <div key={item.caseRef} className="grid grid-cols-[70px_150px_110px_1.5fr_90px_70px_120px_130px_150px] items-center gap-3 border-t px-4 py-4 text-xs" style={{ borderColor: BORDER, color: TEXT }}><OperatorState tone={item.priority === 'P0' ? 'danger' : item.priority === 'P1' ? 'warning' : 'neutral'}>{item.priority}</OperatorState><span>{item.queue}</span><span className="font-mono font-semibold" style={{ color: ACCENT }}>{item.caseRef}</span><span className="truncate">{item.subject}</span><span className="font-mono" style={{ color: MUTED }}>{item.market}</span><span className="font-mono">{item.age}</span><span>{isClaimed ? 'You' : item.assigned}</span><span>{item.state}</span><span className="flex gap-1"><button disabled={isClaimed || item.assigned !== 'Unassigned'} onClick={() => claim(item.caseRef)} className="rounded px-2 py-1.5 text-[10px] font-semibold disabled:opacity-40" style={{ background: RAISED, color: TEXT }}>{isClaimed ? 'Claimed' : 'Claim'}</button><button onClick={() => setOpened(item)} className="rounded px-2 py-1.5 text-[10px] font-semibold" style={{ background: ACCENT, color: BG }}>Open</button></span></div>
+          return <div key={item.caseRef} className="rtable-row grid grid-cols-[70px_150px_110px_1.5fr_90px_70px_120px_130px_150px] items-center gap-3 border-t px-4 py-4 text-xs" style={{ borderColor: BORDER, color: TEXT }}><span className="rtable-cell" data-label="Priority"><OperatorState tone={item.priority === 'P0' ? 'danger' : item.priority === 'P1' ? 'warning' : 'neutral'}>{item.priority}</OperatorState></span><span data-label="Queue">{item.queue}</span><span className="rtable-primary font-mono font-semibold" style={{ color: ACCENT }}>{item.caseRef}</span><span data-label="Subject" className="rtable-wide truncate">{item.subject}</span><span data-label="Market" className="font-mono" style={{ color: MUTED }}>{item.market}</span><span data-label="Age" className="font-mono">{item.age}</span><span data-label="Assigned To">{isClaimed ? 'You' : item.assigned}</span><span data-label="Workflow State">{item.state}</span><span className="rtable-wide flex gap-1"><button disabled={isClaimed || item.assigned !== 'Unassigned'} onClick={() => claim(item.caseRef)} className="rounded px-2 py-1.5 text-[10px] font-semibold disabled:opacity-40" style={{ background: RAISED, color: TEXT }}>{isClaimed ? 'Claimed' : 'Claim'}</button><button onClick={() => setOpened(item)} className="rounded px-2 py-1.5 text-[10px] font-semibold" style={{ background: ACCENT, color: BG }}>Open</button></span></div>
         })}
       </div>
       <div className="mt-4 rounded-xl border p-3 text-xs" style={{ borderColor: BORDER, background: SURFACE, color: MUTED }}>Claim Work Item changes assignment to the current Operator. It does not alter payment, Order, claim, moderation, verification, Trust, or handoff business state.</div>
@@ -268,7 +276,7 @@ function WorkQueuePanel({ at, work, initialQueue }: { at: Moment; work: WorkItem
 function CaseWorkspace({ item, at, onClose }: { item: WorkItem; at: Moment; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={`${item.queue} case workspace`} style={{ background: 'rgba(0,0,0,.58)' }} onClick={onClose}>
-      <div className="flex h-full w-[920px] flex-col border-l shadow-xl" style={{ borderColor: BORDER, background: BG }} onClick={event => event.stopPropagation()}>
+      <div className="operator-panel flex h-full w-[920px] flex-col border-l shadow-xl" style={{ borderColor: BORDER, background: BG }} onClick={event => event.stopPropagation()}>
         <div className="flex items-start justify-between border-b p-6" style={{ borderColor: BORDER, background: SURFACE }}><div><div className="flex items-center gap-3"><span className="font-mono text-xs font-semibold" style={{ color: ACCENT }}>{item.caseRef}</span><OperatorState tone={item.priority === 'P0' ? 'danger' : 'warning'}>{item.priority}</OperatorState><OperatorState tone="neutral">{item.state}</OperatorState></div><div className="mt-2 font-display text-2xl font-semibold" style={{ color: TEXT }}>{item.queue} Case Workspace</div><div className="mt-1 text-xs" style={{ color: MUTED }}>{item.subject} · {item.market} · {item.age} old</div></div><button onClick={onClose} aria-label="Close case workspace" className="flex h-8 w-8 items-center justify-center rounded-full text-lg" style={{ background: RAISED, color: MUTED }}>×</button></div>
         <div className="flex-1 overflow-y-auto p-6">
           {item.queue === 'Support' && <SupportCase id={item.caseRef as SupportId} at={at} />}
@@ -546,11 +554,11 @@ function SearchPanel({ at, mode }: { at: Moment; mode: 'global' | 'seller' | 'ac
       <div className="rounded-2xl border p-5" style={{ borderColor: BORDER, background: SURFACE }}>
         <div className="grid grid-cols-[1fr_180px] gap-3"><SearchInput value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} placeholder="Search name, handle, or public reference" /><DarkSelect label="Entity type" value={type} options={mode === 'global' ? ['All', 'Account', 'Seller', 'Order', 'Claim', 'Content'] : [mode === 'seller' ? 'Seller' : 'Account']} onChange={setType} /></div>
       </div>
-      <div className="mt-5 overflow-hidden rounded-2xl border" style={{ borderColor: BORDER, background: SURFACE }}>
-        <div className="grid grid-cols-[110px_220px_1fr_150px] gap-4 px-5 py-3 text-[9px] font-semibold uppercase tracking-wider" style={{ background: RAISED, color: MUTED }}><span>Type</span><span>Reference</span><span>Result</span><span>Access</span></div>
+      <div className="rtable rtable-scroll mt-5 overflow-hidden rounded-2xl border" style={{ borderColor: BORDER, background: SURFACE, '--rtable-min': '640px' } as CSSProperties}>
+        <div className="rtable-head grid grid-cols-[110px_220px_1fr_150px] gap-4 px-5 py-3 text-[9px] font-semibold uppercase tracking-wider" style={{ background: RAISED, color: MUTED }}><span>Type</span><span>Reference</span><span>Result</span><span>Access</span></div>
         {results.map(result => {
           const granted = accessGranted.includes(result.ref)
-          return <div key={result.ref} className="grid grid-cols-[110px_220px_1fr_150px] items-center gap-4 border-t px-5 py-4" style={{ borderColor: BORDER }}><OperatorState tone="neutral">{result.type}</OperatorState><span className="font-mono text-xs font-semibold" style={{ color: ACCENT }}>{result.ref}</span><span><span className="block text-sm font-semibold" style={{ color: TEXT }}>{result.title}</span><span className="text-xs" style={{ color: MUTED }}>{result.detail}</span></span>{result.restricted && !granted ? <button onClick={() => setAccessTarget(result.ref)} className="rounded px-3 py-2 text-xs font-semibold" style={{ background: RAISED, color: ACCENT }}>Reason for Access</button> : <OperatorButton variant="secondary" onClick={() => setOpened(result)}>Open</OperatorButton>}</div>
+          return <div key={result.ref} className="rtable-row grid grid-cols-[110px_220px_1fr_150px] items-center gap-4 border-t px-5 py-4" style={{ borderColor: BORDER }}><span className="rtable-cell" data-label="Type"><OperatorState tone="neutral">{result.type}</OperatorState></span><span className="rtable-primary font-mono text-xs font-semibold" style={{ color: ACCENT }}>{result.ref}</span><span data-label="Result" className="rtable-wide"><span className="block text-sm font-semibold" style={{ color: TEXT }}>{result.title}</span><span className="text-xs" style={{ color: MUTED }}>{result.detail}</span></span>{result.restricted && !granted ? <button onClick={() => setAccessTarget(result.ref)} className="rounded px-3 py-2 text-xs font-semibold" style={{ background: RAISED, color: ACCENT }}>Reason for Access</button> : <OperatorButton variant="secondary" onClick={() => setOpened(result)}>Open</OperatorButton>}</div>
         })}
       </div>
       <div className="mt-4 rounded-xl border p-3 text-xs" style={{ borderColor: BORDER, color: MUTED }}>Search is scoped to supported domain entities: Account, Seller, Order, Claim, and Content. Generic database browsing or editing is not available.</div>
@@ -564,7 +572,7 @@ function SearchResultDrawer({ reference, entity, onClose }: { reference: string;
   // The result's own record type, never guessed from its reference.
   return (
     <div className="fixed inset-0 z-50 flex justify-end" style={{ background: 'rgba(0,0,0,.58)' }} onClick={onClose}>
-      <div className="h-full w-[480px] border-l p-6 shadow-xl" style={{ borderColor: BORDER, background: SURFACE }} onClick={event => event.stopPropagation()}>
+      <div className="operator-panel h-full w-[480px] border-l p-6 shadow-xl" style={{ borderColor: BORDER, background: SURFACE }} onClick={event => event.stopPropagation()}>
         <div className="flex items-start justify-between"><div><div className="font-mono text-xs font-semibold" style={{ color: ACCENT }}>{reference}</div><div className="mt-1 font-display text-2xl font-semibold" style={{ color: TEXT }}>{entity} summary</div></div><button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-lg" style={{ background: RAISED, color: MUTED }}>×</button></div>
         <div className="mt-6 grid grid-cols-2 gap-5"><DarkField label="Entity type" value={entity} /><DarkField label="Market" value={MARKET.id} /><DarkField label="Reference" value={reference} /><DarkField label="Access" value={entity === 'Account' || entity === 'Seller' ? 'Reason recorded' : 'Operational'} /></div>
         <div className="mt-6 rounded-xl border p-4" style={{ borderColor: BORDER, background: RAISED }}><div className="text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>Presentation-safe summary</div><p className="mt-2 text-sm leading-relaxed" style={{ color: TEXT }}>Supported domain information is shown through named workflows. Raw database fields and internal identifiers are not available.</p></div>
@@ -716,9 +724,9 @@ function AuditPanel() {
   return (
     <div className="mx-auto max-w-7xl p-8">
       <OperatorHeader title="Audit" description="Immutable record of privileged access, Founder decisions, and controlled actions." trailing={<DarkSelect label="Actor" value={filter} options={['All', 'CEO', 'COO/CTO', 'System']} onChange={setFilter} />} />
-      <div className="overflow-hidden rounded-2xl border" style={{ borderColor: BORDER, background: SURFACE }}>
-        <div className="grid grid-cols-[110px_120px_1.2fr_180px_1.4fr_100px] gap-3 px-4 py-3 text-[9px] font-semibold uppercase tracking-wider" style={{ background: RAISED, color: MUTED }}><span>Timestamp</span><span>Actor</span><span>Action</span><span>Target</span><span>Reason</span><span>Result</span></div>
-        {events.map(event => <div key={`${event[0]}-${event[2]}`} className="grid grid-cols-[110px_120px_1.2fr_180px_1.4fr_100px] items-center gap-3 border-t px-4 py-4 text-xs" style={{ borderColor: BORDER, color: TEXT }}><span className="font-mono" style={{ color: MUTED }}>{event[0]}</span><span className="font-semibold">{event[1]}</span><span>{event[2]}</span><span className="font-mono" style={{ color: ACCENT }}>{event[3]}</span><span style={{ color: MUTED }}>{event[4]}</span><OperatorState tone={event[5] === 'Succeeded' ? 'success' : event[5] === 'Returned' ? 'warning' : 'neutral'}>{event[5]}</OperatorState></div>)}
+      <div className="rtable rtable-scroll overflow-hidden rounded-2xl border" style={{ borderColor: BORDER, background: SURFACE, '--rtable-min': '640px' } as CSSProperties}>
+        <div className="rtable-head grid grid-cols-[110px_120px_1.2fr_180px_1.4fr_100px] gap-3 px-4 py-3 text-[9px] font-semibold uppercase tracking-wider" style={{ background: RAISED, color: MUTED }}><span>Timestamp</span><span>Actor</span><span>Action</span><span>Target</span><span>Reason</span><span>Result</span></div>
+        {events.map(event => <div key={`${event[0]}-${event[2]}`} className="rtable-row grid grid-cols-[110px_120px_1.2fr_180px_1.4fr_100px] items-center gap-3 border-t px-4 py-4 text-xs" style={{ borderColor: BORDER, color: TEXT }}><span className="rtable-primary font-mono" style={{ color: MUTED }}>{event[0]}</span><span data-label="Actor" className="font-semibold">{event[1]}</span><span data-label="Action">{event[2]}</span><span data-label="Target" className="font-mono" style={{ color: ACCENT }}>{event[3]}</span><span data-label="Reason" className="rtable-wide" style={{ color: MUTED }}>{event[4]}</span><span className="rtable-cell" data-label="Result"><OperatorState tone={event[5] === 'Succeeded' ? 'success' : event[5] === 'Returned' ? 'warning' : 'neutral'}>{event[5]}</OperatorState></span></div>)}
       </div>
     </div>
   )

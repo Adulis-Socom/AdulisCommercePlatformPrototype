@@ -83,10 +83,10 @@ export default function DemoFlows({ onStart }: { onStart: (id: FlowId) => void }
   const supportingFlows = FLOW_DEFINITIONS.slice(1)
 
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div className="mx-auto max-w-7xl p-8 max-sm:px-4 max-sm:py-6">
       <div className="mb-8"><div className="font-mono text-xs font-semibold uppercase tracking-widest text-brand">Presentation starting point</div><h1 className="mt-2 font-display text-4xl font-semibold">ADULIS MASTER DEMO</h1><p className="mt-2 max-w-3xl text-sm leading-relaxed text-text-secondary">A single 10–15 minute guided path through the existing Adulis prototype. The controller moves between canonical frames while preserving every underlying workflow for live interaction.</p></div>
       <div className="mb-10 overflow-hidden rounded-2xl border border-brand bg-surface shadow-lg">
-        <div className="grid gap-8 p-6 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="grid gap-8 p-6 max-sm:p-4 lg:grid-cols-[0.8fr_1.2fr]">
           <div className="flex flex-col items-start">
             <span className="rounded-full bg-brand-muted px-3 py-1 font-mono text-xs font-bold text-brand-dark">20 STEPS · 7 SURFACES</span>
             <div className="mt-4 font-display text-3xl font-semibold">{masterDemo.title}</div>
@@ -94,7 +94,7 @@ export default function DemoFlows({ onStart }: { onStart: (id: FlowId) => void }
             <div className="mt-5 flex flex-wrap gap-1.5">{masterDemo.surfaces.map((surface, index) => <span key={`${surface}-${index}`} className="rounded-full bg-surface-raised px-2.5 py-1 text-xs font-semibold text-text-muted">{surface}</span>)}</div>
             <Button size="lg" onClick={() => onStart('MASTER')} style={{ marginTop: 24 }}>Start master demo</Button>
           </div>
-          <div className="grid grid-cols-2 gap-x-5 gap-y-2 rounded-xl bg-surface-raised p-4">
+          <div className="grid grid-cols-2 gap-x-5 gap-y-2 rounded-xl bg-surface-raised p-4 max-sm:grid-cols-1">
             {masterDemo.stages.map((stage, index) => (
               <div key={`${stage.section}-${stage.title}`} className="flex min-w-0 items-center gap-2 border-b border-border py-1.5 last:border-b-0">
                 <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-surface font-mono text-[10px] font-bold text-brand">{index + 1}</span>
@@ -105,7 +105,7 @@ export default function DemoFlows({ onStart }: { onStart: (id: FlowId) => void }
         </div>
       </div>
       <div className="mb-4"><div className="font-display text-2xl font-semibold">Supporting flows</div><p className="mt-1 text-sm text-text-secondary">Focused journeys remain available for feature-level walkthroughs and testing.</p></div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4 max-sm:grid-cols-1">
         {supportingFlows.map(flow => <button key={flow.id} onClick={() => onStart(flow.id)} className="group flex min-h-56 flex-col rounded-2xl border border-border bg-surface p-5 text-left shadow-sm transition hover:border-brand"><div className="flex items-start justify-between"><span className="flex h-10 min-w-10 items-center justify-center rounded-xl bg-brand-muted px-2 font-mono text-xs font-bold text-brand-dark">FLOW {flow.id}</span><span className="text-xl text-text-muted group-hover:text-brand">→</span></div><div className="mt-5 font-display text-xl font-semibold">{flow.title}</div><p className="mt-2 flex-1 text-sm leading-relaxed text-text-secondary">{flow.summary}</p><div className="mt-4 flex flex-wrap gap-1.5">{flow.surfaces.map((surface, index) => <span key={`${surface}-${index}`} className="rounded-full bg-surface-raised px-2 py-1 text-[10px] font-semibold text-text-muted">{surface}</span>)}</div><div className="mt-4 text-xs font-semibold text-brand">Start guided flow</div></button>)}
       </div>
     </div>

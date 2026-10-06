@@ -102,9 +102,9 @@ export default function Components() {
   const [active, setActive] = useState('buttons')
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: 'var(--font-body)', color: 'var(--color-text-primary)' }}>
+    <div className="components-showcase" style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: 'var(--font-body)', color: 'var(--color-text-primary)' }}>
       {/* Left nav */}
-      <aside style={{
+      <aside className="components-nav" style={{
         width: 200, flexShrink: 0, overflowY: 'auto',
         borderRight: '1px solid var(--color-border)',
         background: 'var(--color-surface)',
@@ -133,7 +133,7 @@ export default function Components() {
       </aside>
 
       {/* Content */}
-      <main style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', background: 'var(--color-background)' }}>
+      <main className="components-main" style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', background: 'var(--color-background)' }}>
         {active === 'buttons'     && <ButtonShowcase />}
         {active === 'inputs'      && <InputShowcase />}
         {active === 'badges'      && <BadgeShowcase />}
@@ -283,7 +283,7 @@ function InputShowcase() {
     <div>
       <ShowHeader title="Input Components" />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div className="components-columns" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         <ShowSection title="Text Input">
           <TextInput label="Business name" placeholder={`e.g. ${SELLERS[SELLER].name}`} />
           <div style={{ marginTop: 16 }}>
@@ -644,16 +644,18 @@ function NavigationShowcase() {
       </ShowSection>
 
       <ShowSection title="Storefront Tabs">
-        <StorefrontTabs
-          tabs={[
-            { key: 'shop', label: 'Shop', count: sellerProductsAt(SELLER, AT).length },
-            { key: 'posts', label: 'Posts', count: sellerPostsAt(SELLER, AT).filter(id => isPubliclyEligibleAt(id, AT)).length },
-            { key: 'reviews', label: 'Reviews', count: sellerServiceAt(SELLER, AT)?.ratings },
-            { key: 'about', label: 'About' },
-          ]}
-          active={storeTab}
-          onChange={setStoreTab}
-        />
+        <div className="components-scroll">
+          <StorefrontTabs
+            tabs={[
+              { key: 'shop', label: 'Shop', count: sellerProductsAt(SELLER, AT).length },
+              { key: 'posts', label: 'Posts', count: sellerPostsAt(SELLER, AT).filter(id => isPubliclyEligibleAt(id, AT)).length },
+              { key: 'reviews', label: 'Reviews', count: sellerServiceAt(SELLER, AT)?.ratings },
+              { key: 'about', label: 'About' },
+            ]}
+            active={storeTab}
+            onChange={setStoreTab}
+          />
+        </div>
       </ShowSection>
 
       <ShowSection title="Tabs (segmented)">
@@ -951,7 +953,9 @@ function OperationalShowcase() {
       </ShowSection>
 
       <ShowSection title="Data Table">
-        <DataTable columns={columns} rows={tableRows} onRowClick={r => console.log('row', r)} />
+        <div className="components-data-table">
+          <DataTable columns={columns} rows={tableRows} onRowClick={r => console.log('row', r)} />
+        </div>
       </ShowSection>
 
       <ShowSection title="Order Timeline">
@@ -961,7 +965,7 @@ function OperationalShowcase() {
       </ShowSection>
 
       <ShowSection title="Work Queue">
-        <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden', background: 'var(--color-surface)' }}>
+        <div className="components-work-queue" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', overflow: 'hidden', background: 'var(--color-surface)' }}>
           <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-raised)', display: 'grid', gridTemplateColumns: '80px 100px 120px 1fr 80px 80px 120px 80px 80px', gap: 8, fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             {['Priority','Queue','Case','Subject','Market','Age','Assigned','State',''].map((h,i) => <div key={i}>{h}</div>)}
           </div>

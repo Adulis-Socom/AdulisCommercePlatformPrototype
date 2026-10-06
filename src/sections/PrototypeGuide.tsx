@@ -233,7 +233,7 @@ function EcosystemMap() {
 
   return (
     <GuideSection number="1" title="Adulis Product Ecosystem Map">
-      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))' }}>
         {SURFACES.map(s => (
           <div
             key={s.id}
@@ -274,7 +274,7 @@ function EcosystemMap() {
         >
           Cross-Surface Relationships
         </div>
-        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))' }}>
           {CONNECTIONS.map((c, i) => (
             <div key={i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
               <span className="font-medium text-xs" style={{ color: 'var(--color-text-primary)' }}>
@@ -351,7 +351,7 @@ const ACTORS = [
 function PrimaryActors() {
   return (
     <GuideSection number="2" title="Primary Actors">
-      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(340px, 100%), 1fr))' }}>
         {ACTORS.map(a => (
           <div
             key={a.name}
@@ -835,7 +835,7 @@ const DEMO_FLOWS = [
 function DemoFlowsList() {
   return (
     <GuideSection number="5" title="Prototype Demo Flows">
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))' }}>
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(420px, 100%), 1fr))' }}>
         {DEMO_FLOWS.map(flow => (
           <div
             key={flow.id}
@@ -962,7 +962,7 @@ function RoleLauncher({ onNavigate }: RoleLauncherProps) {
         </div>
       </div>
 
-      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))' }}>
         {ROLE_ENTRIES.map(entry => (
           <LauncherCard key={entry.role} entry={entry} onNavigate={onNavigate} />
         ))}
@@ -999,7 +999,7 @@ function RoleLauncher({ onNavigate }: RoleLauncherProps) {
         <div className="font-semibold text-xs uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
           Additional Surfaces
         </div>
-        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))' }}>
           {[
             { icon: '🌐', label: 'Company Website', section: '03-website' },
             { icon: '🏪', label: 'Seller Storefront', section: '04-storefront' },

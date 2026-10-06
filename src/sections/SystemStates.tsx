@@ -306,7 +306,7 @@ export default function SystemStates() {
   const scenarios = surface === 'All' ? SCENARIOS : SCENARIOS.filter(scenario => scenario.surface === surface)
 
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div className="system-states mx-auto max-w-7xl p-8">
       <div className="mb-8">
         <div className="font-mono text-xs font-semibold uppercase tracking-widest text-brand">Operational resilience</div>
         <h1 className="mt-2 font-display text-4xl font-semibold">System States</h1>

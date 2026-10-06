@@ -33,7 +33,7 @@ const NAV_LINKS: { key: PageKey; label: string }[] = [
   { key: 'about',        label: 'About'        },
 ]
 
-/* pages that have a mobile prototype view */
+/* pages with a dedicated mobile design; every other page reflows its desktop content in the 390 px view (WO-007) */
 const MOBILE_PAGES: PageKey[] = ['home', 'how-it-works', 'for-sellers', 'waitlist', 'trust']
 
 /* ─── Main component ─── */
@@ -42,14 +42,11 @@ export default function CompanyWebsite({ demoTarget }: { demoTarget?: string }) 
   const [view, setView]           = useState<'desktop' | 'mobile'>(() => typeof window !== 'undefined' && window.innerWidth <= 640 ? 'mobile' : 'desktop')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
+  // Every page has a 390 px layout, so moving between pages keeps the current view.
   const navigate = (p: PageKey) => {
     setPage(p)
     setMobileMenuOpen(false)
-    // reset to desktop unless page has mobile view
-    if (!MOBILE_PAGES.includes(p)) setView('desktop')
   }
-
-  const hasMobile = MOBILE_PAGES.includes(page)
 
   return (
     <div style={{ background: 'var(--color-background)', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -62,8 +59,10 @@ export default function CompanyWebsite({ demoTarget }: { demoTarget?: string }) 
         <span className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
           03 — COMPANY WEBSITE · {page.replace(/-/g, ' ').toUpperCase()}
         </span>
-        {hasMobile && (
-          <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--color-border)' }}>
+        {/* Offered where a page has a dedicated mobile design, and always while the 390 px view is showing, so it can
+            be left again. A phone shows the 390 px layout only (index.css). */}
+        {(MOBILE_PAGES.includes(page) || view === 'mobile') && (
+          <div className="website-view-toggle flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--color-border)' }}>
             {(['desktop', 'mobile'] as const).map(v => (
               <button
                 key={v}
@@ -79,7 +78,7 @@ export default function CompanyWebsite({ demoTarget }: { demoTarget?: string }) 
       </div>
 
       {/* ── Website chrome ── */}
-      {view === 'mobile' && hasMobile ? (
+      {view === 'mobile' ? (
         <MobileFrame page={page} navigate={navigate} />
       ) : (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--color-surface)' }}>
@@ -103,7 +102,7 @@ function WebHeader({ activePage, navigate, mobileMenuOpen, setMobileMenuOpen }: 
 }) {
   return (
     <header
-      className="flex items-center gap-6 px-10 border-b sticky top-0 z-30"
+      className="website-header flex items-center gap-6 px-10 border-b sticky top-0 z-30"
       style={{ height: 64, background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(10px)', borderColor: 'var(--color-border)' }}
     >
       <button onClick={() => navigate('home')} className="flex items-center gap-2 flex-shrink-0">
@@ -254,9 +253,11 @@ function MobileFrame({ page, navigate }: { page: PageKey; navigate: (p: PageKey)
           </div>
         )}
 
-        {/* scrollable content */}
+        {/* scrollable content: a page's dedicated mobile design, or its desktop content reflowed for 390 px
+            (index.css `.website-compact`), then the site footer, which reaches every page */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          <MobilePageContent page={page} navigate={navigate} />
+          {MOBILE_PAGES.includes(page) ? <MobilePageContent page={page} navigate={navigate} /> : <div className="website-compact"><PageRouter page={page} navigate={navigate} /></div>}
+          <div className="website-compact"><WebFooter navigate={navigate} /></div>
         </div>
       </div>
     </div>

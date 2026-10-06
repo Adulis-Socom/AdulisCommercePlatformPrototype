@@ -81,7 +81,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell flex h-screen overflow-hidden" style={{ background: 'var(--color-background)', fontFamily: 'var(--font-body)' }}>
+    <div className={`app-shell flex h-screen overflow-hidden${journey ? ' flow-active' : ''}`} style={{ background: 'var(--color-background)', fontFamily: 'var(--font-body)' }}>
       {/* Sidebar */}
       <aside
         className="app-sidebar flex flex-col flex-shrink-0 border-r transition-all duration-300"
@@ -167,20 +167,22 @@ export default function App() {
         )}
       </aside>
 
-      {/* Main content. While Flow M runs, `flow-card-clearance` lets its phone scroll clear of the guided-flow card at
-          phone widths (index.css; WO-006A). WO-007 owns the overlay repair for every flow. */}
-      <main className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}${journey?.id === 'M' ? ' flow-card-clearance' : ''}`}>
+      {/* Main content. `data-section` lets index.css's responsive rules address a section without changing it. */}
+      <main data-section={active} className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}`}>
         <StoryProvider stage={stageFor(journey?.id, journey?.stage ?? 0)}>
           <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} />
         </StoryProvider>
-        {journey && flow && flowStage && (
-          <div className="flow-guide fixed bottom-5 right-5 z-[500] w-96 rounded-2xl border border-border bg-surface p-4 shadow-xl" role="dialog" aria-label="Guided prototype flow">
-            <div className="flex items-start justify-between"><div><div className="font-mono text-[10px] font-bold uppercase tracking-wider text-brand">Flow {flow.id} · Step {journey.stage + 1} of {flow.stages.length}</div><div className="mt-1 font-display text-lg font-semibold">{flowStage.title}</div></div><button onClick={() => setJourney(null)} aria-label="Close guided flow" className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-raised text-text-muted">×</button></div>
-            <p className="mt-2 text-xs leading-relaxed text-text-secondary">{flowStage.instruction}</p>
-            <div className="mt-4 flex items-center gap-2"><button disabled={journey.stage === 0} onClick={() => moveFlow(-1)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-secondary disabled:opacity-40">Previous</button><span className="flex-1" />{journey.stage < flow.stages.length - 1 ? <button onClick={() => moveFlow(1)} className="rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white">Next frame →</button> : <button onClick={() => { setJourney(null); setActive('10-demo-flows') }} className="rounded-lg bg-success px-3 py-2 text-xs font-semibold text-white">Finish demo</button>}</div>
-          </div>
-        )}
       </main>
+
+      {/* The guided-flow card. On desktop it floats over the bottom-right corner. Below desktop widths index.css docks it
+          under main, in its own row of the shell, so it never covers the product (WO-007). */}
+      {journey && flow && flowStage && (
+        <div className="flow-guide fixed bottom-5 right-5 z-[500] w-96 rounded-2xl border border-border bg-surface p-4 shadow-xl" role="dialog" aria-label="Guided prototype flow">
+          <div className="flow-guide-head flex items-start justify-between"><div className="flow-guide-heading"><div className="font-mono text-[10px] font-bold uppercase tracking-wider text-brand">Flow {flow.id} · Step {journey.stage + 1} of {flow.stages.length}</div><div className="flow-guide-title mt-1 font-display text-lg font-semibold">{flowStage.title}</div></div><button onClick={() => setJourney(null)} aria-label="Close guided flow" className="flow-guide-close flex h-7 w-7 items-center justify-center rounded-full bg-surface-raised text-text-muted">×</button></div>
+          <p className="flow-guide-instruction mt-2 text-xs leading-relaxed text-text-secondary">{flowStage.instruction}</p>
+          <div className="flow-guide-actions mt-4 flex items-center gap-2"><button disabled={journey.stage === 0} onClick={() => moveFlow(-1)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-secondary disabled:opacity-40">Previous</button><span className="flex-1" />{journey.stage < flow.stages.length - 1 ? <button onClick={() => moveFlow(1)} className="rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white">Next frame →</button> : <button onClick={() => { setJourney(null); setActive('10-demo-flows') }} className="rounded-lg bg-success px-3 py-2 text-xs font-semibold text-white">Finish demo</button>}</div>
+        </div>
+      )}
     </div>
   )
 }
