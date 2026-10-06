@@ -171,7 +171,7 @@ const SCENARIOS: Scenario[] = [
     outcome: {
       kind: 'processing',
       title: 'OTP fallback ready',
-      description: 'Enter the courier’s one-time code while physically receiving the package.',
+      description: 'Enter the verification code sent to your phone while physically receiving the package.',
       detail: 'Opening the fallback does not itself confirm handoff.',
     },
   },

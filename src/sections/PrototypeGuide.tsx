@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AdulisLogo } from '../App'
-import { BUYERS, COURIERS, DEMO_CARTS, GUEST_STATE, ORDERS, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName, paymentAttempts } from '../demo-data'
+import { BUYERS, COURIERS, DEMO_CARTS, GUEST_STATE, ORDERS, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName, paymentAttempts, stageFor } from '../demo-data'
 
 // Demo personas and record names are read from the canonical module (WO-001).
 const BUYER_NAME = BUYERS[SURFACE_DEFAULTS.buyer].name
@@ -10,6 +10,8 @@ const [CART_SELLER, SECOND_CART_SELLER] = DEMO_CARTS.map(order => SELLERS[ORDERS
 // Flow D's two Seller Orders, and the second one's failed attempt and its retry (DEMO_DATA › Seller Orders).
 const [CART_ORDER, SECOND_CART_ORDER] = DEMO_CARTS
 const [FAILED_ATTEMPT, RETRY_ATTEMPT] = paymentAttempts(SECOND_CART_ORDER).map(attempt => attempt.ref)
+// Flow M's Buyer, who collects the Buyer Collection Order and scans its final QR (WO-006A).
+const COLLECTOR = firstName(BUYERS[ORDERS[stageFor('M', 0).focus!.order!].buyer].name)
 
 /* ═══════════════════════════════════════════════
    00 — PROTOTYPE GUIDE
@@ -83,7 +85,7 @@ function GuideHeader() {
         <p style={{ color: '#C8BDB5', fontSize: 16, maxWidth: 640, lineHeight: 1.65, margin: '0 0 32px' }}>
           A commerce platform ecosystem connecting buyers, sellers, and couriers through structured
           product discovery, verified fulfilment, and trust-based commerce. This prototype demonstrates
-          seven product surfaces and thirteen end-to-end demo flows.
+          seven product surfaces and fourteen end-to-end demo flows.
         </p>
         <div className="flex flex-wrap gap-3">
           {[
@@ -820,6 +822,13 @@ const DEMO_FLOWS = [
     path: 'Product Detail → Chat → Chatbot → unanswered → Talk to Seller → Seller Companion Inbox',
     screens: 6,
     color: '#5B3FAF',
+  },
+  {
+    id: 'M',
+    label: 'Buyer Collection Final Handoff',
+    path: `Ready for Collection → Seller displays final Collection QR → ${COLLECTOR} scans → final Handoff Verified → Order Completed → ${COLLECTOR} eligible to review`,
+    screens: 7,
+    color: '#2D7A4F',
   },
 ]
 

@@ -1,7 +1,7 @@
 // Guided-flow scenario configuration: the story moment, the Seller and the canonical records each flow step shows.
 // This is prototype orchestration, not business data. Each step shows the state just before its first documented
 // event (docs/DEMO_DATA.md › Story timeline); a step that follows an event uses that event's time and a later sequence.
-// Flows A–L follow DEMO_DATA's "Demo flows and the records they use". MASTER and E2 are inherited, non-canonical
+// Flows A–M follow DEMO_DATA's "Demo flows and the records they use". MASTER and E2 are inherited, non-canonical
 // presentation paths: their mappings only let those steps read the canonical data, and MASTER may move back in time.
 import type { Moment } from '../time.ts'
 import { DEFAULT_SNAPSHOT } from '../time.ts'
@@ -36,10 +36,10 @@ export interface StoryStage {
 /** Outside a guided flow every surface shows the 10:25 snapshot. */
 export const DEFAULT_STAGE: StoryStage = { moment: DEFAULT_SNAPSHOT }
 
-export type CanonicalFlowId = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L'
+export type CanonicalFlowId = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M'
 export type InheritedFlowId = 'MASTER' | 'E2'
 
-/** Flows A–L, one entry per step of FLOW_DEFINITIONS (src/sections/DemoFlows.tsx). */
+/** Flows A–M, one entry per step of FLOW_DEFINITIONS (src/sections/DemoFlows.tsx). */
 export const CANONICAL_FLOW_STAGES: Readonly<Record<CanonicalFlowId, readonly StoryStage[]>> = {
   // A — Seller acquisition: no canonical records; the waitlist form is filled in live.
   A: [DEFAULT_STAGE],
@@ -90,6 +90,15 @@ export const CANONICAL_FLOW_STAGES: Readonly<Record<CanonicalFlowId, readonly St
   L: [
     { moment: { at: '2026-10-02T11:35:00+03:00' }, focus: { product: 'PRD-AA-001', conversation: 'CNV-MAYA-AA' } },
     { moment: { at: '2026-10-02T11:48:00+03:00' }, focus: { conversation: 'CNV-MAYA-AA' } },
+  ],
+  // M — Buyer Collection final Handoff on ADU-24094 (WO-006A): M1 after it's Ready for Collection (17:50); M2 after
+  // Abel T. opens the Collection Handoff at the Bole studio (17:55), on the Seller Companion and then in Maya's app,
+  // before her scan (17:56); M3 after the verified scan completes it.
+  M: [
+    { moment: { at: '2026-10-02T17:50:00+03:00', sequence: 1 }, focus: { order: 'ADU-24094' } },
+    { moment: { at: '2026-10-02T17:55:00+03:00', sequence: 1 }, seller: 'SEL-ADDIS-ATELIER', focus: { order: 'ADU-24094' } },
+    { moment: { at: '2026-10-02T17:55:00+03:00', sequence: 1 }, focus: { order: 'ADU-24094' } },
+    { moment: { at: '2026-10-02T17:56:00+03:00', sequence: 1 }, focus: { order: 'ADU-24094' } },
   ],
 }
 

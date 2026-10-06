@@ -17,7 +17,7 @@ import type { BuyerId } from './records/buyers.ts'
 import { COURIERS, COURIER_RELATIONSHIPS } from './records/couriers.ts'
 import type { CourierId, CourierRelationship } from './records/couriers.ts'
 import { ORDERS, ORDER_IDS } from './records/orders.ts'
-import type { OrderId, OrderLine } from './records/orders.ts'
+import type { AuthorizedRecipient, OrderId, OrderLine } from './records/orders.ts'
 import { REVIEWS, REVIEW_IDS } from './records/reviews.ts'
 import type { ReviewId } from './records/reviews.ts'
 import { CLAIMS } from './records/claims.ts'
@@ -361,6 +361,87 @@ export function ordersRequiringPreparationAt(seller: SellerId, at: Moment = DEFA
 function completedAfterSnapshot(order: OrderId, at: Moment): boolean {
   const done = stateTime(order, 'Completed')
   return !!done && !happenedBefore(done, DEFAULT_SNAPSHOT) && happenedBefore(done, at)
+}
+
+// ---------- Final Handoff (rules 8.2, 8.7–8.10, 10.1–10.2, 11.1; specification §19) ----------
+
+/** The fulfilment mode's final Handoff state: Delivery Handoff, or Collection Handoff for Buyer Collection. */
+export function handoffStateFor(mode: FulfilmentMode): OrderState {
+  return mode === 'Buyer Collection' ? 'Collection Handoff' : 'Delivery Handoff'
+}
+
+/**
+ * Where an Order's final Handoff stands for its recipient:
+ * - 'upcoming' before it can start;
+ * - 'approaching' while the Courier or the Seller is on the way, or while the Order waits for collection;
+ * - 'open' once the giver has opened the Handoff and displays the final QR;
+ * - 'verified' once the recipient's verified scan, or the verification code, has completed the Order;
+ * - 'manual-review' once a failed Handoff was escalated to Operator-only Manual Verification (rules 8.5–8.6).
+ */
+export type FinalHandoffPhase = 'upcoming' | 'approaching' | 'open' | 'verified' | 'manual-review'
+
+export interface FinalHandoff {
+  readonly order: OrderId
+  readonly mode: FulfilmentMode
+  /** The Order state of the final Handoff. */
+  readonly state: OrderState
+  /** The final QR the giver displays (rules 8.2, 8.8, 8.9). */
+  readonly qr: 'Delivery QR' | 'Collection QR'
+  /** The giver, who displays the final QR: the assigned Courier, or the Seller and the team member DEMO_DATA names. */
+  readonly presenter: { readonly courier: CourierId } | { readonly seller: SellerId; readonly staff?: StaffId }
+  /** The receiver, who scans it: the Order Buyer, or the authorized recipient once the Buyer has authorized one. */
+  readonly recipient: { readonly buyer: BuyerId; readonly delegate?: AuthorizedRecipient }
+  readonly phase: FinalHandoffPhase
+  /** When the verified final Handoff completed the Order, and by which method DEMO_DATA records. */
+  readonly verifiedAt?: Timestamp
+  readonly method?: 'QR' | 'OTP fallback'
+}
+
+/**
+ * The Order's final Handoff at `at`, from its state history (DEMO_DATA › Seller Orders). A final Handoff DEMO_DATA
+ * doesn't time (ADU-24092's) is open at the moment of the scan that completes the Order, just before it.
+ */
+export function finalHandoffAt(order: OrderId, at: Moment = DEFAULT_SNAPSHOT): FinalHandoff {
+  const o = ORDERS[order]
+  const timeline = ORDER_TIMELINES[o.fulfilment]
+  const state = handoffStateFor(o.fulfilment)
+  const before = timeline[timeline.indexOf(state) - 1]
+  const reached = orderStateAt(order, at)
+  const completed = stateTime(order, 'Completed')
+  const escalated = Object.values(HANDOFF_REVIEWS).some(r => r.order === order && happenedBefore(r.escalated.at, at))
+  const phase: FinalHandoffPhase = reached === 'Completed' ? 'verified'
+    : escalated ? 'manual-review'
+    : reached === state || (reached === before && !stateTime(order, state) && completed === at.at) ? 'open'
+    : reached === before ? 'approaching'
+    : 'upcoming'
+  const method = o.finalHandoff?.method
+  return {
+    order,
+    mode: o.fulfilment,
+    state,
+    qr: o.fulfilment === 'Buyer Collection' ? 'Collection QR' : 'Delivery QR',
+    presenter: o.fulfilment === 'Courier Delivery' && o.courier ? { courier: o.courier } : { seller: o.seller, staff: o.finalHandoff?.displayedBy },
+    recipient: { buyer: o.buyer, delegate: o.recipient && happenedBefore(o.recipient.authorized, at) ? o.recipient : undefined },
+    phase,
+    verifiedAt: phase === 'verified' ? completed : undefined,
+    method: phase === 'verified' && method !== 'Not verified' ? method : undefined,
+  }
+}
+
+/**
+ * Review eligibility (rule 11.1; specification §20): the Order Buyer's, from the verified final Handoff that completed
+ * the Order, never an authorized recipient's (rule 10.2). It is the dataset's one Review Grant per Order; `review` is
+ * the Review written for the Order by `at`, if any.
+ */
+export function reviewEligibilityAt(order: OrderId, at: Moment = DEFAULT_SNAPSHOT): { eligible: boolean; from?: Timestamp; buyer: BuyerId; review?: ReviewId } {
+  const handoff = finalHandoffAt(order, at)
+  const eligible = handoff.phase === 'verified' && handoff.method !== undefined
+  return {
+    eligible,
+    from: eligible ? handoff.verifiedAt : undefined,
+    buyer: ORDERS[order].buyer,
+    review: REVIEW_IDS.find(id => REVIEWS[id].order === order && happenedBefore(REVIEWS[id].written, at)),
+  }
 }
 
 // ---------- Couriers ----------

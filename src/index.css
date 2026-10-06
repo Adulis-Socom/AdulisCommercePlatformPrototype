@@ -299,6 +299,17 @@ textarea {
     width: calc(100vw - 16px);
   }
 
+  /* Flow M only (WO-006A): the guided-flow card covers the bottom of the phone at these widths, so Flow M's phone
+     gets room to scroll clear of it, and keyboard focus scrolls controls above it. The card stands up to about 250px
+     tall. WO-007 owns the overlay repair for every flow. */
+  .flow-card-clearance {
+    scroll-padding-bottom: 280px;
+  }
+
+  .flow-card-clearance .phone-stage {
+    padding-bottom: 280px !important;
+  }
+
   .phone-frame button,
   .website-phone-frame button,
   .storefront-phone button,

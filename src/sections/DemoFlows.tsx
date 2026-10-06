@@ -1,7 +1,7 @@
 import { Button } from '../components/ui/Button'
-import { BUYERS, COURIERS, DEMO_CARTS, ORDERS, PRODUCTS, SELLERS, SURFACE_DEFAULTS, firstName, formatEtb, orderTotals, paymentAttempts, stageFor, type OrderId } from '../demo-data'
+import { BUYERS, COURIERS, DEMO_CARTS, ORDERS, PRODUCTS, SELLERS, STAFF, SURFACE_DEFAULTS, firstName, formatEtb, orderTotals, paymentAttempts, shortName, stageFor, type OrderId } from '../demo-data'
 
-export type FlowId = 'MASTER' | 'A' | 'B' | 'C' | 'D' | 'E' | 'E2' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L'
+export type FlowId = 'MASTER' | 'A' | 'B' | 'C' | 'D' | 'E' | 'E2' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M'
 
 export interface FlowStage {
   section: string
@@ -26,6 +26,12 @@ const COURIER = COURIERS[SURFACE_DEFAULTS.courier].name
 const BUYER = BUYERS[SURFACE_DEFAULTS.buyer].name
 const sellerOf = (order: OrderId) => SELLERS[ORDERS[order].seller].name
 const productOf = (order: OrderId) => PRODUCTS[ORDERS[order].lines[0].product].name
+// Flow M's records (WO-006A): the canonical Buyer Collection Order, its Seller, and the team member who displays its QR.
+const COLLECTION = stageFor('M', 0).focus!.order!
+const COLLECTION_SELLER = SELLERS[ORDERS[COLLECTION].seller]
+const COLLECTION_STAFF = ORDERS[COLLECTION].finalHandoff?.displayedBy
+const PRESENTER = COLLECTION_STAFF ? shortName(STAFF[COLLECTION_STAFF].name) : COLLECTION_SELLER.name
+const COLLECTOR = firstName(BUYERS[ORDERS[COLLECTION].buyer].name)
 
 export const FLOW_DEFINITIONS: FlowDefinition[] = [
   {
@@ -69,6 +75,7 @@ export const FLOW_DEFINITIONS: FlowDefinition[] = [
   { id: 'J', title: 'Claim to Operator Case', summary: 'Order → Claim → Submit → Operator Claim Queue → Case', surfaces: ['Buyer', 'Operator'], stages: [{ section: '05-buyer', target: 'claim-start', title: 'Buyer Claim', instruction: 'Choose an issue, add details and evidence, submit, and observe Claim status.' }, { section: '09-operator-console', target: 'wq-claims', title: 'Operator Claim Case', instruction: `Open ${stageFor('J', 1).focus?.claim} from the Claims queue to review payment, handoff, evidence, and purpose-specific actions.` }] },
   { id: 'K', title: 'Reported Shoppable Post', summary: 'Buyer report → Moderation Case → Restrict → distribution removal', surfaces: ['Buyer', 'Operator'], stages: [{ section: '05-buyer', target: 'post', title: 'Buyer Reports Post', instruction: 'Choose Report on the expanded Shoppable Post, select a reason, and submit.' }, { section: '09-operator-console', target: 'wq-moderation', title: 'Moderation Restriction', instruction: `Open ${stageFor('K', 1).focus?.moderation}, choose Restrict, and observe removal from FYP and Search while Storefront impact remains explicit.` }] },
   { id: 'L', title: 'Chatbot Escalation', summary: 'Product Chat → Chatbot → Escalate → Seller Companion Inbox', surfaces: ['Buyer', 'Seller Companion'], stages: [{ section: '05-buyer', target: 'product', title: 'Product Chat and Assistant', instruction: 'Choose Chat, ask the suggested question, then escalate the unmatched Product question to the Seller.' }, { section: '06-seller-companion', target: 'inbox', title: 'Seller Companion Inbox', instruction: 'Open the escalated Buyer thread and send a human Seller reply.' }] },
+  { id: 'M', title: 'Buyer Collection Final Handoff', summary: 'Ready for Collection → Seller displays Collection QR → Buyer scans → Verified → Completed', surfaces: ['Buyer', 'Seller Companion', 'Buyer'], stages: [{ section: '05-buyer', target: 'order-detail', title: 'M1 · Ready for Collection', instruction: `${COLLECTION} is Ready for Collection from ${COLLECTION_SELLER.name} in ${COLLECTION_SELLER.area}. No Collection QR exists yet: the Seller displays it only when ${COLLECTOR} is there.` }, { section: '06-seller-companion', target: 'collection-qr', title: 'M2 · Seller Displays Collection QR', instruction: `${COLLECTOR} and ${PRESENTER} meet at the ${COLLECTION_SELLER.buyerCollection?.place}. ${PRESENTER} displays the Collection QR for ${COLLECTION}: the Seller presents, ${COLLECTOR} scans.` }, { section: '05-buyer', target: 'qr-scanner', title: 'M2 · Buyer Scans Collection QR', instruction: `Open the camera, scan ${COLLECTION_SELLER.name}’s Collection QR, and complete verification. Only the verified scan completes ${COLLECTION}.` }, { section: '05-buyer', target: 'completed', title: 'M3 · Verified and Completed', instruction: `The Collection Handoff is verified and ${COLLECTION} is Completed. ${COLLECTOR} is eligible to review it; no Review is written.` }] },
 ]
 
 export default function DemoFlows({ onStart }: { onStart: (id: FlowId) => void }) {

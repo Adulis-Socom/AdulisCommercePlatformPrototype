@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { Button } from '../components/ui/Button'
 import { PhoneInput, SearchInput, Textarea, TextInput } from '../components/ui/Input'
 import { Skeleton } from '../components/ui/Overlay'
+import { VerificationFailed } from '../components/ui/Handoff'
 import {
   PhoneFrame, BottomNav, IconHome, IconShop, IconHeart, IconOrders, IconUser,
   IconSearch, IconChevronDown, IconChevronRight,
@@ -11,11 +12,11 @@ import {
   BUYERS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
   MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, claimStateAt, claimSubmitted, claimsForOrder,
-  contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, followingAt,
+  contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
   forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDayMonth, formatEtb, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
   isContextChoiceAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
-  productQualityAt, productsSubtotal, reviewsAt, sameContext, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, testPaymentRef, trustAt, trustLabel,
-  type CheckoutTest, type CheckoutTestId, type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FulfilmentMode, type MessageContext,
+  productQualityAt, productsSubtotal, reviewEligibilityAt, reviewsAt, sameContext, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, testPaymentRef, trustAt, trustLabel,
+  type CheckoutTest, type CheckoutTestId, type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FinalHandoff, type FulfilmentMode, type MessageContext,
   type MessageRecord, type ModerationId, type Moment, type NotificationRecord, type OrderId, type OrderLine, type OrderState, type OrderTotals, type ProductId,
   type SellerId, type ShoppablePostId, type Timestamp,
 } from '../demo-data'
@@ -30,7 +31,7 @@ type Screen =
   | 'checkout-coordinator' | 'seller-checkout' | 'payment-transition'
   | 'payment-processing' | 'payment-success' | 'payment-failed' | 'payment-checking'
   | 'orders' | 'order-detail' | 'delegated-recipient' | 'qr-scanner' | 'qr-camera'
-  | 'qr-verifying' | 'delivery-confirmed' | 'otp' | 'completed' | 'review'
+  | 'qr-verifying' | 'qr-failed' | 'delivery-confirmed' | 'otp' | 'completed' | 'review'
   | 'claim-start' | 'claim-form' | 'claim-status' | 'chats' | 'conversation'
   | 'chatbot' | 'notifications' | 'you' | 'sign-in-phone' | 'sign-in-code' | 'cart-check'
 /** A guest browses public content; signing in shows Maya's signed-in state (rules 3.1–3.12, specification §12). */
@@ -132,7 +133,7 @@ const CHANNEL_CUE_WIDTH = 10
 
 // The screens that hold the signed-in Buyer's own data or actions (rules 3.2–3.4, 3.7). A guest sees the sign-in
 // requirement on them instead; the cart screens stay public (rule 3.6).
-const ORDER_SCREENS: readonly Screen[] = ['orders', 'order-detail', 'delegated-recipient', 'qr-scanner', 'qr-camera', 'qr-verifying', 'delivery-confirmed', 'otp', 'completed', 'review', 'claim-start', 'claim-form', 'claim-status']
+const ORDER_SCREENS: readonly Screen[] = ['orders', 'order-detail', 'delegated-recipient', 'qr-scanner', 'qr-camera', 'qr-verifying', 'qr-failed', 'delivery-confirmed', 'otp', 'completed', 'review', 'claim-start', 'claim-form', 'claim-status']
 const CHECKOUT_SCREENS: readonly Screen[] = ['cart-check', 'checkout-coordinator', 'seller-checkout', 'payment-transition', 'payment-processing', 'payment-success', 'payment-failed', 'payment-checking']
 // A guided-flow step that opens on a cart or checkout screen starts with DEMO_DATA's Flow D carts.
 const CART_SCREENS: readonly Screen[] = ['seller-cart', 'multi-cart', ...CHECKOUT_SCREENS]
@@ -310,13 +311,29 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   // Whether the Cart check followed sign-in (rule 3.11) or the start of a checkout (WO-006 requirement 24).
   const [checkAfterSignIn, setCheckAfterSignIn] = useState(false)
   const [notificationsFrom, setNotificationsFrom] = useState<Screen>('orders')
+  // The final Handoff this session verified (WO-006A): by which method, and whether a later attempt found it already
+  // verified. Transient: DEMO_DATA's record of the Handoff never changes.
+  const [handoffMethod, setHandoffMethod] = useState<HandoffMethod>()
+  const [repeatScan, setRepeatScan] = useState(false)
+  const [codeFrom, setCodeFrom] = useState<Screen>('qr-scanner')
   const openPost = (id: ShoppablePostId) => { setDiscoverySheet(null); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
   const openProduct = (id: ProductId) => { setDiscoverySheet(null); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
   const openSeller = (id: SellerId) => { setSellerId(id); setScreen('seller') }
   const openOrder = (id: OrderId) => { setOrderId(id); setOrderStage(orderStateAt(id, at) ?? 'Paid'); setScreen('order-detail') }
   const openConversation = (entry: ChatEntry) => { setChat(entry); setScreen('conversation') }
   const openClaim = () => { setClaimId(upcomingClaim(orderId, at)); setScreen('claim-start') }
-  const handoffVerified = () => { const done = stateTime(orderId, 'Completed'); if (done) advanceTo(done); setScreen('delivery-confirmed') }
+  // A verified scan or code completes the Order at DEMO_DATA's time for it, once: the open Handoff is accepted, an
+  // already verified one is only confirmed again, and one that isn't open yet can't be verified (WO-006A).
+  const handoffVerified = (method: HandoffMethod) => {
+    const phase = finalHandoffAt(orderId, at).phase
+    if (phase === 'open') { const done = stateTime(orderId, 'Completed'); if (done) advanceTo(done); setOrderStage('Completed'); setHandoffMethod(method); setRepeatScan(false); setScreen('delivery-confirmed') }
+    else if (phase === 'verified') { setRepeatScan(true); setScreen('delivery-confirmed') }
+    else setScreen('qr-scanner')
+  }
+  // Order Detail's prototype status: choosing a later state moves the story moment to DEMO_DATA's time for it, so the
+  // Handoff it shows still follows story time; an earlier or untimed state is only previewed.
+  const selectStage = (state: OrderState) => { const time = stateTime(orderId, state); if (time && !happenedBefore(time, at)) advanceTo(time); setOrderStage(state) }
+  const openCode = (from: Screen) => { setCodeFrom(from); setScreen('otp') }
 
   // Account-bound actions ask a guest to sign in instead of acting (rules 3.5, 3.7, 3.9); a signed-in Buyer just acts.
   const requireSignIn = (title: string, next: Intent, act: () => void) => (signedIn ? act() : setSignInPrompt({ title, intent: next }))
@@ -646,14 +663,15 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'payment-failed' && payingOrder && <PaymentFailed order={payingOrder} progress={progress} onRetry={() => retryPayment(payingOrder)} onCart={() => { setCartSeller(payingOrder.seller); setScreen('seller-cart') }} />}
         {shown === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={resolvePayment} />}
         {shown === 'orders' && <OrdersList at={at} onOrder={openOrder} onChats={() => setScreen('chats')} onNotifications={() => { setNotificationsFrom('orders'); setScreen('notifications') }} />}
-        {shown === 'order-detail' && <OrderDetail orderId={orderId} stage={orderStage} setStage={setOrderStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => setScreen('otp')} onClaim={openClaim} onChat={() => openConversation({ seller: ORDERS[orderId].seller, context: { order: orderId }, from: 'order-detail' })} />}
-        {shown === 'delegated-recipient' && <DelegatedRecipient onBack={() => setScreen('order-detail')} onSave={() => setScreen('order-detail')} />}
-        {shown === 'qr-scanner' && <DeliveryScanner onBack={() => setScreen('order-detail')} onCamera={() => setScreen('qr-camera')} onOtp={() => setScreen('otp')} />}
-        {shown === 'qr-camera' && <ScannerCamera onBack={() => setScreen('qr-scanner')} onScan={() => setScreen('qr-verifying')} />}
-        {shown === 'qr-verifying' && <QrVerifying orderId={orderId} onVerified={handoffVerified} />}
-        {shown === 'delivery-confirmed' && <DeliveryConfirmed orderId={orderId} onContinue={() => setScreen('completed')} />}
-        {shown === 'otp' && <OtpFallback onBack={() => setScreen('qr-scanner')} onVerify={handoffVerified} />}
-        {shown === 'completed' && <CompletedOrder orderId={orderId} onBack={() => setScreen('orders')} onReview={() => setScreen('review')} onClaim={openClaim} />}
+        {shown === 'order-detail' && <OrderDetail orderId={orderId} at={at} stage={orderStage} setStage={selectStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => openCode('order-detail')} onCompleted={() => setScreen('completed')} onClaim={openClaim} onChat={() => openConversation({ seller: ORDERS[orderId].seller, context: { order: orderId }, from: 'order-detail' })} />}
+        {shown === 'delegated-recipient' && <DelegatedRecipient handoff={finalHandoffAt(orderId, at)} onBack={() => setScreen('order-detail')} onSave={() => setScreen('order-detail')} />}
+        {shown === 'qr-scanner' && <DeliveryScanner handoff={finalHandoffAt(orderId, at)} at={at} onBack={() => setScreen('order-detail')} onCamera={() => setScreen('qr-camera')} onOtp={() => openCode('qr-scanner')} onCompleted={() => setScreen('completed')} />}
+        {shown === 'qr-camera' && <ScannerCamera handoff={finalHandoffAt(orderId, at)} onBack={() => setScreen('qr-scanner')} onScan={() => setScreen('qr-verifying')} onUnreadable={() => setScreen('qr-failed')} />}
+        {shown === 'qr-verifying' && <QrVerifying handoff={finalHandoffAt(orderId, at)} onVerified={() => handoffVerified('QR')} />}
+        {shown === 'qr-failed' && <ScanFailed handoff={finalHandoffAt(orderId, at)} at={at} onBack={() => setScreen('order-detail')} onRetry={() => setScreen('qr-camera')} onCode={() => openCode('qr-failed')} />}
+        {shown === 'delivery-confirmed' && <DeliveryConfirmed handoff={finalHandoffAt(orderId, at)} at={at} method={handoffMethod} repeat={repeatScan} onContinue={() => setScreen('completed')} />}
+        {shown === 'otp' && <OtpFallback handoff={finalHandoffAt(orderId, at)} at={at} onBack={() => setScreen(codeFrom)} onVerify={() => handoffVerified('OTP')} onCompleted={() => setScreen('completed')} />}
+        {shown === 'completed' && <CompletedOrder orderId={orderId} at={at} onBack={() => setScreen('orders')} onReview={() => setScreen('review')} onClaim={openClaim} />}
         {shown === 'review' && <ReviewOrder orderId={orderId} onBack={() => setScreen('completed')} onSubmit={() => { const review = REVIEW_IDS.find(id => REVIEWS[id].order === orderId); if (review) advanceTo(REVIEWS[review].written); setScreen('completed') }} />}
         {shown === 'claim-start' && <ClaimStart orderId={orderId} issue={claimIssue} setIssue={setClaimIssue} onBack={() => setScreen('order-detail')} onContinue={() => setScreen('claim-form')} />}
         {shown === 'claim-form' && <ClaimForm claimId={claimId} issue={claimIssue} onBack={() => setScreen('claim-start')} onSubmit={() => { if (claimId) advanceTo(claimSubmitted(claimId)); setScreen('claim-status') }} />}
@@ -1659,20 +1677,34 @@ function Collection({ collectionId, changes, onBack, onProduct, onPost }: { coll
   )
 }
 
-// The existing explanatory line for each state; states without one show only their name.
-const STAGE_DETAIL: Partial<Record<OrderState, (seller: string) => string>> = {
-  'Paid': () => 'Payment confirmed by provider',
-  'Preparing': seller => `${seller} is preparing your item`,
-  'Ready for Courier': () => 'Package is ready for collection',
-  'Courier Assigned': () => 'A seller-approved courier is assigned',
-  'Pickup Verified': () => 'Courier pickup was verified at the seller',
-  'Out for Delivery': () => 'Your package is on its way',
+/**
+ * The explanatory line for each state, in the Order's own mode (rules 4.4–4.7): the Courier's states name the courier,
+ * Seller Delivery's and Buyer Collection's name the Seller, and each final Handoff says who displays the QR and who
+ * scans it (WO-006A requirements 1–3). A courier pickup is custody only; it completes nothing.
+ */
+function stageDetail(state: OrderState, orderId: OrderId): string {
+  const order = ORDERS[orderId]
+  const seller = SELLERS[order.seller]
+  const scanner = order.recipient ? `${shortName(order.recipient.name)} scans it` : 'you scan it'
+  switch (state) {
+    case 'Paid': return 'Payment confirmed by provider'
+    case 'Preparing': return `${seller.name} is preparing your item`
+    case 'Ready for Courier': return 'Package is ready for collection'
+    case 'Courier Assigned': return 'A seller-approved courier is assigned'
+    case 'Pickup Verified': return 'Courier pickup was verified at the seller'
+    case 'Out for Delivery': return 'Your package is on its way'
+    case 'Ready for Seller Delivery': return `${seller.name} will deliver your Order`
+    case 'Out for Seller Delivery': return `${seller.name} is on the way with your Order`
+    case 'Ready for Collection': return `Collect from ${seller.name} in ${seller.area}`
+    case 'Delivery Handoff': return `${order.fulfilment === 'Courier Delivery' ? 'The courier' : seller.name} displays the Delivery QR; ${scanner}`
+    case 'Collection Handoff': return `${seller.name} displays the Collection QR; ${scanner}`
+    case 'Completed': return order.fulfilment === 'Buyer Collection' ? 'Collection verified' : 'Delivery verified'
+  }
 }
 
 /** An Order's stages, in its own fulfilment mode's timeline (rules 4.4–4.7). */
 function orderStages(orderId: OrderId) {
-  const seller = SELLERS[ORDERS[orderId].seller].name
-  return ORDER_TIMELINES[ORDERS[orderId].fulfilment].map(state => ({ key: state, label: state, detail: STAGE_DETAIL[state]?.(seller) ?? '' }))
+  return ORDER_TIMELINES[ORDERS[orderId].fulfilment].map(state => ({ key: state, label: state, detail: stageDetail(state, orderId) }))
 }
 
 function OrdersList({ at, onOrder, onChats, onNotifications }: { at: Moment; onOrder: (id: OrderId) => void; onChats: () => void; onNotifications: () => void }) {
@@ -1718,9 +1750,9 @@ function OrdersList({ at, onOrder, onChats, onNotifications }: { at: Moment; onO
   )
 }
 
-function OrderDetail({ orderId, stage, setStage, onBack, onDelegate, onScan, onOtp, onClaim, onChat }: {
-  orderId: OrderId; stage: OrderState; setStage: (stage: OrderState) => void; onBack: () => void; onDelegate: () => void
-  onScan: () => void; onOtp: () => void; onClaim: () => void; onChat: () => void
+function OrderDetail({ orderId, at, stage, setStage, onBack, onDelegate, onScan, onOtp, onCompleted, onClaim, onChat }: {
+  orderId: OrderId; at: Moment; stage: OrderState; setStage: (stage: OrderState) => void; onBack: () => void; onDelegate: () => void
+  onScan: () => void; onOtp: () => void; onCompleted: () => void; onClaim: () => void; onChat: () => void
 }) {
   const order = ORDERS[orderId]
   const stages = orderStages(orderId)
@@ -1728,6 +1760,8 @@ function OrderDetail({ orderId, stage, setStage, onBack, onDelegate, onScan, onO
   const currentIndex = Math.max(0, stages.findIndex(item => item.key === stage))
   const current = stages[currentIndex]
   const courierMode = order.fulfilment === 'Courier Delivery'
+  // The final Handoff as it stands at the story moment; a previewed earlier state shows none.
+  const previewing = stage !== orderStateAt(orderId, at)
   return (
     <>
       <Header title={`Order ${orderId}`} onBack={onBack} trailing={<IconButton label="Chat with seller" onClick={onChat}><ChatIcon /></IconButton>} />
@@ -1752,16 +1786,7 @@ function OrderDetail({ orderId, stage, setStage, onBack, onDelegate, onScan, onO
           ))}
         </div>
 
-        {/* The Buyer scans while the Order is out for delivery or in Delivery Handoff (rule 8). */}
-        {courierMode && (stage === 'Out for Delivery' || stage === 'Delivery Handoff') && (
-          <div className="mt-2 rounded-2xl border border-brand/20 p-4">
-            <div className="font-display text-lg font-semibold">Prepare for handoff</div>
-            <p className="mt-1 text-xs leading-relaxed text-text-muted">When the courier arrives, they display the Delivery QR. You or your delegate scans it.</p>
-            <Button onClick={onScan} style={{ width: '100%', marginTop: 14 }}>Scan Delivery QR</Button>
-            <Button variant="tertiary" onClick={onDelegate} style={{ width: '100%', marginTop: 8 }}>Someone else will receive this</Button>
-            <button onClick={onOtp} className="mt-3 w-full text-center text-xs font-semibold text-brand">Use OTP fallback</button>
-          </div>
-        )}
+        {!previewing && <FinalHandoffCard handoff={finalHandoffAt(orderId, at)} at={at} onDelegate={onDelegate} onScan={onScan} onOtp={onOtp} onCompleted={onCompleted} />}
 
         <SectionLabel>Order summary</SectionLabel>
         <div className="rounded-xl bg-surface-raised p-4">
@@ -1795,15 +1820,20 @@ function TimelineItem({ label, detail, done, current, last }: { label: string; d
   )
 }
 
-function DelegatedRecipient({ onBack, onSave }: { onBack: () => void; onSave: () => void }) {
+function DelegatedRecipient({ handoff, onBack, onSave }: { handoff: FinalHandoff; onBack: () => void; onSave: () => void }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  // What the recipient will scan, in the Order's own mode (WO-006A requirements 1–3): the courier's Delivery QR, or the
+  // Seller's Delivery or Collection QR.
+  const scans = handoff.mode === 'Courier Delivery'
+    ? 'the courier’s Delivery QR or use the fallback OTP'
+    : `${presenterName(handoff)}’s ${handoff.qr} or use the verification code`
   return (
     <>
       <Header title="Delegated recipient" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
         <div className="font-display text-2xl font-semibold">Someone else will receive this</div>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">Add a trusted person who can scan the courier’s Delivery QR or use the fallback OTP at handoff.</p>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">{`Add a trusted person who can scan ${scans} at handoff.`}</p>
         <div className="mt-6 flex flex-col gap-4">
           <TextInput label="Recipient name" value={name} onChange={e => setName(e.target.value)} placeholder="Full name" />
           <PhoneInput label="Recipient phone" value={phone} onChange={setPhone} />
@@ -1821,92 +1851,265 @@ function DelegatedRecipient({ onBack, onSave }: { onBack: () => void; onSave: ()
   )
 }
 
-function DeliveryScanner({ onBack, onCamera, onOtp }: { onBack: () => void; onCamera: () => void; onOtp: () => void }) {
+// ---------- The final Handoff (WO-006A; rules 8.2, 8.7–8.10, 10.1–10.2; specification §19, §56) ----------
+// The giver displays the final QR and the receiver scans it: the assigned Courier gives a Courier Delivery, the Seller a
+// Seller Delivery or a Buyer Collection. The Buyer, or the authorized recipient, never displays a QR. QR is primary, the
+// verification code is the fallback, and Manual Verification stays Operator-only emergency recovery. Every screen reads
+// the Handoff from DEMO_DATA at the story moment, so it's offered only while open and accepted only once.
+
+type HandoffMethod = 'QR' | 'OTP'
+
+/** The giver as the Buyer sees them: the assigned Courier, or the Seller (its team member shows on Seller surfaces). */
+function presenterName(handoff: FinalHandoff): string {
+  return 'courier' in handoff.presenter ? COURIERS[handoff.presenter.courier].name : SELLERS[handoff.presenter.seller].name
+}
+
+/** The authorized recipient who receives and scans instead of the Buyer, by short name, if there is one (rule 10.1). */
+function recipientName(handoff: FinalHandoff): string | undefined {
+  return handoff.recipient.delegate && shortName(handoff.recipient.delegate.name)
+}
+
+/** Collection for Buyer Collection, Delivery for the two delivery modes. */
+function handoffKind(handoff: FinalHandoff): 'Collection' | 'Delivery' {
+  return handoff.mode === 'Buyer Collection' ? 'Collection' : 'Delivery'
+}
+
+/** Where a Buyer Collection Order is collected, as precisely as DEMO_DATA records it: the Seller's place, else its area. */
+function collectionPlace(handoff: FinalHandoff): string {
+  const seller = SELLERS[ORDERS[handoff.order].seller]
+  return seller.buyerCollection?.place ?? seller.area ?? '—'
+}
+
+/** '5:56 PM' on the story moment's day, '26 Sep, 11:20 AM' on another. */
+function handoffTime(time: Timestamp | undefined, at: Moment): string {
+  if (!time) return '—'
+  return time.slice(0, 10) === at.at.slice(0, 10) ? formatClock12(time) : `${formatDayMonth(time)}, ${formatClock12(time)}`
+}
+
+/** The final Handoff on Order Detail as it stands at the story moment (WO-006A requirements 1–4). */
+function FinalHandoffCard({ handoff, at, onDelegate, onScan, onOtp, onCompleted }: {
+  handoff: FinalHandoff; at: Moment; onDelegate: () => void; onScan: () => void; onOtp: () => void; onCompleted: () => void
+}) {
+  const giver = presenterName(handoff)
+  const delegate = recipientName(handoff)
+  const seller = SELLERS[ORDERS[handoff.order].seller]
+  if (handoff.phase === 'approaching') {
+    // On the way, or waiting for collection: no final QR exists yet, so there is nothing to scan.
+    const plan = handoff.mode === 'Buyer Collection'
+      ? `Collect from ${giver} in ${seller.area}, at the ${collectionPlace(handoff)}${seller.buyerCollection ? ` (${seller.buyerCollection.hours})` : ''}. When you’re together, ${giver} displays the Collection QR and ${delegate ? `${delegate}, your authorized recipient, scans it.` : 'you scan it.'}`
+      : `When ${giver}${handoff.mode === 'Courier Delivery' ? ', your courier,' : ''} arrives${handoff.mode === 'Seller Delivery' ? ' with your Order' : ''}, they display the Delivery QR. ${delegate ? `${delegate}, your authorized recipient, scans it.` : 'You or your delegate scans it.'}`
+    return (
+      <div className="mt-2 rounded-2xl border border-brand/20 p-4">
+        <div className="font-display text-lg font-semibold">{handoff.mode === 'Buyer Collection' ? 'Ready for collection' : 'Prepare for handoff'}</div>
+        <p className="mt-1 text-xs leading-relaxed text-text-muted">{plan}</p>
+        {delegate
+          ? <div className="mt-3 rounded-xl bg-surface-raised px-3 py-2 text-xs font-semibold text-text-secondary">Recipient authorized · {delegate}</div>
+          : <Button variant="tertiary" onClick={onDelegate} style={{ width: '100%', marginTop: 14 }}>Someone else will receive this</Button>}
+      </div>
+    )
+  }
+  if (handoff.phase === 'open') {
+    // The giver displays the final QR now. The recipient is fixed while the Handoff is open, so it can't be changed here.
+    const title = handoff.mode === 'Courier Delivery' ? 'Courier is ready to complete delivery' : handoff.mode === 'Seller Delivery' ? `${giver} is ready to complete delivery` : `${giver} is ready to hand over your Order`
+    return (
+      <div className="mt-2 rounded-2xl border border-brand/20 p-4">
+        <div className="font-display text-lg font-semibold">{title}</div>
+        <p className="mt-1 text-xs leading-relaxed text-text-muted">{`${giver} displays the ${handoff.qr}${handoff.mode === 'Buyer Collection' ? ` at the ${collectionPlace(handoff)}` : ''}. ${delegate ? `${delegate}, your authorized recipient, scans it to confirm receipt.` : 'Scan it to confirm you received your Order.'}`}</p>
+        <Button onClick={onScan} style={{ width: '100%', marginTop: 14 }}>{`Scan ${handoff.qr}`}</Button>
+        <button onClick={onOtp} className="mt-3 w-full text-center text-xs font-semibold text-brand">Having trouble scanning? Use verification code</button>
+      </div>
+    )
+  }
+  if (handoff.phase === 'verified') {
+    return (
+      <div className="mt-2 rounded-2xl bg-success-bg p-4">
+        <div className="font-display text-lg font-semibold">{handoffKind(handoff)} verified</div>
+        <p className="mt-1 text-xs leading-relaxed text-text-secondary">{`Final handoff verified at ${handoffTime(handoff.verifiedAt, at)}${delegate ? ` by ${delegate}, your authorized recipient` : ''}. Order ${handoff.order} is Completed.`}</p>
+        <Button variant="tertiary" onClick={onCompleted} style={{ width: '100%', marginTop: 14 }}>View completed Order</Button>
+      </div>
+    )
+  }
+  return null
+}
+
+/** The scanner or code screen while the Handoff isn't open: no final QR exists yet, so nothing can be verified. */
+function HandoffNotOpen({ handoff, onBack }: { handoff: FinalHandoff; onBack: () => void }) {
+  const giver = presenterName(handoff)
+  return (
+    <>
+      <Header title="Final handoff" onBack={onBack} />
+      <div className="flex flex-1 flex-col items-center justify-center px-7 text-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-raised text-text-muted"><ScanIcon /></span>
+        <div className="mt-5 font-display text-2xl font-semibold">{handoff.qr} not available yet</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">{handoff.mode === 'Buyer Collection' ? `${giver} displays the Collection QR only when you’re together at the ${collectionPlace(handoff)}.` : `${giver} displays the Delivery QR when they hand over your Order.`} There’s nothing to scan before then.</p>
+      </div>
+      <div className="p-4 pb-6"><Button size="lg" variant="tertiary" onClick={onBack} style={{ width: '100%' }}>Back to Order</Button></div>
+    </>
+  )
+}
+
+/** A scan or code after the Handoff was verified: it was accepted once, and nothing changes (WO-006A). */
+function HandoffDone({ handoff, at, onBack, onCompleted }: { handoff: FinalHandoff; at: Moment; onBack: () => void; onCompleted: () => void }) {
+  return (
+    <>
+      <Header title="Final handoff" onBack={onBack} />
+      <div className="flex flex-1 flex-col items-center justify-center px-7 text-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-success-bg text-success"><CheckIcon /></span>
+        <div role="status" className="mt-5">
+          <div className="font-display text-2xl font-semibold">{handoffKind(handoff)} already verified</div>
+          <p className="mt-2 text-sm leading-relaxed text-text-secondary">{`Order ${handoff.order} was completed at ${handoffTime(handoff.verifiedAt, at)}. Its final handoff is verified once, so there’s nothing more to scan.`}</p>
+        </div>
+      </div>
+      <div className="p-4 pb-6"><Button size="lg" onClick={onCompleted} style={{ width: '100%' }}>View completed Order</Button></div>
+    </>
+  )
+}
+
+function DeliveryScanner({ handoff, at, onBack, onCamera, onOtp, onCompleted }: {
+  handoff: FinalHandoff; at: Moment; onBack: () => void; onCamera: () => void; onOtp: () => void; onCompleted: () => void
+}) {
+  if (handoff.phase === 'verified') return <HandoffDone handoff={handoff} at={at} onBack={onBack} onCompleted={onCompleted} />
+  if (handoff.phase !== 'open') return <HandoffNotOpen handoff={handoff} onBack={onBack} />
+  const giver = presenterName(handoff)
+  const delegate = recipientName(handoff)
+  // Each mode's own instruction: the Courier for Courier Delivery, the Seller for Seller Delivery and Buyer Collection.
+  const instruction = delegate
+    ? `${delegate}, your authorized recipient, receives this Order and scans the ${handoff.qr} ${giver} displays.`
+    : handoff.mode === 'Courier Delivery'
+      ? `Ask ${giver}, your courier, to display the Delivery QR, then scan it with your camera to verify handoff.`
+      : handoff.mode === 'Seller Delivery'
+        ? `${giver} displays the Delivery QR when they hand over your Order. Scan it with your camera to verify handoff.`
+        : `At the ${collectionPlace(handoff)}, ${giver} displays the Collection QR when they hand over your Order. Scan it with your camera to verify handoff.`
   return (
     <>
       <Header title="Final handoff" onBack={onBack} />
       <div className="flex flex-1 flex-col items-center justify-center px-7 text-center">
         <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-muted text-brand"><ScanIcon /></span>
-        <div className="mt-5 font-display text-2xl font-semibold">Scan Delivery QR</div>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">Ask the courier to display the Delivery QR, then scan it with your camera to verify handoff.</p>
-        <div className="mt-5 w-full rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">You scan the courier’s QR. You never need to display a delivery QR.</div>
+        <div className="mt-5 font-display text-2xl font-semibold">Scan {handoff.qr}</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">{instruction}</p>
+        <div className="mt-5 w-full rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">{delegate ? `${delegate} scans ${giver}’s QR. Nobody receiving an Order displays a QR.` : `You scan ${giver}’s QR. You never need to display a QR.`}</div>
       </div>
       <div className="p-4 pb-6">
         <Button size="lg" onClick={onCamera} style={{ width: '100%' }}>Open camera</Button>
-        <button onClick={onOtp} className="mt-4 w-full text-center text-xs font-semibold text-brand">Camera not working? Use OTP fallback</button>
+        <button onClick={onOtp} className="mt-4 w-full text-center text-xs font-semibold text-brand">Having trouble scanning? Use verification code</button>
       </div>
     </>
   )
 }
 
-function ScannerCamera({ onBack, onScan }: { onBack: () => void; onScan: () => void }) {
+function ScannerCamera({ handoff, onBack, onScan, onUnreadable }: { handoff: FinalHandoff; onBack: () => void; onScan: () => void; onUnreadable: () => void }) {
+  const giver = presenterName(handoff)
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-text-primary text-white">
-      <div className="relative z-10 flex items-center gap-3 p-4"><IconButton label="Close camera" onClick={onBack} dark>×</IconButton><div className="font-display text-lg font-semibold">Scan courier’s Delivery QR</div></div>
+      <div className="relative z-10 flex items-center gap-3 p-4"><IconButton label="Close camera" onClick={onBack} dark>×</IconButton><div className="font-display text-lg font-semibold">Scan {giver}’s {handoff.qr}</div></div>
       <div className="flex flex-1 flex-col items-center justify-center">
-        <div className="relative h-60 w-60 rounded-3xl border-2 border-white/80">
+        <div role="img" aria-label={`Simulated camera frame for scanning ${giver}’s ${handoff.qr}`} className="relative h-60 w-60 rounded-3xl border-2 border-white/80">
           <span className="absolute left-3 right-3 top-1/2 h-0.5 bg-brand shadow-lg" />
           <span className="absolute inset-10 grid grid-cols-4 gap-2 opacity-30">{Array.from({ length: 16 }).map((_, i) => <span key={i} className={`${i % 3 === 0 ? 'bg-white' : 'border border-white'} rounded-sm`} />)}</span>
         </div>
-        <p className="mt-6 px-8 text-center text-sm text-white/70">Position the QR shown on the courier’s device inside the frame.</p>
+        <p className="mt-6 px-8 text-center text-sm text-white/70">Position the {handoff.qr} shown on {giver}’s device inside the frame.</p>
       </div>
-      <div className="p-5 pb-8"><Button onClick={onScan} size="lg" style={{ width: '100%' }}>Simulate QR detected</Button></div>
+      <div className="p-5 pb-8">
+        <Button onClick={onScan} size="lg" style={{ width: '100%' }}>Simulate QR detected</Button>
+        {/* The §56 Failed state, deterministically: the scan doesn't verify and nothing changes. */}
+        <button onClick={onUnreadable} className="mt-4 w-full text-center text-xs font-semibold text-white/80" style={{ outlineColor: 'var(--color-text-inverse)' }}>Simulate unreadable QR</button>
+      </div>
     </div>
   )
 }
 
-function QrVerifying({ orderId, onVerified }: { orderId: OrderId; onVerified: () => void }) {
+function QrVerifying({ handoff, onVerified }: { handoff: FinalHandoff; onVerified: () => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-7 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-full bg-info-bg text-info"><ProcessingIcon /></span>
-      <div className="mt-5 font-display text-2xl font-semibold">Verifying delivery</div>
-      <p className="mt-2 text-sm leading-relaxed text-text-secondary">Adulis is verifying the Delivery QR against Order {orderId}.</p>
+      <div role="status" className="mt-5">
+        <div className="font-display text-2xl font-semibold">Verifying {handoffKind(handoff).toLowerCase()}</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">Adulis is verifying the {handoff.qr} against Order {handoff.order}.</p>
+      </div>
       <Button onClick={onVerified} variant="tertiary" style={{ marginTop: 32 }}>Complete verification</Button>
     </div>
   )
 }
 
-function DeliveryConfirmed({ orderId, onContinue }: { orderId: OrderId; onContinue: () => void }) {
-  // The verified final scan completes the Order, so its scan time is the Order's Completed time.
-  const scanned = stateTime(orderId, 'Completed')
+/** The §56 Failed state: the QR didn't verify, so nothing changed; try again, or use the verification code (§19). */
+function ScanFailed({ handoff, at, onBack, onRetry, onCode }: { handoff: FinalHandoff; at: Moment; onBack: () => void; onRetry: () => void; onCode: () => void }) {
+  const message = `The ${handoff.qr} couldn’t be read, so nothing changed: Order ${handoff.order} is still at ${orderStateAt(handoff.order, at) ?? '—'}.`
+  return (
+    <>
+      <Header title="Final handoff" onBack={onBack} />
+      <div className="flex flex-1 flex-col items-center justify-center">
+        <p role="alert" className="sr-only">{`${handoff.qr} not verified. ${message}`}</p>
+        <VerificationFailed title={`${handoff.qr} not verified`} message={message} onRetry={onRetry} onFallback={onCode} />
+      </div>
+    </>
+  )
+}
+
+function DeliveryConfirmed({ handoff, at, method, repeat, onContinue }: { handoff: FinalHandoff; at: Moment; method?: HandoffMethod; repeat: boolean; onContinue: () => void }) {
+  // The verified final scan completes the Order, so its time is the Order's Completed time (DEMO_DATA).
+  const time = handoffTime(handoff.verifiedAt, at)
+  const giver = presenterName(handoff)
+  const delegate = recipientName(handoff)
+  // This session's method, or DEMO_DATA's when the Handoff was verified before this session.
+  const used = method ?? (handoff.method === 'OTP fallback' ? 'OTP' : 'QR')
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-full bg-success-bg text-success"><CheckIcon /></span>
-      <div className="mt-5 font-display text-2xl font-semibold">Delivery confirmed</div>
-      <p className="mt-2 text-sm leading-relaxed text-text-secondary">Final handoff is verified.{scanned && ` The Delivery QR was scanned successfully at ${formatClock12(scanned)}.`}</p>
-      <div className="mt-6 w-full rounded-xl bg-success-bg p-4 text-left"><PriceRow label="Seller Order" value={orderId} /><PriceRow label="Handoff" value="Verified" strong /></div>
+      <div role="status" className="mt-5">
+        <div className="font-display text-2xl font-semibold">{handoffKind(handoff)} {repeat ? 'already verified' : 'confirmed'}</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">{repeat ? `This handoff was verified once, at ${time}. Nothing changed.` : used === 'QR' ? `Final handoff is verified. ${delegate ?? 'You'} scanned ${giver}’s ${handoff.qr} at ${time}.` : `Final handoff is verified with the verification code at ${time}.`}</p>
+      </div>
+      <div className="mt-6 w-full rounded-xl bg-success-bg p-4 text-left">
+        <PriceRow label="Seller Order" value={handoff.order} />
+        <PriceRow label="Handoff" value="Verified" strong />
+        <PriceRow label="Method" value={used === 'QR' ? 'QR' : 'Verification code'} />
+        <PriceRow label="Received by" value={delegate ? `${delegate} (authorized recipient)` : shortName(BUYERS[handoff.recipient.buyer].name)} />
+      </div>
+      {delegate && <p className="mt-3 text-xs leading-relaxed text-text-muted">Order ownership, Claim, refund and Review rights stay with you.</p>}
       <Button size="lg" onClick={onContinue} style={{ width: '100%', marginTop: 24 }}>Continue</Button>
     </div>
   )
 }
 
-function OtpFallback({ onBack, onVerify }: { onBack: () => void; onVerify: () => void }) {
+function OtpFallback({ handoff, at, onBack, onVerify, onCompleted }: { handoff: FinalHandoff; at: Moment; onBack: () => void; onVerify: () => void; onCompleted: () => void }) {
   const [otp, setOtp] = useState('')
+  if (handoff.phase === 'verified') return <HandoffDone handoff={handoff} at={at} onBack={onBack} onCompleted={onCompleted} />
+  if (handoff.phase !== 'open') return <HandoffNotOpen handoff={handoff} onBack={onBack} />
+  const delegate = handoff.recipient.delegate
+  // The code goes to the recipient's phone as DEMO_DATA records it (WO-006A requirement 5), never via the Courier.
+  const phone = delegate?.phoneMasked ?? BUYERS[handoff.recipient.buyer].phoneMasked
   return (
     <>
-      <Header title="OTP fallback" onBack={onBack} />
+      <Header title="Verification code" onBack={onBack} />
       <div className="flex-1 p-5">
-        <div className="font-display text-2xl font-semibold">Enter courier OTP</div>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">If QR scanning is unavailable, ask the courier for the one-time delivery code shown in their app.</p>
-        <div className="mt-7"><TextInput label="6-digit delivery OTP" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" inputMode="numeric" /></div>
-        <div className="mt-5 rounded-xl bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">Only use this while you or your delegate is physically receiving the package.</div>
+        <div className="font-display text-2xl font-semibold">Enter verification code</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">{delegate
+          ? `If the QR can’t be scanned, Adulis sends a one-time verification code to ${shortName(delegate.name)}’s phone (${phone}). Enter the verification code sent to that phone once the Order is received.`
+          : `If the QR can’t be scanned, Adulis sends a one-time verification code to your phone${phone ? ` (${phone})` : ''}. Enter the verification code sent to your phone once you’ve received your Order.`}</p>
+        <div className="mt-7"><TextInput label="6-digit verification code" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" inputMode="numeric" /></div>
+        <div className="mt-5 rounded-xl bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">Only use it while the Order is handed over in person. The code works once, for this handoff only.</div>
       </div>
       <div className="border-t border-border p-4 pb-6"><Button size="lg" disabled={otp.length !== 6} onClick={onVerify} style={{ width: '100%' }}>Verify handoff</Button></div>
     </>
   )
 }
 
-function CompletedOrder({ orderId, onBack, onReview, onClaim }: { orderId: OrderId; onBack: () => void; onReview: () => void; onClaim: () => void }) {
+function CompletedOrder({ orderId, at, onBack, onReview, onClaim }: { orderId: OrderId; at: Moment; onBack: () => void; onReview: () => void; onClaim: () => void }) {
   const order = ORDERS[orderId]
   const names = order.lines.map(line => PRODUCTS[line.product].name).join(' · ')
+  const handoff = finalHandoffAt(orderId, at)
+  const delegate = recipientName(handoff)
+  // The review right is the Order Buyer's, from the verified final Handoff, never the recipient's (rules 10.2, 11.1).
+  const eligibility = reviewEligibilityAt(orderId, at)
   return (
     <>
       <Header title="Completed Order" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="rounded-2xl bg-success-bg p-5 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success text-white"><CheckIcon /></span><div className="mt-3 font-display text-2xl font-semibold">Completed</div><div className="mt-1 text-sm text-text-secondary">Delivery verified · Order {orderId}</div></div>
+        <div className="rounded-2xl bg-success-bg p-5 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success text-white"><CheckIcon /></span><div className="mt-3 font-display text-2xl font-semibold">Completed</div><div className="mt-1 text-sm text-text-secondary">{handoffKind(handoff)} verified · Order {orderId}</div>{delegate && <div className="mt-1 text-xs text-text-muted">Received by {delegate}, your authorized recipient</div>}</div>
         <SectionLabel>Your order</SectionLabel>
         <div className="flex gap-3"><Placeholder label={names} className="h-24 w-20 rounded-xl" /><div><div className="text-sm font-semibold">{names}</div><div className="mt-1 text-xs text-text-muted">{SELLERS[order.seller].name} · {order.lines.map(lineOptions).join(' · ')}</div><div className="mt-2 text-sm font-bold">{formatEtb(orderTotals(orderId).total)} paid</div></div></div>
-        <div className="mt-6 rounded-xl border border-brand/20 p-4"><div className="font-display text-lg font-semibold">How was your order?</div><p className="mt-1 text-xs text-text-muted">Your verified handoff means this order now qualifies for a review.</p><Button onClick={onReview} style={{ width: '100%', marginTop: 14 }}>Review Order</Button></div>
+        {eligibility.eligible && !eligibility.review && <div className="mt-6 rounded-xl border border-brand/20 p-4"><div className="font-display text-lg font-semibold">How was your order?</div><p className="mt-1 text-xs text-text-muted">Your verified handoff means this order now qualifies for a review.</p><p className="mt-1 text-xs font-semibold text-text-secondary">Eligible for review from {handoffTime(eligibility.from, at)} · Not reviewed yet</p><Button onClick={onReview} style={{ width: '100%', marginTop: 14 }}>Review Order</Button></div>}
+        {eligibility.review && <div className="mt-6 rounded-xl bg-surface-raised p-4 text-sm text-text-secondary">You reviewed this Order.</div>}
         <button onClick={onClaim} className="mt-5 w-full text-center text-xs font-semibold text-brand">Problem with this Order?</button>
       </div>
     </>

@@ -10,7 +10,7 @@ import {
   BUYERS, CLAIMS, CLAIM_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, GENERAL_CONTEXT, MARKET, ORDERS, ORDER_TIMELINES,
   PRODUCTS, SELLERS, STAFF, SURFACE_DEFAULTS,
   awaitingSellerReplyAt, byMessageTime, claimStateAt, completedForSellerAt, contextChoicesAt, contextKey, contextSubject, courierAvailabilityAt,
-  courierCompensationAt, effectiveMessagesAt, formatAge, formatClock, formatClockShort, formatDate, formatDayMonth, formatEtb, happenedBefore, initials,
+  courierCompensationAt, effectiveMessagesAt, finalHandoffAt, formatAge, formatClock, formatClockShort, formatDate, formatDayMonth, formatEtb, happenedBefore, initials,
   lineOptions, messagesAt, notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, preparationAt, readyStateFor, relationshipStatusAt,
   sameContext, sellerProductsAt, sellerReplyDueAt, sessionStaffOn, shortName, showcaseSellers, stateTime,
   type ClaimId, type ConversationId, type CourierId, type MessageContext, type MessageRecord, type Moment, type NotificationRecord, type OrderId,
@@ -18,7 +18,7 @@ import {
 } from '../demo-data'
 
 type TabKey = 'alerts' | 'orders' | 'inbox' | 'more'
-type Screen = 'tabs' | 'order' | 'prepare' | 'couriers' | 'offer' | 'pickup-qr' | 'pickup-verified' | 'delivery' | 'handoff-qr' | 'handoff-otp' | 'handoff-verified' | 'conversation' | 'claim'
+type Screen = 'tabs' | 'order' | 'prepare' | 'couriers' | 'offer' | 'pickup-qr' | 'pickup-verified' | 'delivery' | 'handoff-qr' | 'handoff-otp' | 'handoff-verified' | 'collection-qr' | 'conversation' | 'claim'
 type HandoffMethod = 'QR' | 'OTP fallback'
 type OrderStage = 'paid' | 'preparing' | 'ready' | 'offer' | 'assigned' | 'pickup' | 'delivery'
 type Tone = 'brand' | 'danger' | 'warning' | 'info' | 'success'
@@ -106,12 +106,14 @@ export default function MobileSellerCompanion({ demoTarget }: { demoTarget?: str
 function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSeller }: {
   sellerId: SellerId; at: Moment; advanceTo: (event: Moment | string) => void; demoTarget?: string; onSwitchSeller: (id: SellerId) => void
 }) {
-  const initialTab: TabKey = demoTarget === 'inbox' ? 'inbox' : demoTarget === 'order' ? 'orders' : 'alerts'
+  const initialTab: TabKey = demoTarget === 'inbox' ? 'inbox' : demoTarget === 'order' || demoTarget === 'collection-qr' ? 'orders' : 'alerts'
   const initialScreen: Screen = demoTarget === 'order'
     ? 'order'
     : demoTarget === 'pickup-qr'
       ? 'pickup-qr'
-      : 'tabs'
+      : demoTarget === 'collection-qr'
+        ? 'collection-qr'
+        : 'tabs'
   // The step's records (the surface defaults otherwise) when they belong to this Seller; else the Seller's own.
   const { focus } = useStory()
   const initialOrder = [focus?.order, SURFACE_DEFAULTS.order].find(id => id && ORDERS[id].seller === sellerId) ?? activeOrders(sellerId, at)[0] ?? ordersAt({ seller: sellerId }, at)[0]
@@ -157,6 +159,9 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
   const startSellerDelivery = () => { advance('Out for Seller Delivery'); setStage('delivery'); setNotice('Seller Delivery started') }
   const openHandoff = () => { advance('Delivery Handoff'); setNotice(undefined); setScreen('handoff-qr') }
   const completeHandoff = (method: HandoffMethod) => { advance('Completed'); setHandoffMethod(method); setScreen('handoff-verified') }
+  // Buyer Collection (rules 4.6, 8.9; WO-006A): once the Buyer is with the Seller, the Collection Handoff opens and the
+  // Seller displays the Collection QR. Only the Buyer's verified scan, or the code the Buyer enters, completes the Order.
+  const openCollection = () => { advance('Collection Handoff'); setStage('delivery'); setNotice(undefined); setScreen('collection-qr') }
   // The Order's conversation, when the Buyer has one with this Seller.
   const orderConversation = orderId && CONVERSATION_IDS.find(id => CONVERSATIONS[id].seller === ORDERS[orderId].seller && CONVERSATIONS[id].buyer === ORDERS[orderId].buyer)
 
@@ -195,11 +200,13 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
           onDelivery={() => setScreen('delivery')}
           onStartSellerDelivery={startSellerDelivery}
           onHandoff={openHandoff}
+          onCollectionQr={openCollection}
           onChat={() => (orderConversation ? openConversation(orderConversation) : undefined)}
         />
       )}
       {screen === 'handoff-qr' && orderId && <SellerDeliveryQr orderId={orderId} onBack={backToOrder} onScanned={() => completeHandoff('QR')} onOtp={() => setScreen('handoff-otp')} />}
       {screen === 'handoff-otp' && orderId && <HandoffOtp orderId={orderId} onBack={() => setScreen('handoff-qr')} onVerified={() => completeHandoff('OTP fallback')} />}
+      {screen === 'collection-qr' && orderId && <CollectionQr orderId={orderId} at={at} onBack={backToOrder} />}
       {screen === 'handoff-verified' && orderId && <HandoffVerified orderId={orderId} at={at} method={handoffMethod} onContinue={() => { setNotice('Delivery verified · Order Completed'); setScreen('order') }} />}
       {screen === 'prepare' && orderId && <PrepareOrder orderId={orderId} onBack={backToOrder} onReady={markReady} />}
       {screen === 'couriers' && orderId && <CourierSelection sellerId={sellerId} at={at} onBack={backToOrder} onSelect={id => { const offered = ORDERS[orderId].offer?.offered; if (offered) advanceTo(offered); setCourierId(id); setStage('offer'); setScreen('offer') }} />}
@@ -344,14 +351,15 @@ function stageLabel(orderId: OrderId, stage: OrderStage, at: Moment): string {
   return stage === 'delivery' && !courierMode && reached && states.indexOf(reached) > states.indexOf(afterReady) ? reached : labels[stage]
 }
 
-function OrderDetail({ orderId, stage, at, notice, onBack, onPrepare, onCouriers, onPickupQr, onDelivery, onStartSellerDelivery, onHandoff, onChat }: {
+function OrderDetail({ orderId, stage, at, notice, onBack, onPrepare, onCouriers, onPickupQr, onDelivery, onStartSellerDelivery, onHandoff, onCollectionQr, onChat }: {
   orderId: OrderId; stage: OrderStage; at: Moment; notice?: string; onBack: () => void; onPrepare: () => void; onCouriers: () => void; onPickupQr: () => void; onDelivery: () => void
-  onStartSellerDelivery: () => void; onHandoff: () => void; onChat: () => void
+  onStartSellerDelivery: () => void; onHandoff: () => void; onCollectionQr: () => void; onChat: () => void
 }) {
   const order = ORDERS[orderId]
   const buyer = BUYERS[order.buyer]
   const courierMode = order.fulfilment === 'Courier Delivery'
   const sellerDelivery = order.fulfilment === 'Seller Delivery'
+  const collection = order.fulfilment === 'Buyer Collection'
   const reached = orderStateAt(orderId, at)
   // The Order's own preparation deadline: a record-specific demo timestamp, not a preparation policy.
   const preparation = preparationAt(orderId, at)
@@ -397,6 +405,7 @@ function OrderDetail({ orderId, stage, at, notice, onBack, onPrepare, onCouriers
           {stage === 'assigned' && <Button onClick={onPickupQr}>Display Seller Pickup QR</Button>}
           {(stage === 'pickup' || stage === 'delivery') && courierMode && <Button onClick={onDelivery}>View Delivery Status</Button>}
           {stage === 'delivery' && sellerDelivery && reached !== 'Completed' && <Button onClick={onHandoff}>Display Delivery QR</Button>}
+          {(stage === 'ready' || stage === 'delivery') && collection && reached !== 'Completed' && <Button onClick={onCollectionQr}>Display Collection QR</Button>}
           <Button variant="tertiary" onClick={onChat}>Chat with Buyer</Button>
         </div>
         {/* The final handoff for Seller Delivery and Buyer Collection (rules 8.8–8.10). */}
@@ -599,6 +608,48 @@ function HandoffOtp({ orderId, onBack, onVerified }: { orderId: OrderId; onBack:
         <div className="mt-5 rounded-xl bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">Use the code only while you hand the package to the Buyer or their authorized delegate.</div>
       </div>
       <div className="border-t border-border p-4 pb-6"><Button size="lg" disabled={code.length !== 6} onClick={onVerified} style={{ width: '100%' }}>Verify handoff</Button></div>
+    </>
+  )
+}
+
+/**
+ * Buyer Collection's final handoff (rule 8.9; WO-006A): with the Buyer present, the Seller displays the Collection QR
+ * and the Buyer scans it in the Buyer app. The QR is tied to this Order, its final receipt, its presenter and its
+ * recipient. Only the Buyer's verified scan, or the code the Buyer enters, completes the Order: the Seller can't here.
+ */
+function CollectionQr({ orderId, at, onBack }: { orderId: OrderId; at: Moment; onBack: () => void }) {
+  const order = ORDERS[orderId]
+  const seller = SELLERS[order.seller]
+  const buyer = shortName(BUYERS[order.buyer].name)
+  const handoff = finalHandoffAt(orderId, at)
+  const staff = 'seller' in handoff.presenter ? handoff.presenter.staff : undefined
+  return (
+    <>
+      <ScreenHeader title="Collection QR" onBack={onBack} />
+      <div className="flex flex-1 flex-col items-center justify-center-safe overflow-y-auto px-6 py-4 text-center">
+        {handoff.phase === 'verified' ? (
+          <div role="status" className="flex flex-col items-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-success-bg text-success"><CheckIcon /></span>
+            <div className="mt-5 font-display text-2xl font-semibold">Collection verified</div>
+            <p className="mt-2 text-sm leading-relaxed text-text-secondary">{buyer} scanned your Collection QR{handoff.verifiedAt ? ` at ${formatClock(handoff.verifiedAt)}` : ''}. The Order is Completed.</p>
+          </div>
+        ) : (
+          <>
+            <div className="rounded-3xl bg-surface p-5 shadow-lg ring-1 ring-border"><QrPattern label={`Collection QR for Order ${orderId}: final receipt`} /></div>
+            <div className="mt-4 font-display text-2xl font-semibold">Display this QR to {buyer}</div>
+            <p className="mt-2 text-sm leading-relaxed text-text-secondary">{buyer} scans it in the Adulis app to confirm they received the Order. It’s a final receipt QR, not a Pickup QR.</p>
+            <div className="mt-4 w-full rounded-xl bg-surface-raised p-3 text-left">
+              <InfoRow label="Order" value={orderId} />
+              <InfoRow label="Fulfilment" value={`Buyer Collection · ${seller.buyerCollection?.place ?? '—'}`} />
+              <InfoRow label="Displayed by" value={staff ? shortName(STAFF[staff].name) : seller.name} />
+              <InfoRow label="Scanned by" value={buyer} />
+            </div>
+            <div role="status" className="mt-3 text-sm font-semibold text-brand">Waiting for {buyer} to scan</div>
+            <div className="mt-3 w-full rounded-xl bg-warning-bg p-3 text-left text-xs leading-relaxed text-text-secondary">Hand over the Order once the scan is verified; only that verification completes it. If {buyer} can’t scan, they enter the verification code Adulis sends to their phone. If both fail, only Adulis Operators can verify the handoff manually.</div>
+          </>
+        )}
+      </div>
+      <div className="p-4 pb-6"><Button size="lg" variant="tertiary" onClick={onBack} style={{ width: '100%' }}>Back to Order</Button></div>
     </>
   )
 }

@@ -167,8 +167,9 @@ export default function App() {
         )}
       </aside>
 
-      {/* Main content */}
-      <main className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}`}>
+      {/* Main content. While Flow M runs, `flow-card-clearance` lets its phone scroll clear of the guided-flow card at
+          phone widths (index.css; WO-006A). WO-007 owns the overlay repair for every flow. */}
+      <main className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}${journey?.id === 'M' ? ' flow-card-clearance' : ''}`}>
         <StoryProvider stage={stageFor(journey?.id, journey?.stage ?? 0)}>
           <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} />
         </StoryProvider>
