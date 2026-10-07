@@ -102,6 +102,12 @@ textarea {
   outline-offset: 2px;
 }
 
+/* The Operator sidebar is dark, and the info blue lacks contrast on it: its controls' focus ring uses the light inverse
+   token instead, in every state, the drawer included (WO-009; spec §57: visible keyboard focus). */
+.operator-console-sidebar :focus-visible {
+  outline-color: var(--color-text-inverse);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -173,6 +179,17 @@ textarea {
 
   .seller-console:has(> .seller-console-sidebar.is-open) {
     padding-left: 52px;
+  }
+
+  /* The Operator Console has no rail here: as on a phone, its navigation is the temporary drawer opened from the top
+     bar (styled in the 1200 px block below), so its desktop Collapse control isn't offered where it couldn't work.
+     The desktop sidebar keeps its Expanded or Collapsed state for desktop widths (WO-009; spec §39). */
+  .operator-console-sidebar:not(.is-open) {
+    display: none;
+  }
+
+  .operator-console .console-menu-button {
+    display: flex;
   }
 }
 
@@ -438,8 +455,8 @@ textarea {
     letter-spacing: 0.04em;
   }
 
-  /* The consoles' navigation drawer (WO-007; spec §4): both consoles' navigation on a phone, and the Seller Console's
-     full navigation on a tablet. */
+  /* The consoles' navigation drawer (WO-007; spec §4): both consoles' navigation on a phone, and on a tablet the
+     Seller Console's full navigation and the Operator Console's navigation (WO-009; spec §39). */
   .seller-console-sidebar.is-open,
   .operator-console-sidebar.is-open {
     display: flex;

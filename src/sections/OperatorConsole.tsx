@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { SearchInput, Textarea, TextInput } from '../components/ui/Input'
 import {
   ConsoleTopBar, SidebarItem, SidebarSeparator, SidebarGroupLabel, useDrawer,
@@ -136,12 +136,35 @@ function pendingDecisions(at: Moment) {
 export default function OperatorConsole({ demoTarget }: { demoTarget?: string }) {
   const initialNav = (demoTarget && ALL_NAV_ITEMS.some(item => item.key === demoTarget) ? demoTarget : 'overview') as NavKey
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav)
+  // Desktop has two persistent sidebar states, Expanded and the Collapsed icon rail (spec §39).
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [soloState, setSoloState] = useState<SoloState>('inactive')
-  // On a phone the sidebar is a drawer, opened from the top bar's menu button (index.css; spec §4).
+  // Below desktop widths the sidebar is a temporary drawer instead, opened from the top bar's menu button (index.css;
+  // spec §4 and §39). The drawer doesn't change the desktop state.
   const drawer = useDrawer()
   const open = (key: NavKey) => { setActiveNav(key); drawer.close() }
   const labelled = sidebarOpen || drawer.open
+  const rail = !labelled
+  // In the rail each icon's label shows beside it while it is hovered or has keyboard focus (spec §39: tooltip and
+  // focus treatment); its accessible name is the label in both states.
+  const [tip, setTip] = useState<{ label: string; top: number } | null>(null)
+  const showTip = (target: EventTarget | null) => {
+    const button = rail && target instanceof Element ? target.closest<HTMLElement>('[data-rail-label]') : null
+    const aside = button?.closest('aside')
+    if (!button || !aside) { setTip(null); return }
+    const b = button.getBoundingClientRect(), a = aside.getBoundingClientRect()
+    setTip({ label: button.dataset.railLabel ?? '', top: b.top - a.top + b.height / 2 })
+  }
+  const toggleSidebar = () => { setTip(null); setSidebarOpen(value => !value) }
+  // If the window widens to a desktop width while the drawer is open, the drawer closes, so the desktop sidebar is
+  // back in the state it had.
+  useEffect(() => {
+    if (!drawer.open) return
+    const desktop = window.matchMedia('(min-width: 1201px)')
+    const onChange = () => { if (desktop.matches) drawer.close() }
+    desktop.addEventListener('change', onChange)
+    return () => desktop.removeEventListener('change', onChange)
+  }, [drawer.open])
   // The story moment of the guided-flow step (the 10:25 snapshot otherwise). Queue badges count its open work.
   const { moment: at } = useStory()
   const work = workItems(at)
@@ -154,19 +177,26 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
 
   return (
     <div className="operator-console flex" style={{ height: '100%', background: BG }}>
-      <aside id={drawer.id} {...drawer.panelProps('Operator navigation')} className={`operator-console-sidebar flex flex-shrink-0 flex-col border-r transition-all duration-300${drawer.open ? ' is-open' : ''}`} style={{ width: sidebarOpen ? 240 : 52, background: SURFACE, borderColor: BORDER }}>
-        <div className="flex h-14 flex-shrink-0 items-center gap-2 border-b px-3" style={{ borderColor: BORDER }}>
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${ACCENT}20` }}><AdulisLogo size={18} /></div>
+      <aside id={drawer.id} {...drawer.panelProps('Operator navigation')} className={`operator-console-sidebar relative flex flex-shrink-0 flex-col border-r transition-all duration-300${drawer.open ? ' is-open' : ''}`} style={{ width: sidebarOpen ? 240 : 52, background: SURFACE, borderColor: BORDER }}
+        onMouseOver={event => showTip(event.target)} onMouseLeave={() => showTip(document.activeElement?.matches(':focus-visible') ? document.activeElement : null)}
+        onFocus={event => { if (event.target.matches(':focus-visible')) showTip(event.target) }} onBlur={() => setTip(null)}>
+        {/* In the rail the header holds only the Expand control, inside the rail, so it is always there to press. */}
+        <div className={`flex h-14 flex-shrink-0 items-center gap-2 border-b px-3${rail ? ' justify-center' : ''}`} style={{ borderColor: BORDER }}>
+          {labelled && <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: `${ACCENT}20` }}><AdulisLogo size={18} /></div>}
           {labelled && <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold" style={{ color: TEXT }}>Operator Console</p><p className="truncate text-xs" style={{ color: MUTED }}>Adulis Platform</p></div>}
-          <button onClick={() => setSidebarOpen(open => !open)} aria-label={sidebarOpen ? 'Collapse Operator navigation' : 'Expand Operator navigation'} className="console-collapse-button flex h-6 w-6 flex-shrink-0 items-center justify-center rounded" style={{ color: MUTED }}><CollapseIcon open={sidebarOpen} /></button>
+          <button onClick={toggleSidebar} aria-label={sidebarOpen ? 'Collapse Operator navigation' : 'Expand Operator navigation'} data-rail-label={rail ? 'Expand Operator navigation' : undefined} className="console-collapse-button flex h-6 w-6 flex-shrink-0 items-center justify-center rounded" style={{ color: MUTED }}><CollapseIcon open={sidebarOpen} /></button>
           <button ref={drawer.closeRef} onClick={drawer.close} aria-label="Close Operator navigation" className="console-drawer-close flex-shrink-0 items-center justify-center rounded-lg text-lg" style={{ color: MUTED }}>×</button>
         </div>
-        <nav className="flex flex-1 flex-col overflow-y-auto py-2">
-          {NAV_STRUCTURE.map((group, index) => <div key={group.group ?? index}>{group.group && labelled && <SidebarGroupLabel label={group.group} dark />}{!group.group && index > 0 && <SidebarSeparator dark />}{group.items.map(item => <SidebarItem key={item.key} label={labelled ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => open(item.key)} dark badge={badges[item.key]} />)}</div>)}
+        {/* The rail keeps every destination, group and count: a separator stands for each group's label, which stays
+            in the page for assistive technology. */}
+        <nav className="flex flex-1 flex-col overflow-y-auto py-2" onScroll={() => setTip(null)}>
+          {NAV_STRUCTURE.map((group, index) => <div key={group.group ?? index}>{group.group && (labelled ? <SidebarGroupLabel label={group.group} dark /> : <><SidebarSeparator dark /><span className="sr-only">{group.group}</span></>)}{!group.group && index > 0 && <SidebarSeparator dark />}{group.items.map(item => <SidebarItem key={item.key} label={item.label} icon={item.icon} active={activeNav === item.key} onClick={() => open(item.key)} dark badge={badges[item.key]} collapsed={rail} />)}</div>)}
         </nav>
         {labelled && (soloState === 'active'
           ? <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}><p className="text-xs font-semibold" style={{ color: 'var(--color-danger)' }}>EXCEPTIONAL SOLO COVERAGE</p><p className="mt-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>Audited · Expires in 42m</p></div>
           : <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: `${ACCENT}40`, background: `${ACCENT}10` }}><p className="text-xs font-semibold" style={{ color: ACCENT }}>PRIVILEGED SESSION</p><p className="mt-1 text-xs" style={{ color: MUTED }}>Reasoned access · Audit logging · Named actions only</p></div>)}
+        {/* Beside the rail and outside the scrolling nav, so nothing clips it. The button it describes is already named. */}
+        {rail && tip && <div className="operator-rail-tooltip pointer-events-none absolute z-40 whitespace-nowrap rounded-md border px-2 py-1 text-xs font-medium" aria-hidden="true" style={{ left: 'calc(100% + 8px)', top: tip.top, transform: 'translateY(-50%)', background: RAISED, borderColor: BORDER, color: TEXT, boxShadow: 'var(--shadow-lg)' }}>{tip.label}</div>}
       </aside>
       {drawer.open && <div className="console-drawer-backdrop" aria-hidden="true" onClick={drawer.close} />}
 

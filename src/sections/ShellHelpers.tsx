@@ -188,10 +188,10 @@ export interface ConsoleMenu {
 }
 
 /**
- * A console's navigation drawer (spec §4): both consoles' navigation on a phone, and the Seller Console's full navigation
- * beside its icon rail on a tablet. The top bar's menu button opens it; while open it is a modal
- * dialog that keeps keyboard focus inside, and Escape, its close button, the backdrop or choosing a destination close it,
- * returning focus to the menu button. The menu button exists only where index.css shows the drawer, so on wider screens
+ * A console's navigation drawer (spec §4): both consoles' navigation on a phone, the Seller Console's full navigation
+ * beside its icon rail on a tablet, and the Operator Console's navigation on a tablet (spec §39). The top bar's menu
+ * button opens it; while open it is a modal dialog that keeps keyboard focus inside, and Escape, its close button, the
+ * backdrop or choosing a destination close it, returning focus to the menu button. The menu button exists only where index.css shows the drawer, so on wider screens
  * it never opens and closing is a no-op.
  */
 export function useDrawer() {
@@ -483,6 +483,11 @@ export function IconHistory({ size = 22 }: { size?: number }) {
 }
 
 /* ─── Sidebar nav item ─── */
+/**
+ * With `collapsed`, the item is one icon of a collapsed icon rail: the icon is centred, the label stays the button's
+ * accessible name without being shown (`data-rail-label` carries it for the rail's tooltip), and the count badge sits
+ * on the icon's corner.
+ */
 export function SidebarItem({
   label,
   icon,
@@ -491,6 +496,7 @@ export function SidebarItem({
   dark,
   indent,
   badge,
+  collapsed,
 }: {
   label: string
   icon?: ReactNode
@@ -499,6 +505,7 @@ export function SidebarItem({
   dark?: boolean
   indent?: boolean
   badge?: string | number
+  collapsed?: boolean
 }) {
   const activeBg = dark ? 'rgba(232,135,74,0.12)' : 'var(--color-brand-muted)'
   const activeText = dark ? 'var(--color-operator-accent)' : 'var(--color-brand-dark)'
@@ -508,9 +515,10 @@ export function SidebarItem({
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-2.5 rounded-lg transition-colors text-left"
+      data-rail-label={collapsed ? label : undefined}
+      className={collapsed ? 'relative w-full flex items-center justify-center rounded-lg transition-colors' : 'w-full flex items-center gap-2.5 rounded-lg transition-colors text-left'}
       style={{
-        padding: indent ? '6px 12px 6px 28px' : '6px 12px',
+        padding: collapsed ? '6px 0' : indent ? '6px 12px 6px 28px' : '6px 12px',
         background: active ? activeBg : 'transparent',
         color: active ? activeText : inactiveText,
         fontSize: 13,
@@ -522,11 +530,11 @@ export function SidebarItem({
       onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
       {icon && <span className="flex-shrink-0" style={{ width: 16, height: 16, display: 'flex', alignItems: 'center' }}>{icon}</span>}
-      <span className="flex-1 truncate">{label}</span>
+      <span className={collapsed ? 'sr-only' : 'flex-1 truncate'}>{label}</span>
       {badge !== undefined && (
         <span
           className="flex-shrink-0 text-xs font-bold rounded-full px-1.5 py-0.5"
-          style={{ background: dark ? 'rgba(232,135,74,0.2)' : 'var(--color-brand-muted)', color: dark ? 'var(--color-operator-accent)' : 'var(--color-brand)', fontSize: 10, fontFamily: 'var(--font-mono)' }}
+          style={{ background: dark ? 'rgba(232,135,74,0.2)' : 'var(--color-brand-muted)', color: dark ? 'var(--color-operator-accent)' : 'var(--color-brand)', fontSize: 10, fontFamily: 'var(--font-mono)', ...(collapsed ? { position: 'absolute', top: 0, right: 2, padding: '0 4px', lineHeight: '14px' } : {}) }}
         >
           {badge}
         </span>
