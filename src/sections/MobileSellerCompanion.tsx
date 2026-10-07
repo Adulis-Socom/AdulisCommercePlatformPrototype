@@ -9,12 +9,12 @@ import { useStory, useStoryMoment } from '../StoryClock'
 import {
   BUYERS, CLAIMS, CLAIM_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, GENERAL_CONTEXT, MARKET, ORDERS, ORDER_TIMELINES,
   PRODUCTS, SELLERS, STAFF, SURFACE_DEFAULTS,
-  awaitingSellerReplyAt, byMessageTime, claimStateAt, completedForSellerAt, contextChoicesAt, contextKey, contextSubject, courierAvailabilityAt,
+  awaitingSellerReplyAt, byMessageTime, claimStateAt, contextChoicesAt, contextKey, contextSubject, courierAvailabilityAt, courierCardAt,
   courierCompensationAt, effectiveMessagesAt, finalHandoffAt, formatAge, formatClock, formatClockShort, formatDate, formatDayMonth, formatEtb, happenedBefore, initials,
   lineOptions, messagesAt, notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, preparationAt, readyStateFor, relationshipStatusAt,
   sameContext, sellerProductsAt, sellerReplyDueAt, sessionStaffOn, shortName, showcaseSellers, stateTime,
-  type ClaimId, type ConversationId, type CourierId, type MessageContext, type MessageRecord, type Moment, type NotificationRecord, type OrderId,
-  type OrderState, type SellerId, type Timestamp,
+  type ClaimId, type ConversationId, type CourierAvailability, type CourierId, type MessageContext, type MessageRecord, type Moment, type NotificationRecord,
+  type OrderId, type OrderState, type SellerId, type Timestamp,
 } from '../demo-data'
 
 type TabKey = 'alerts' | 'orders' | 'inbox' | 'more'
@@ -471,32 +471,36 @@ function PrepareOrder({ orderId, onBack, onReady }: { orderId: OrderId; onBack: 
 }
 
 function CourierSelection({ sellerId, at, onBack, onSelect }: { sellerId: SellerId; at: Moment; onBack: () => void; onSelect: (id: CourierId) => void }) {
-  // The Seller's approved Couriers at the story moment. The card shows this Seller's own figures only (rule 7.3);
-  // its total-deliveries figure is WO-008's. DEMO_DATA defines no on-time rate.
+  // The Seller's approved Couriers at the story moment (specification §23), each with completed for this Seller first
+  // and the total across Sellers second, as context (rules 7.1–7.4), and this Seller's compensation (rule 6.8); nothing
+  // about other Sellers (rule 7.3). A Busy Courier can still be sent an offer, which he can accept only once his
+  // active delivery is done (DEMO_DATA's 13:50 offer; rule 6.3). DEMO_DATA defines no on-time rate.
   const pool = COURIER_RELATIONSHIPS.filter(r => r.seller === sellerId && relationshipStatusAt(r, at) === 'Approved')
-  const compensation = courierCompensationAt(sellerId, at)
   return (
     <>
       <ScreenHeader title="Approved Courier Pool" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
         <p className="text-sm leading-relaxed text-text-secondary">Select from couriers approved by {SELLERS[sellerId].name}. Compensation is visible before an offer is sent.</p>
         {pool.map(r => {
-          const availability = courierAvailabilityAt(r.courier, at)
+          const card = courierCardAt(sellerId, r.courier, at)
           const approved = typeof r.approved === 'string' ? r.approved : r.approved.at
-          return <CourierCard key={r.courier} name={COURIERS[r.courier].name} initials={initials(COURIERS[r.courier].name)} availability={availability} relationship={`Approved · ${formatDate(approved)}`} compensation={compensation === undefined ? '—' : formatEtb(compensation)} work={`${completedForSellerAt(r.courier, sellerId, at)} completed`} disabled={availability !== 'Available'} onSelect={() => onSelect(r.courier)} />
+          return <CourierCard key={r.courier} name={card.name} initials={initials(card.name)} availability={card.availability} relationship={`Approved · ${formatDate(approved)}`} compensation={card.compensation === undefined ? '—' : formatEtb(card.compensation)} completed={card.completedForSeller} total={card.totalCompleted} disabled={card.availability === 'Unavailable'} onSelect={() => onSelect(r.courier)} />
         })}
       </div>
     </>
   )
 }
 
-function CourierCard({ name, initials, availability, relationship, compensation, work, onSelect, disabled }: {
-  name: string; initials: string; availability: string; relationship: string; compensation: string; work: string; onSelect: () => void; disabled?: boolean
+function CourierCard({ name, initials, availability, relationship, compensation, completed, total, onSelect, disabled }: {
+  name: string; initials: string; availability: CourierAvailability; relationship: string; compensation: string; completed: number; total: number; onSelect: () => void; disabled?: boolean
 }) {
+  // Availability as text plus icon (specification §57). Completed for this Seller is the primary figure and the total
+  // across Sellers secondary context (rule 7.4).
+  const tone = availability === 'Available' ? 'text-success' : availability === 'Busy' ? 'text-warning' : 'text-text-muted'
   return (
     <div className={`mt-4 rounded-2xl border border-border p-4 ${disabled ? 'opacity-60' : ''}`}>
-      <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-info-bg font-bold text-info">{initials}</span><span className="flex-1"><span className="block text-sm font-semibold">{name}</span><span className={`text-xs ${disabled ? 'text-text-muted' : 'text-success'}`}>{availability}</span></span><span className="text-sm font-bold text-brand">{compensation}</span></div>
-      <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-surface-raised p-3 text-xs"><span><span className="block text-text-muted">Relationship</span><span className="font-medium">{relationship}</span></span><span><span className="block text-text-muted">Relevant work</span><span className="font-medium">{work}</span></span></div>
+      <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-info-bg font-bold text-info">{initials}</span><span className="flex-1"><span className="block text-sm font-semibold">{name}</span><span className={`inline-flex items-center gap-1 text-xs ${tone}`}>{availability === 'Available' ? <StatusCheckIcon /> : availability === 'Busy' ? <StatusClockIcon /> : null}{availability}</span></span><span className="text-right"><span className="block text-sm font-bold text-brand">{compensation}</span><span className="block text-[10px] text-text-muted">for this delivery</span></span></div>
+      <div className="mt-3 rounded-xl bg-surface-raised p-3 text-xs"><span className="block text-sm font-semibold">{completed} completed for your store</span><span className="block text-text-muted">{total} total completed deliveries</span><span className="mt-2 block border-t border-border pt-2"><span className="block text-text-muted">Relationship</span><span className="font-medium">{relationship}</span></span></div>
       <Button size="sm" variant="secondary" disabled={disabled} onClick={onSelect} style={{ width: '100%', marginTop: 12 }}>Send Delivery Offer</Button>
     </div>
   )
@@ -506,13 +510,16 @@ function DeliveryOffer({ orderId, courierId, at, onBack, assigned, onAssigned, o
   const courier = COURIERS[courierId].name
   const firstName = courier.split(' ')[0]
   const compensation = courierCompensationAt(ORDERS[orderId].seller, at)
+  // On another active delivery the Courier can't accept the offer yet (rule 6.3; DEMO_DATA's 13:50 offer). That
+  // delivery isn't named: it may be another Seller's (rule 7.3).
+  const busy = !assigned && courierAvailabilityAt(courierId, at) === 'Busy'
   return (
     <>
       <ScreenHeader title="Delivery Offer" onBack={onBack} />
       <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
         <span className={`flex h-16 w-16 items-center justify-center rounded-full ${assigned ? 'bg-success-bg text-success' : 'bg-warning-bg text-warning'}`}>{assigned ? <CheckIcon /> : <OfferIcon />}</span>
         <div className="mt-5 font-display text-2xl font-semibold">{assigned ? 'Courier Assigned' : `Offer sent to ${courier}`}</div>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">{assigned ? `${firstName} accepted the delivery. Prepare to display the Seller Pickup QR when they arrive.` : `Waiting for ${firstName} to accept or decline. The order remains Ready for Courier.`}</p>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">{assigned ? `${firstName} accepted the delivery. Prepare to display the Seller Pickup QR when they arrive.` : busy ? `${firstName} can't accept this offer while on an active delivery. The order remains Ready for Courier.` : `Waiting for ${firstName} to accept or decline. The order remains Ready for Courier.`}</p>
         <div className="mt-6 w-full rounded-xl bg-surface-raised p-4 text-left"><InfoRow label="Order" value={orderId} /><InfoRow label="Compensation" value={compensation === undefined ? '—' : formatEtb(compensation)} /><InfoRow label="Courier" value={courier} /></div>
         {!assigned ? <Button onClick={onAssigned} style={{ width: '100%', marginTop: 24 }}>Simulate courier acceptance</Button> : <Button onClick={onContinue} style={{ width: '100%', marginTop: 24 }}>Continue to Order</Button>}
       </div>
@@ -866,4 +873,13 @@ function CheckIcon() {
 
 function OfferIcon() {
   return <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M4 7h11v10H4zM15 10h3l2 3v4h-5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><circle cx="8" cy="18" r="2" stroke="currentColor" strokeWidth="1.7"/><circle cx="17" cy="18" r="2" stroke="currentColor" strokeWidth="1.7"/></svg>
+}
+
+// Status icons beside their text (specification §57): available, and busy.
+function StatusCheckIcon() {
+  return <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+}
+
+function StatusClockIcon() {
+  return <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 4.6V8l2.3 1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
 }

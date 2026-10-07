@@ -207,6 +207,22 @@ textarea {
   }
 }
 
+/* Seller Console › Couriers while a flow runs and the card floats (Flow F: Approve or Reject a Courier's application).
+   The card sits over the console's bottom right, where the panel's last controls are: from 1201 px keyboard focus
+   stops above it, and from 1440 px the panel gets the room to scroll them clear of it that the console already has at
+   1201–1439 px. The card itself is unchanged. */
+@media (min-width: 1201px) {
+  .flow-active .seller-console-content:has(.couriers-panel) {
+    scroll-padding-bottom: 230px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .flow-active .couriers-panel {
+    padding-bottom: 240px;
+  }
+}
+
 /* Tablet: the shell's narrow rail spans both rows; the card sits under main with its instruction beside its buttons. */
 @media (max-width: 1200px) and (min-width: 641px) {
   .app-shell.flow-active {

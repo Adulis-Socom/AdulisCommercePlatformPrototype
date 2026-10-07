@@ -479,6 +479,17 @@ export function relationshipStatusAt(relationship: CourierRelationship, at: Mome
   return relationship.applied && happenedBefore(relationship.applied, at) ? 'Application pending' : null
 }
 
+/**
+ * A Seller–Courier relationship's history by `at` (specification §36), oldest first: DEMO_DATA's dated events only,
+ * the application where one is recorded and the approval.
+ */
+export function relationshipHistoryAt(relationship: CourierRelationship, at: Moment = DEFAULT_SNAPSHOT): { event: 'Application submitted' | 'Approved'; at: CalendarDate | Moment }[] {
+  const history: { event: 'Application submitted' | 'Approved'; at: CalendarDate | Moment }[] = []
+  if (relationship.applied && happenedBefore(relationship.applied, at)) history.push({ event: 'Application submitted', at: relationship.applied })
+  if (happenedBefore(relationship.approved, at)) history.push({ event: 'Approved', at: relationship.approved })
+  return history
+}
+
 /** Completed for this Seller (rule 7.1): the 10:25 figure plus this Seller's Orders the Courier completed since. */
 export function completedForSellerAt(courier: CourierId, seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): number {
   const base = courierRelationship(seller, courier)?.completedAt1025 ?? 0

@@ -85,6 +85,8 @@ interface BadgeProps {
   size?: BadgeSize
   showDot?: boolean
   customLabel?: string
+  /** An icon beside the label, in place of the dot, so the status reads as text plus icon (specification §57). */
+  icon?: ReactNode
 }
 
 const BADGE_SIZE: Record<BadgeSize, { fontSize: number; px: number; py: number; gap: number; dot: number }> = {
@@ -93,7 +95,7 @@ const BADGE_SIZE: Record<BadgeSize, { fontSize: number; px: number; py: number; 
   lg: { fontSize: 13, px: 10, py: 4,  gap: 5,  dot: 7 },
 }
 
-export function StatusBadge({ status, size = 'md', showDot, customLabel }: BadgeProps) {
+export function StatusBadge({ status, size = 'md', showDot, customLabel, icon }: BadgeProps) {
   const cfg = STATUS_MAP[status] ?? { label: status, bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)' }
   const sz = BADGE_SIZE[size]
 
@@ -117,8 +119,8 @@ export function StatusBadge({ status, size = 'md', showDot, customLabel }: Badge
         whiteSpace: 'nowrap',
       }}
     >
-      {cfg.icon && <span style={{ fontSize: sz.fontSize + 1 }}>{cfg.icon}</span>}
-      {(showDot ?? !!cfg.dot) && !cfg.icon && (
+      {icon ?? (cfg.icon && <span style={{ fontSize: sz.fontSize + 1 }}>{cfg.icon}</span>)}
+      {(showDot ?? !!cfg.dot) && !cfg.icon && !icon && (
         <span
           style={{
             display: 'inline-block',

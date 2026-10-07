@@ -10,19 +10,20 @@ import {
   IconGrid, IconOrders, IconPackage, IconImage, IconInbox,
   IconChart, IconStore, IconBot, IconSettings, IconShield, IconFlag, IconTruck,
 } from './ShellHelpers'
-import { useStory } from '../StoryClock'
+import { useStory, useStoryMoment } from '../StoryClock'
 import {
   BUYERS, CHATBOTS, CLAIMS, CLAIM_IDS, CONTENT_PERFORMANCE_7D, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, DEFAULT_SNAPSHOT,
   GENERAL_CONTEXT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS,
   SELLER_SESSIONS, SELLER_SETTINGS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, VOLT_HOUSE_PREPUBLICATION,
-  activeDiscount, awaitingSellerReplyAt, byMessageTime, claimStateAt, claimSubmitted, claimsForOrder, completedForSellerAt, contextChoicesAt, contextKey,
-  contextSubject, courierAvailabilityAt, courierCompensationAt, currentPrice, effectiveMessagesAt, formatAge, formatCalendarDate, formatClock, formatDate,
+  activeDiscount, awaitingSellerReplyAt, byMessageTime, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt, contextKey,
+  contextSubject, courierCardAt, courierCompensationAt, currentPrice, effectiveMessagesAt, formatAge, formatCalendarDate, formatClock, formatDate,
   formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, isForYouEligibleAt, lineOptions, messagesAt,
   moderationIssuesAt, onAdulisSince, orderStateAt, orderTotals, ordersAt, ordersRequiringPreparationAt, paidAt,
-  paymentReference, postsNeedingAttentionAt, preparationAt, prepublicationCards, prepublicationSnapshotFor, productQualityAt, relationshipStatusAt, restrictionAt,
-  reviewsAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, sessionStaffOn, shortName, showcaseSellers, stateTime, trustAt,
-  type ClaimId, type ClaimState, type ConversationId, type CourierId, type MessageContext, type MessageRecord, type Moment, type OrderId, type OrderState,
-  type ProductId, type SellerId, type ShoppablePostId,
+  paymentReference, postsNeedingAttentionAt, preparationAt, prepublicationCards, prepublicationSnapshotFor, productQualityAt, relationshipHistoryAt,
+  relationshipStatusAt, restrictionAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, sessionStaffOn, shortName,
+  showcaseSellers, stateTime, trustAt,
+  type ClaimId, type ClaimState, type ConversationId, type CourierAvailability, type CourierId, type MessageContext, type MessageRecord, type Moment,
+  type OrderId, type OrderState, type ProductId, type SellerId, type ShoppablePostId, type Timestamp,
 } from '../demo-data'
 
 type NavKey = 'home' | 'orders' | 'products' | 'content' | 'inbox' | 'claims' | 'reviews' | 'trust' | 'insights' | 'store' | 'couriers' | 'automation' | 'settings'
@@ -130,9 +131,11 @@ function greeting(at: Moment) {
 
 export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
   const initialNav = (demoTarget && ['home', 'orders', 'products', 'content', 'inbox', 'claims', 'reviews', 'trust', 'insights', 'store', 'couriers', 'automation', 'settings'].includes(demoTarget) ? demoTarget : 'home') as NavKey
-  // The story moment of the guided-flow step (the 10:25 snapshot otherwise). The console opens on the step's Seller
-  // (the default Seller otherwise); the top-bar Seller selector switches between the primary showcase Sellers.
-  const { moment: at, seller: storySeller } = useStory()
+  // The story moment of the guided-flow step (the 10:25 snapshot otherwise); it moves past a documented event the Seller
+  // performs here (a Courier approval). The console opens on the step's Seller (the default Seller otherwise); the
+  // top-bar Seller selector switches between the primary showcase Sellers.
+  const { seller: storySeller } = useStory()
+  const [at, advanceTo] = useStoryMoment()
   const [sellerId, setSellerId] = useState<SellerId>(storySeller ?? SURFACE_DEFAULTS.seller)
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -191,7 +194,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
           {activeNav === 'reviews' && <ReviewsPanel sellerId={sellerId} at={at} />}
           {activeNav === 'trust' && <TrustPanel sellerId={sellerId} at={at} />}
           {activeNav === 'store' && <StorePanel sellerId={sellerId} at={at} onOpenCouriers={() => navigate('couriers')} />}
-          {activeNav === 'couriers' && <CouriersPanel sellerId={sellerId} at={at} />}
+          {activeNav === 'couriers' && <CouriersPanel sellerId={sellerId} at={at} advanceTo={advanceTo} />}
           {activeNav === 'automation' && <AutomationPanel sellerId={sellerId} at={at} />}
           {activeNav === 'settings' && <SettingsPanel sellerId={sellerId} at={at} />}
         </div>
@@ -976,9 +979,10 @@ function StoreMap({ sellerId }: { sellerId: SellerId }) {
 
 type CourierTab = 'approved' | 'applications' | 'invitations' | 'suspended'
 
-function CouriersPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+function CouriersPanel({ sellerId, at, advanceTo }: { sellerId: SellerId; at: Moment; advanceTo: (event: Moment | Timestamp) => void }) {
   // The Seller's own Courier relationships at the story moment (rules 6.2, 7.3). DEMO_DATA records no invitations or
-  // suspensions, and no pickup or handoff rates.
+  // suspensions, and no pickup or handoff rates. Each Courier shows completed for this Seller first and the total
+  // across Sellers second, as context (rules 7.1–7.4), both from the data module, and nothing about other Sellers.
   const seller = SELLERS[sellerId].name
   const relationships = COURIER_RELATIONSHIPS.filter(r => r.seller === sellerId)
   const byTab: Record<CourierTab, typeof relationships> = {
@@ -991,30 +995,50 @@ function CouriersPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const [selected, setSelected] = useState<CourierId | undefined>(byTab.approved[0]?.courier)
   const [action, setAction] = useState('')
   const terms = courierCompensationAt(sellerId, at)
-  const [compensation, setCompensation] = useState(terms === undefined ? '' : String(terms / 100))
+  // The field shows the Seller's current terms until the Seller edits it.
+  const [edited, setEdited] = useState<string>()
+  const compensation = edited ?? (terms === undefined ? '' : String(terms / 100))
   const couriers = byTab[tab]
   const relationship = couriers.find(r => r.courier === selected) ?? couriers[0]
-  const courier = relationship && COURIERS[relationship.courier]
-  const meta = (r: (typeof relationships)[number]) => (relationshipStatusAt(r, at) === 'Approved' ? `Approved · ${formatDate(typeof r.approved === 'string' ? r.approved : r.approved.at)}` : `Application · ${r.applied ? formatDate(r.applied) : '—'}`)
+  const courier = relationship && courierCardAt(sellerId, relationship.courier, at)
+  const status = relationship && relationshipStatusAt(relationship, at)
+  const meta = (r: (typeof relationships)[number]) => (relationshipStatusAt(r, at) === 'Approved' ? `Approved · ${formatDate(typeof r.approved === 'string' ? r.approved : r.approved.at)}` : `Application pending · ${r.applied ? formatDate(r.applied) : '—'}`)
+  // The Seller's terms apply to its approved Couriers; an applicant has none yet (DEMO_DATA › Courier).
+  const termsFor = (r: (typeof relationships)[number]) => (relationshipStatusAt(r, at) === 'Approved' && terms !== undefined ? `${formatEtb(terms)} per delivery` : undefined)
   const openTab = (key: CourierTab) => { setTab(key); setSelected(byTab[key][0]?.courier) }
+  // Approve is DEMO_DATA's approval (Flow F): the story moves to just after it, so the Courier is approved, on the
+  // Seller's terms from then, and is no longer an applicant, never both.
+  const approve = () => {
+    if (!relationship || !courier) return
+    if (typeof relationship.approved !== 'string') advanceTo(relationship.approved)
+    setTab('approved')
+    setSelected(relationship.courier)
+    setAction(`${courier.name} approved`)
+  }
   return (
-    <div className="mx-auto max-w-7xl p-8">
+    <div className="couriers-panel mx-auto max-w-7xl p-8">
       <ModuleHeader title="Couriers" description={`Private courier relationships for ${seller} only.`} trailing={<Button onClick={() => { setTab('invitations'); setAction('Invitation composer opened') }}>Invite Courier</Button>} />
       <div className="mb-5 flex gap-2"><Pill active={tab === 'approved'} onClick={() => openTab('approved')}>Approved · {byTab.approved.length}</Pill><Pill active={tab === 'applications'} onClick={() => openTab('applications')}>Applications · {byTab.applications.length}</Pill><Pill active={tab === 'invitations'} onClick={() => openTab('invitations')}>Invitations · {byTab.invitations.length}</Pill><Pill active={tab === 'suspended'} onClick={() => openTab('suspended')}>Suspended · {byTab.suspended.length}</Pill></div>
       {action && <div className="mb-4 rounded-xl bg-info-bg p-3 text-xs font-semibold text-info">{action}</div>}
       {!relationship && <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-text-muted">No Couriers in this list</div>}
       {relationship && courier && <div className="grid grid-cols-[340px_1fr] gap-5">
-        <div className="overflow-hidden rounded-2xl border border-border bg-surface">{couriers.map(item => <button key={item.courier} onClick={() => setSelected(item.courier)} className={`flex w-full items-center gap-3 border-b border-border p-4 text-left last:border-b-0 ${relationship.courier === item.courier ? 'bg-brand-muted' : ''}`}><AvatarText name={COURIERS[item.courier].name} /><span className="flex-1"><span className="block text-sm font-semibold">{COURIERS[item.courier].name}</span><span className="text-xs text-text-muted">{meta(item)}</span></span><span className="text-xs font-semibold text-success">{courierAvailabilityAt(item.courier, at)}</span></button>)}</div>
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface">{couriers.map(item => {
+          const card = courierCardAt(sellerId, item.courier, at), itemTerms = termsFor(item)
+          return <button key={item.courier} onClick={() => setSelected(item.courier)} className={`flex w-full items-center gap-3 border-b border-border p-4 text-left last:border-b-0 ${relationship.courier === item.courier ? 'bg-brand-muted' : ''}`}><AvatarText name={card.name} /><span className="flex-1"><span className="block text-sm font-semibold">{card.name}</span><span className="text-xs text-text-muted">{meta(item)}</span><span className="mt-2 block text-xs font-semibold">{card.completedForSeller} completed for your store</span><span className="block text-xs text-text-muted">{card.totalCompleted} total completed deliveries</span>{itemTerms && <span className="block text-xs text-text-muted">{itemTerms}</span>}</span><AvailabilityStatus availability={card.availability} className="text-xs font-semibold" /></button>
+        })}</div>
         <div className="rounded-2xl border border-border bg-surface p-6">
-          <div className="flex items-start justify-between"><div className="flex items-center gap-4"><AvatarText name={courier.name} large /><span><span className="block font-display text-2xl font-semibold">{courier.name}</span><span className="text-xs text-text-muted">Seller Courier relationship · {seller}</span></span></div><StatusBadge status={tab === 'approved' ? 'active' : tab === 'suspended' ? 'suspended' : 'pending'} customLabel={tab === 'approved' ? 'Approved' : tab === 'suspended' ? 'Suspended' : tab === 'applications' ? 'Application' : 'Invited'} /></div>
-          <div className="mt-6 grid grid-cols-3 gap-4"><Field label="Availability" value={courierAvailabilityAt(relationship.courier, at)} /><Field label="Seller relationship" value={meta(relationship)} /><Field label="Terms" value="Per accepted delivery" /></div>
+          <div className="flex items-start justify-between"><div className="flex items-center gap-4"><AvatarText name={courier.name} large /><span><span className="block font-display text-2xl font-semibold">{courier.name}</span><span className="text-xs text-text-muted">Seller Courier relationship · {seller}</span></span></div><StatusBadge status={status === 'Approved' ? 'active' : 'pending'} customLabel={status ?? undefined} icon={status === 'Approved' ? <StatusCheckIcon /> : <StatusClockIcon />} /></div>
+          <div className="mt-6 grid grid-cols-3 gap-4"><Field label="Availability" value={<AvailabilityStatus availability={courier.availability} />} /><Field label="Seller relationship" value={meta(relationship)} /><Field label="Current terms" value={termsFor(relationship) ?? '—'} /></div>
           <SectionLabelInline>Compensation</SectionLabelInline>
-          <div className="flex flex-wrap items-end gap-3"><div className="w-56"><TextInput label="Future delivery compensation (ETB)" value={compensation} onChange={event => setCompensation(event.target.value)} hint="Applies only to future offers." /></div><Button variant="tertiary" onClick={() => setAction(`Future compensation updated to ETB ${compensation}`)}>Update Future Compensation</Button></div>
+          <div className="flex flex-wrap items-end gap-3"><div className="w-56"><TextInput label="Future delivery compensation (ETB)" value={compensation} onChange={event => setEdited(event.target.value)} hint="Applies only to future offers." /></div><Button variant="tertiary" onClick={() => setAction(`Future compensation updated to ETB ${compensation}`)}>Update Future Compensation</Button></div>
           <SectionLabelInline>Seller-relevant history</SectionLabelInline>
-          <div className="grid grid-cols-3 gap-3"><MetricBlock label={`Completed for ${seller}`} value={String(completedForSellerAt(relationship.courier, sellerId, at))} /><MetricBlock label="Verified pickup" value="—" /><MetricBlock label="On-time handoff" value="—" /></div>
+          {/* Completed for this Seller is the primary figure; the total across Sellers is secondary context beside it. */}
+          <div className="grid grid-cols-2 gap-3"><MetricBlock label={`Completed for ${seller}`} value={String(courier.completedForSeller)} /><MetricBlock label="Total completed deliveries across Sellers" value={String(courier.totalCompleted)} secondary /><MetricBlock label="Verified pickup" value="—" /><MetricBlock label="On-time handoff" value="—" /></div>
+          <SectionLabelInline>Relationship history</SectionLabelInline>
+          <div className="overflow-hidden rounded-xl border border-border">{relationshipHistoryAt(relationship, at).map(entry => <div key={entry.event} className="flex justify-between gap-3 border-b border-border px-4 py-3 text-sm last:border-b-0"><span className="font-medium">{entry.event}</span><span className="text-text-muted">{formatDate(typeof entry.at === 'string' ? entry.at : entry.at.at)}</span></div>)}</div>
           <div className="mt-5 rounded-xl bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">Only this Seller relationship and work completed for {seller} are visible. Relationships with other Sellers are private and not shown.</div>
           <div className="mt-5 flex flex-wrap gap-2">
-            {tab === 'applications' && <><Button onClick={() => setAction(`${courier.name} approved`)}>Approve</Button><Button variant="destructive" onClick={() => setAction(`${courier.name} rejected`)}>Reject</Button></>}
+            {tab === 'applications' && <><Button onClick={approve}>Approve</Button><Button variant="destructive" onClick={() => setAction(`${courier.name} rejected`)}>Reject</Button></>}
             {tab === 'approved' && <><Button variant="tertiary" onClick={() => setAction(`${courier.name} suspended`)}>Suspend</Button><Button variant="destructive" onClick={() => setAction(`${courier.name} removed from ${seller} pool`)}>Remove</Button></>}
             {tab === 'invitations' && <Button variant="tertiary" onClick={() => setAction(`Invitation resent to ${courier.name}`)}>Resend Invitation</Button>}
             {tab === 'suspended' && <Button onClick={() => setAction(`${courier.name} restored to approved pool`)}>Restore Relationship</Button>}
@@ -1187,8 +1211,15 @@ function VerificationRow({ label, detail, status }: { label: string; detail: str
   return <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-success-bg text-success"><CheckIcon /></span><span className="flex-1"><span className="block text-sm font-semibold">{label}</span><span className="text-xs text-text-muted">{detail}</span></span><StatusBadge status="active" customLabel={status} /></div>
 }
 
-function MetricBlock({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-xl bg-surface-raised p-4"><div className="font-display text-xl font-semibold">{value}</div><div className="mt-1 text-[10px] text-text-muted">{label}</div></div>
+function MetricBlock({ label, value, secondary }: { label: string; value: string; secondary?: boolean }) {
+  // A secondary figure is context for the primary one beside it (rule 7.4), so it reads smaller and quieter.
+  return <div className="rounded-xl bg-surface-raised p-4"><div className={`font-display font-semibold ${secondary ? 'text-base text-text-secondary' : 'text-xl'}`}>{value}</div><div className="mt-1 text-[10px] text-text-muted">{label}</div></div>
+}
+
+/** A Courier's availability as text plus icon (specification §57), not by colour alone. */
+function AvailabilityStatus({ availability, className = '' }: { availability: CourierAvailability; className?: string }) {
+  const tone = availability === 'Available' ? 'text-success' : availability === 'Busy' ? 'text-warning' : 'text-text-muted'
+  return <span className={`inline-flex items-center gap-1 ${tone} ${className}`}>{availability === 'Available' ? <StatusCheckIcon /> : availability === 'Busy' ? <StatusClockIcon /> : <DotIcon />}{availability}</span>
 }
 
 function AnswerRow({ question, answer }: { question: string; answer: string }) {
@@ -1236,7 +1267,7 @@ function Evidence({ title, status, detail }: { title: string; status: string; de
   return <div className="rounded-xl bg-surface-raised p-3"><div className="text-xs font-semibold">{title}</div><div className="mt-1 text-sm font-semibold text-brand">{status}</div><div className="mt-1 text-[10px] text-text-muted">{detail}</div></div>
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value }: { label: string; value: ReactNode }) {
   return <div><div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{label}</div><div className="mt-1 text-sm font-medium">{value}</div></div>
 }
 
@@ -1266,6 +1297,15 @@ function ClockIcon() {
 
 function DotIcon() {
   return <span className="h-2 w-2 rounded-full bg-border-strong" />
+}
+
+// Status icons beside their text (specification §57): approved or available, and pending or busy.
+function StatusCheckIcon() {
+  return <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+}
+
+function StatusClockIcon() {
+  return <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 4.6V8l2.3 1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
 }
 
 function InfoIcon() {
