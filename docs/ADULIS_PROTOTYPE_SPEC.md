@@ -2645,6 +2645,13 @@ Custom date/time
 
 Custom must allow durations extending to multiple weeks.
 
+Custom lets a Founder choose an expected return beyond the preset duration options, including multiple weeks, up to the current configured maximum of 28 days from the original Solo Coverage activation (rule 16.4):
+
+- the UI must not allow a Custom end later than that maximum;
+- extensions use the same absolute maximum, still measured from the original activation;
+- if an entered Custom time exceeds the maximum, activation or extension is blocked with clear explanatory copy;
+- the maximum is calculated in the Market-local timeline but represents an absolute duration from the activation.
+
 Expected duration is an estimate and temporary governance boundary, not permanent authority.
 
 At expected expiry, Solo Coverage automatically becomes inactive (rules 16.6–16.7). Before expiry, an authorized Founder may extend it (rule 16.8) or stop it early (rule 16.9).
@@ -3452,6 +3459,7 @@ The final result should feel like one real commerce platform ready for product r
   - a guest who chooses Report authenticates first, and Guest Home's For You, Discounts and Locally Made use the Guest/default discovery ranking, not Maya's personalized feed (section 7);
   - Report for a guest, and the guest's temporary Cart through sign-in as transient session state (section 12);
   - which Shoppable Posts need action on the Seller Console Home, and the Seller-facing message (section 29).
+- 2026-10-07: Solo Coverage maximum recorded (section 50). The previously unspecified maximum is resolved: Custom allows multiple weeks up to the current configured maximum continuous duration of 28 days, measured from the original activation; extensions use the same maximum; an entered time beyond it blocks activation or extension with explanatory copy; it is calculated in the Market-local timeline as an absolute duration from the activation. No canonical demo record changed; `SCV-1001` is unchanged.
 
 ## Related documents
 

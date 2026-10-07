@@ -417,7 +417,7 @@ Manual Verification is Operator-only emergency recovery.
 
 16.3 Solo Coverage is exceptional and audited.
 
-16.4 Expected Solo Coverage duration may range from minutes to weeks.
+16.4 Expected Solo Coverage duration may range from minutes through multiple weeks, up to the current configured maximum continuous Solo Coverage duration of 28 days. The maximum is calculated from the session's original activation time: neither the Custom expected return nor an extension may move the expected return beyond the original activation time plus 28 days, and an extension does not restart the maximum-duration clock. Solo Coverage still ends earlier under its existing shutdown rules (16.6, 16.9).
 
 16.5 Expected duration is an estimate, not permanent authorization.
 
@@ -480,6 +480,10 @@ Manual Verification is Operator-only emergency recovery.
   - 3.10–3.12: a guest's temporary Cart survives authentication with its Seller grouping, selections, variants and quantities, and Checkout continues; availability is revalidated first, and no invalid Order is created; the guest Cart is transient session state, not a canonical Seller Order.
 
   The rule set now has 116 rules in 18 sections (previously 113).
+- 2026-10-07: Solo Coverage maximum recorded. One rule changed; no rule added or renumbered:
+  - 16.4 changed: the previously unspecified Solo Coverage maximum is resolved. The current configured maximum continuous duration is 28 days, measured from the session's original activation; it applies to the Custom expected return and to extensions, and an extension doesn't restart it. No canonical demo record changed; `SCV-1001` is unchanged.
+
+  The rule set still has 116 rules in 18 sections.
 
 ## Related documents
 
