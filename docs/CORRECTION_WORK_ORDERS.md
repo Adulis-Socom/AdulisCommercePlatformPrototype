@@ -2,7 +2,7 @@
 
 **Purpose.** This holds the approved implementation work orders for the prototype, listed in the order they are to be executed. Implement only what an approved work order covers.
 
-**Status.** Execution order approved — 2026-10-02 (WO-001 to WO-011), and amended on 2026-10-04 to add WO-006A between WO-006 and WO-007. Bodies drafted on 2026-10-02 from the approved documents, then updated the same day with the approved work-order decisions and the final decisions. On 2026-10-04, approved amendments discovered during WO-002 extended WO-004 and WO-006 and added WO-006A, and a cleanup the same day made WO-006A PENDING DECISION. On 2026-10-05 its decision was recorded in DEMO_DATA.md: the canonical Maya Buyer Collection scenario, `ADU-24094` (2 October, Paid 17:30 to Completed 17:56). APPROVED FOR IMPLEMENTATION: WO-001 to WO-006, WO-006A and WO-007 to WO-011. PENDING DECISION: none. Implementation progress is recorded separately, under Implementation progress.
+**Status.** Execution order approved — 2026-10-02 (WO-001 to WO-011), and amended on 2026-10-04 to add WO-006A between WO-006 and WO-007. Bodies drafted on 2026-10-02 from the approved documents, then updated the same day with the approved work-order decisions and the final decisions. On 2026-10-04, approved amendments discovered during WO-002 extended WO-004 and WO-006 and added WO-006A, and a cleanup the same day made WO-006A PENDING DECISION. On 2026-10-05 its decision was recorded in DEMO_DATA.md: the canonical Maya Buyer Collection scenario, `ADU-24094` (2 October, Paid 17:30 to Completed 17:56). On 2026-10-08, after WO-011's initial verification run, the remediation work orders WO-012 to WO-024 were approved and added after WO-011, which is rerun after WO-024 to close it. APPROVED FOR IMPLEMENTATION: WO-001 to WO-006, WO-006A and WO-007 to WO-024. PENDING DECISION: none. Implementation progress is recorded separately, under Implementation progress.
 
 ## Execution order
 
@@ -24,6 +24,26 @@ On 2026-10-04 the sequence was amended to add WO-006A after WO-006 and before WO
 
 Because execution is sequential, a work order that is PENDING DECISION holds back every work order after it until its decisions are recorded. WO-006A's decision was recorded on 2026-10-05 (the canonical Maya Buyer Collection scenario `ADU-24094`, 2 October, Paid 17:30 to Completed 17:56), so no work order is pending. WO-007 to WO-011 can't start until WO-006A is complete.
 
+On 2026-10-08 the sequence was extended after WO-011's initial verification run, which found 20 confirmed defects (D1 to D20). The remediation work orders WO-012 to WO-024 were added after WO-011, without renumbering any existing work order, and WO-011 is then rerun against the remediated prototype. WO-011 stays open until that final rerun. There is no WO-025.
+
+The remaining execution order is WO-012, WO-013, WO-014, WO-015, WO-016, WO-017, WO-018, WO-019, WO-020, WO-021, WO-022, WO-023 and WO-024, then the rerun of WO-011.
+
+Each remediation work order cites the WO-011 defects it fixes under WHY THIS WORK ORDER EXISTS:
+
+- WO-012: D1.
+- WO-013: D2.
+- WO-014: D7.
+- WO-015: D8.
+- WO-016: D13.
+- WO-017: D16.
+- WO-018: D3, D4 and D5.
+- WO-019: D17, D18 and D19.
+- WO-020: D9, and the name portions of D12 and D15.
+- WO-021: D10.
+- WO-022: D6, D14, and the focus portions of D12 and D15.
+- WO-023: D11.
+- WO-024: D20.
+
 ## Implementation progress
 
 Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-08:
@@ -39,7 +59,20 @@ Implementation progress is separate from approval status (see Work-order convent
 - WO-008 — IMPLEMENTED AND MERGED
 - WO-009 — IMPLEMENTED AND MERGED
 - WO-010 — IMPLEMENTED AND MERGED
-- WO-011 — NOT STARTED
+- WO-011 — INITIAL VERIFICATION COMPLETE; REMEDIATION REQUIRED; FINAL RERUN PENDING
+- WO-012 — NOT STARTED
+- WO-013 — NOT STARTED
+- WO-014 — NOT STARTED
+- WO-015 — NOT STARTED
+- WO-016 — NOT STARTED
+- WO-017 — NOT STARTED
+- WO-018 — NOT STARTED
+- WO-019 — NOT STARTED
+- WO-020 — NOT STARTED
+- WO-021 — NOT STARTED
+- WO-022 — NOT STARTED
+- WO-023 — NOT STARTED
+- WO-024 — NOT STARTED
 
 **Cross-work-order clarification (2026-10-05).** WO-003's availability-revalidation rule remains valid. After WO-004, already-unavailable Products cannot be added to Cart, so the canonical demo no longer naturally reaches the "became unavailable after add-to-cart" branch. Deterministic coverage of that race condition is assigned to WO-006's Checkout test environment. See WO-006 requirement 24.
 
@@ -1139,6 +1172,1165 @@ Do not use another Buyer's Order in Maya's Buyer app:
 
 **COMPLETION REPORT FORMAT.** The standard report, plus the full checklist with results and the defects grouped by section.
 
+### WO-012 — Website Account Deletion Verification Gate
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P0.
+
+**OBJECTIVE.** An anonymous Company Website visitor can't go from the Account Deletion page to a deletion request. The request needs the purpose-bound deletion verification first: phone number, 6-digit OTP, and a short-lived deletion capability for this flow only. A preview of the consequences and an explicit confirmation follow, and the page shows the Platform's result. Public Website browsing stays anonymous, with no general Website login.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- R3.5 requires account-bound actions to request authentication, and R3.7 requires it for Account settings. Deleting an Account is account-bound and destructive.
+- §12 (Company Website verification, recorded on 2026-10-08) defines the flow: phone number → 6-digit OTP → deletion verification succeeds → a short-lived deletion capability for this deletion flow only → preview of the consequences → explicit confirmation → the Platform's result. In the prototype the verification resolves to the demo Buyer, Maya Tesfaye, and at the 10:25 story snapshot her active Orders block the deletion.
+- WO-011's initial verification run (2026-10-08) found defect D1 (checklist item R3.5). An anonymous visitor could continue to the deletion steps, type DELETE and get "Account deletion requested.", with no verification and no Account identified.
+
+**DEPENDENCIES.**
+
+- WO-003: the Buyer app's prototype sign-in (phone number, Continue, 6-digit code) and its validation, reused here as a pattern.
+- WO-007: the Website's layouts at the §4 widths, including its 390 px layout and 390 px preview.
+
+**IN SCOPE.**
+
+- Company Website › Account Deletion, in the desktop layout, the 390 px layout and the 390 px preview.
+- The deletion verification (phone number and 6-digit OTP) and the short-lived deletion capability it gives.
+- The preview of the consequences, the explicit confirmation and the Platform's result.
+- Phone and OTP screens that WO-013 can reuse without sharing any capability.
+
+**OUT OF SCOPE.**
+
+- A general Website login, a persistent Website session, a Website-owned Account and a shared Website account session (§12).
+- Real authentication, real deletion, a production backend session and retention policy (§12, §61).
+- The account architecture and account roles (R17.1–17.2, §61).
+- Report Content (WO-013), the Website's copy corrections (WO-018) and the focus styling of the Website's existing fields (WO-022).
+- The Buyer app's Account Settings and Account deletion screens.
+- Any change to DEMO_DATA.md.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. Without a valid deletion capability, the Account Deletion page offers no way to request deletion: no reason step, no typed DELETE confirmation, no Delete My Account and no deletion result. Its action starts the deletion verification (R3.5, R3.7, §12).
+2. The verification is phone number → 6-digit OTP. An incomplete entry shows a validation message, as the Buyer app's prototype sign-in does (§12, §56).
+3. No Account ID is asked for or accepted from the visitor: the verification identifies the Account (§12).
+4. Successful verification gives a short-lived deletion capability that only this deletion flow uses. It resolves deterministically to the demo Buyer, Maya Tesfaye (DD *Buyer*), and creates no Website Account record (§12).
+5. With the capability, the visitor sees the preview of the consequences, then the explicit confirmation: the existing reason, the typed DELETE and Delete My Account. Only the explicit confirmation requests deletion.
+6. The result is the Platform's. At the 10:25 story snapshot Maya has active Orders (DD *Story timeline*: `ADU-24091` and `ADU-24093` Paid, `ADU-24092` Preparing). So the page shows "deletion requested, but currently blocked by active Orders" (§12), and nothing says the Account will be deleted. The Website section calculates no blockers itself.
+7. The deletion capability authorizes nothing else. It isn't accepted by Report Content (WO-013), authorizes no Buyer or Seller commerce action, and never becomes a general Website login or session (§12).
+8. The capability is transient prototype state that ends with its flow. Cancelling, leaving the page, finishing the flow, resetting the prototype or reloading returns the Website to the anonymous state, with nothing further requested. It is never a canonical record (§12).
+9. Nothing names a role or chooses an account type (§61, R17.1).
+10. Requirements 1–9 hold in the desktop layout, the 390 px layout and the 390 px preview.
+
+**DATA REQUIREMENTS.**
+
+- DD *Buyer* (Maya Tesfaye) and the states of her Orders at 10:25 (DD *Seller Orders*, DD *Story timeline*), read only.
+- No new demo record and no Website Account record.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- The existing Website layout, components, buttons and field styles (the Figma baseline), in the Website's inline-style idiom.
+- §57: every new control is named and keyboard-reachable, shows the global keyboard focus indicator without suppressing it, and is at least 44 × 44 px at phone widths.
+- The §4 widths: 360, 390, 430, 768, 1024, 1280, 1440 and 1920, with no overflow or clipping.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+- Transient session state only, with no new dependency. Surfaces share no state, so the Buyer app's sign-in is reused as a pattern, not as shared state.
+- Keep the Website's class hooks and the markup its responsive rules select on.
+
+**VALIDATION.**
+
+- Type-check, build and the documentation checkers (`run-all.cjs`) pass.
+- A focused browser checker, at every Website width and in the 390 px preview:
+  - an anonymous visitor never reaches the confirmation or a deletion result without verification;
+  - an incomplete phone number or code shows the validation message;
+  - after verification come the preview, the confirmation and then "deletion requested, but currently blocked by active Orders", never a statement that the Account will be deleted;
+  - cancelling, leaving and reloading each return to the anonymous state with nothing requested;
+  - no Account ID can be entered.
+- **Red/green.** On the f868fc4 reference build the anonymous-request check fails; on the candidate it passes.
+- **Mutations**, each of which must be caught:
+  - the gate removed;
+  - an incomplete code accepted;
+  - cancelling treated as verified;
+  - the confirmation reachable before verification;
+  - the capability surviving a reload;
+  - a successful deletion shown at 10:25;
+  - an Account ID accepted from the visitor.
+- **Earlier suites:** WO-003 (the Buyer app's sign-in, unchanged), the WO-007 audit for the Website, and WO-011's checklist item R3.5.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–10 hold at every §4 width and in the 390 px preview.
+2. No path without verification produces a deletion request.
+3. WO-011's checklist item R3.5 passes on the candidate.
+4. Outside Account Deletion, the Website renders as at f868fc4, apart from accepted noise.
+5. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus the red/green and mutation results, and screenshots at 390 and 1440 of the anonymous page, the verification, the preview, the confirmation and the blocked result.
+
+### WO-013 — Website Content Report Account Verification Gate
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P0.
+
+**OBJECTIVE.** A guest can view the Company Website's Report Content page but can't submit a Report. Submission needs the purpose-bound report verification: phone number, 6-digit OTP, a verified Account and a short-lived report-submission capability. The capability is separate from WO-012's deletion capability.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- R3.7 requires authentication for Report submission, and §7 says: "Guest users cannot submit a content Report (rule 3.7)."
+- §12 (Company Website verification, recorded on 2026-10-08) defines the Report flow: phone number → 6-digit OTP → verified Account → a short-lived report-submission capability → the Report form is submitted. It also says the deletion and report-submission capabilities are separate, and the two flows may share the phone and OTP screens but never the capability.
+- WO-011's initial verification run (2026-10-08) found defect D2 (checklist item R3.7). The form accepted an anonymous Report, asking only for "Your email (optional — for follow-up)", and showed "Report submitted." with no verification.
+
+**DEPENDENCIES.**
+
+- WO-012, only for its reusable phone and OTP screens and verification state plumbing, not for any authorization (§12).
+- WO-003: the Buyer app's Report gate for a guest (§7, §12), applied here as a pattern.
+- WO-007.
+
+**IN SCOPE.**
+
+- Company Website › Report Content, in the desktop layout, the 390 px layout and the 390 px preview.
+- The report verification and the short-lived report-submission capability it gives.
+- Returning to the Report form after verification, and its submission.
+
+**OUT OF SCOPE.**
+
+- Anonymous reporting (R3.7).
+- The form's report categories and its other wording.
+- Any moderation case, record or queue entry. A submitted Report is session-only, and `MOD-1001` is unchanged.
+- The Buyer app's Report flow (WO-003, WO-004).
+- A general Website login or session; Account Deletion (WO-012); field focus styling (WO-022).
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. A guest can view the Report Content page and fill in the form. Without a valid report-submission capability, Submit Report submits nothing and "Report submitted." never appears; choosing to submit starts the report verification (R3.7, §7, §12).
+2. The verification is phone number → 6-digit OTP, with the validation message for an incomplete entry (§12, §56). It reuses WO-012's phone and OTP screens. No Account ID is asked for or accepted (§12).
+3. Successful verification gives a short-lived report-submission capability that only Report Content uses. The visitor returns to the Report form with the entries already made kept where practical (content type, link or description, reason and detail), and submits it (§7).
+4. The report-submission capability and WO-012's deletion capability are separate. A deletion verification doesn't let a Report be submitted, and a report verification doesn't open the deletion confirmation (§12).
+5. The capability authorizes no Buyer or Seller commerce action and never becomes a general Website login or session. It ends with its flow: submitting the Report, cancelling, leaving, resetting the prototype or reloading returns the visitor to the guest state (§12).
+6. A submitted Report is transient prototype state and creates no canonical record (DD *Moderation* unchanged).
+7. Requirements 1–6 hold in the desktop layout, the 390 px layout and the 390 px preview.
+
+**DATA REQUIREMENTS.**
+
+- No new demo record and no Website Account record.
+- `MOD-1001` and the Moderation queue are unchanged (DD *Moderation*).
+
+**VISUAL / UX REQUIREMENTS.**
+
+- The existing Website layout, components and field styles, in the Website's inline-style idiom.
+- §57: every new control is named and keyboard-reachable, shows the global keyboard focus indicator without suppressing it, and is at least 44 × 44 px at phone widths.
+- The §4 widths, with no overflow or clipping.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+- Transient session state only, with no new dependency.
+- Reuse WO-012's phone and OTP screens rather than duplicating them, with a separate capability.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused browser checker, at every Website width and in the 390 px preview:
+  - a guest's Submit Report starts verification and never shows "Report submitted.";
+  - an incomplete entry shows the validation message;
+  - after verification the entries survive where practical and the Report submits;
+  - cancelling submits nothing;
+  - a deletion verification doesn't allow a Report, and a report verification doesn't open the deletion confirmation;
+  - after one submission, another Report needs verification again.
+- **Red/green.** On the f868fc4 reference build the guest-submission check fails; on the candidate it passes.
+- **Mutations**, each of which must be caught:
+  - the gate removed;
+  - submission allowed when the optional email is filled in;
+  - the deletion capability accepted for a Report;
+  - the report capability accepted for deletion;
+  - the capability kept after submission or a reload;
+  - cancelling treated as verified.
+- **Earlier suites:** WO-012's focused checker and mutation test; WO-003 and WO-004 (the Buyer app's Report gate, unchanged); the WO-007 audit for the Website; WO-011's checklist item R3.7.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–7 hold at every §4 width and in the 390 px preview.
+2. No path without the report verification produces "Report submitted."
+3. WO-011's checklist item R3.7 passes on the candidate.
+4. Outside Report Content and the phone and OTP screens it shares with WO-012, the Website renders as at f868fc4, apart from accepted noise.
+5. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus the red/green and mutation results, and screenshots at 390 and 1440 of the guest page, the verification, the form after verification and the submitted Report.
+
+### WO-014 — Shoppable Post FYP Availability Eligibility
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P1.
+
+**OBJECTIVE.** Seller Console › Create Shoppable Post presents For You eligibility from the tagged Products' current availability. A Shoppable Post with no currently available tagged Product is never shown as For You eligible, and the editor says why, in the approved wording.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- R1.7: "A Shoppable Post with zero currently eligible Products is not eligible for For You discovery." R1.6 still allows it to be published, R1.8 keeps it published when availability is lost, and §56 lists "Published but not FYP Eligible".
+- DD *Shoppable Posts*: `SHP-AA-005`, tagged only with `PRD-AA-005` (Out of Stock since 24 September), is "Not eligible: tagged Product out of stock". `SHP-NG-003`, whose tagged Product is Low Stock, is "Eligible".
+- WO-011's initial verification run (2026-10-08) found defect D7 (checklist item R1.7). The editor treated any tag as eligible, so a post tagged only with the out-of-stock Woven Leather Belt showed "FYP Eligible" in the eligibility step, the Preview and the publish confirmation.
+
+**DEPENDENCIES.**
+
+- WO-001: the shared data module's tag-availability rule.
+- WO-002: Seller Console › Content for each Seller.
+- WO-004: For You eligibility as Buyers see it.
+
+**IN SCOPE.**
+
+- Seller Console › Content › Create Shoppable Post: the eligibility shown in step 05 "Preview and eligibility", in the Preview panel and in the publish confirmation.
+- All three Sellers, through the Seller switcher.
+- The Seller Console's story moments: 10:25 by default, and 12:30 at Flows E and E2.
+
+**OUT OF SCOPE.**
+
+- Existing posts' detail and the Home "Needs attention" card, which already derive eligibility from the shared module.
+- Buyer surfaces (WO-004).
+- Publication rules: eligibility never controls publication (R1.6).
+- Product availability and the posts in DD.
+- A per-Product availability display in the editor's Product list, which no rule requires.
+- Renaming the Shoppable Post entity: it keeps its current name in this remediation cycle.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. The editor's post is For You eligible exactly when at least one tagged Product is currently available at the story moment, by the shared module's rule: the Product exists at that moment and isn't Out of Stock. Low Stock counts as available (R1.7; DD *Shoppable Posts*, `SHP-NG-003`).
+2. With no tags, the editor's existing not-eligible states and publish message are unchanged (R1.6).
+3. With tags but none currently available, step 05 and the Preview read "For You eligibility: Not eligible — no tagged Product is currently available." Where a publication badge or confirmation is shown, it reads "Published · Not eligible for For You". Nothing shows the post as FYP Eligible.
+4. Positive eligibility keeps its existing wording.
+5. Publish stays available in every case (R1.6, R1.8).
+6. Eligibility follows the story moment: `PRD-AA-006` counts only from 12:30 (DD *Products*).
+7. The section keeps no copy of the rule: the editor uses the shared module's rule (R18.2).
+
+**DATA REQUIREMENTS.**
+
+- DD *Products*: `PRD-AA-005` and `PRD-VH-002` are Out of Stock; `PRD-AA-003` and `PRD-NG-004` are Low Stock; `PRD-AA-006` exists from 12:30.
+- DD *Shoppable Posts*: `SHP-AA-005`, `SHP-NG-003`, `SHP-AA-006` and `SHP-AA-007`.
+- No new record. A post published in the editor is session-only.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- The existing editor and badges, in Tailwind classes.
+- The Seller Console at 1440 and 1024, and its drawer layout at phone widths as WO-007 left it.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+- Availability is read from the WO-001 module at the current story moment.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker:
+  - **In the browser, at 1440 and 1024:**
+    - Addis Atelier with only the Woven Leather Belt tagged: requirement 3's wording in step 05, the Preview and the publish confirmation;
+    - the Belt and the Linen Overshirt: FYP Eligible;
+    - no tags: unchanged;
+    - Volt House with only the Compact Power Bank: not eligible;
+    - Nura Glow with only the Vitamin C Serum (Low Stock): eligible.
+  - **Module parity:** for every subset of each Seller's taggable Products at 10:25 and at 12:30, the editor's eligibility equals the module's rule.
+- **Red/green.** On the f868fc4 reference build "Belt only is not eligible" fails; on the candidate it passes.
+- **Mutations**, each of which must be caught:
+  - eligibility back to "any tag";
+  - Low Stock treated as unavailable;
+  - the story moment ignored;
+  - requirement 3's wording replaced;
+  - Publish disabled when not eligible.
+- **Earlier suites:** WO-004; the WO-001 module checker; WO-011's checklist items R1.5–R1.7 and Flow E; smoke Flows E and E2; the WO-007 audit for the Seller Console.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–7 hold at the listed widths and moments.
+2. WO-011's checklist item R1.7 passes on the candidate, and R1.5, R1.6 and Flow E still pass.
+3. Rendering differs from f868fc4 only in the editor's eligibility states.
+4. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus the eligibility shown for each case above, and the red/green and mutation results.
+
+### WO-015 — Seller Console Courier Delivery Offer Flow
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P1.
+
+**OBJECTIVE.** In the Seller Console, a Courier Delivery Order at Ready for Courier lets the Seller select an approved Courier and send the Delivery Offer, and the Console then shows "Awaiting Courier acceptance". Only the Courier accepts, and Courier Assigned follows only that acceptance. The Seller Console never simulates the Courier's acceptance.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- R6.10: PAID → PREPARING → READY → Courier selected / Delivery Offer created → Courier accepts → Pickup Handoff → IN DELIVERY → Final Delivery Handoff → COMPLETED. R6.11 requires Mark Ready first, and R4.4 gives the Courier Delivery timeline. R6.3 allows one active accepted delivery, R6.8 shows the Seller-defined compensation before acceptance, and R7.1–7.4 put the Seller-specific figures first.
+- DD *Story timeline*: `ADU-24091` is Ready for Courier at 13:30 and gets a Delivery Offer to Daniel K. (ETB 180.00) at 13:35, which he accepts at 13:37. `ADU-24092` is Ready for Courier at 13:45 and gets its offer at 13:50, which he can't accept while `ADU-24091` is active; he accepts it at 14:58.
+- The owner's remediation decisions of 2026-10-08 fix the actor boundary:
+  - the Seller marks Ready for Courier and sends the Delivery Offer;
+  - the Seller Console then shows "Awaiting Courier acceptance";
+  - the Courier receives the Delivery Offer and accepts it, and only then is the Order Courier Assigned;
+  - the Seller Console has no "Simulate courier acceptance", and the Seller never accepts on the Courier's behalf;
+  - where a demonstration must show the acceptance, it uses the Courier surface or the existing approved Courier flow.
+- WO-011's initial verification run (2026-10-08) found defect D8 (checklist item R6.10). On `ADU-24091` at Ready for Courier, "Assign Approved Courier" set Courier Assigned directly, with no Delivery Offer and no acceptance. The Order Detail's prototype fulfilment-state controls can also set Courier Assigned.
+
+**DEPENDENCIES.**
+
+- WO-001: the Orders' offers, the rule that blocks an offer for a Busy Courier, and the state histories.
+- WO-002: each Seller's approved Courier pool.
+- WO-008: the Courier selection card, both figures, availability as text plus icon, and offer semantics.
+
+**IN SCOPE.**
+
+- Seller Console › Orders › Order Detail for Courier Delivery Orders:
+  - the header action;
+  - Fulfilment evidence › Courier assignment;
+  - the prototype fulfilment-state controls.
+- The Courier selection: the Seller's approved pool, showing completed for this Seller (primary), total completed (secondary), availability and compensation.
+- The pending-offer state, "Awaiting Courier acceptance".
+- The moments of DD's offers and acceptances.
+
+**OUT OF SCOPE.**
+
+- The Seller Companion and the Courier app, which are unchanged (WO-008).
+- Seller Delivery and Buyer Collection Orders, which have no Courier (R4.7).
+- Dispatch, bidding, wallets and surge pricing (R6.4–6.7, §60).
+- Prototype Guide and Master Demo wording (WO-019).
+- Any new canonical Courier record.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. At Ready for Courier, the Seller's action is to select an approved Courier and send the Delivery Offer (R6.10). No Seller Console action assigns a Courier directly.
+2. The selection lists only the Seller's approved Couriers at the story moment (DD *Courier*):
+
+   | Seller | Approved Couriers |
+   |---|---|
+   | Addis Atelier | Daniel K., ETB 180.00 |
+   | Nura Glow | Daniel K., ETB 150.00 |
+   | Volt House | None until Flow F approves Daniel K. at 16:30, at ETB 200.00 |
+
+   Each shows completed for this Seller first, then total completed, availability as text plus icon, and the compensation (R7.1–7.4, R6.8; WO-008).
+3. After the offer is sent, the Order stays Ready for Courier. Courier assignment shows "Awaiting Courier acceptance", with the Courier and the offered compensation (R6.8). A Busy Courier can be sent an offer but can't accept it while on an active delivery (R6.3; DD *Story timeline*, 13:50).
+4. The Seller Console has no control that accepts the Delivery Offer or simulates the Courier's acceptance, and no Seller-labelled accept action.
+5. Courier Assigned comes only from the Courier's acceptance. In the Console that means DD's moments, derived from the shared module. A demonstration of the acceptance uses the Courier surface or the existing approved Courier flow.
+6. For a Courier Delivery Order, the prototype fulfilment-state controls give no route to Courier Assigned. They step only through the states the Seller reaches by its own actions: Paid, Preparing and Ready for Courier.
+7. At DD's moments, the Order Detail derives the offer and the acceptance from the shared module (DD *Story timeline*):
+   - `ADU-24091`: Ready for Courier at 13:30; offer sent at 13:35 and awaiting acceptance; Courier Assigned at 13:37.
+   - `ADU-24092`: Ready for Courier at 13:45; offer sent at 13:50 and awaiting acceptance while Daniel K. is busy until 14:52; Courier Assigned at 14:58.
+8. No offer can be sent before Mark Ready (R6.11).
+9. No other Seller's identity, Orders, compensation or relationships appear (R7.3).
+
+**DATA REQUIREMENTS.**
+
+- DD *Seller Orders*: the histories and offers of `ADU-24091` and `ADU-24092`.
+- DD *Courier*: relationships, compensation and counts.
+- DD *Story timeline*: 13:30 to 14:58.
+- An offer sent in a session at another moment is transient prototype state. DEMO_DATA.md is unchanged, and no Courier record is added.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- The existing Order Detail cards and buttons, and WO-008's card pattern for the selection, in Tailwind classes.
+- "Awaiting Courier acceptance" uses the existing status badge. WO-021's icon mapping covers it when that work order runs.
+- The Seller Console at 1440 and 1024, and its drawer layout at phone widths as WO-007 left it.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+- The canonical sequence comes from the shared module, not from a copy of the Seller Companion's logic.
+- Guided-flow targets are unchanged.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker:
+  - **In the browser, Addis Atelier's `ADU-24091` at 1440 and 1024:** Start Preparation → Mark Ready → select Daniel K. (41 completed for your store, 64 total, ETB 180.00) → send the Delivery Offer. Then the Order is Ready for Courier with "Awaiting Courier acceptance". It isn't Courier Assigned, there is no accept or simulate control, and no state control reaches Courier Assigned.
+  - **Nura Glow's `ADU-24092`:** Daniel K. at ETB 150.00. The Busy case at 13:50 comes from the module.
+  - **Module:** the derived offer and acceptance at 13:35, 13:37, 13:50 and 14:58.
+- **Red/green.** On the f868fc4 reference build "no Courier Assigned without the Courier's acceptance" fails; on the candidate it passes.
+- **Mutations**, each of which must be caught:
+  - the offer step skipped;
+  - a Seller accept control or "Simulate courier acceptance" added to the Console;
+  - a state control reaching Courier Assigned restored;
+  - an unapproved Courier listed;
+  - the compensation hidden before acceptance;
+  - a Busy Courier able to accept;
+  - an offer before Mark Ready.
+- **Earlier suites:**
+  - WO-008's suite, module checks and mutations: the Seller Companion is unchanged;
+  - WO-006A, for handoffs;
+  - the WO-001 module checker;
+  - WO-011's checklist item R6.10;
+  - smoke Flows G and H;
+  - the WO-007 audit for the Seller Console.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–9 hold at 1440 and 1024 and at DD's moments.
+2. WO-011's checklist item R6.10 passes on the candidate.
+3. The Seller Companion is unchanged: WO-008's suite and mutations pass.
+4. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus screenshots of the selection, "Awaiting Courier acceptance" and Courier Assigned at a DD moment, and the red/green and mutation results.
+
+### WO-016 — Search Out-of-Stock Product Availability
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P1.
+
+**OBJECTIVE.** Marketplace Search's Product results follow §8's availability filter. The filter is off by default: available Products come first, and every unavailable Product shows "Currently unavailable" and never looks available or purchasable. With the filter on, unavailable Products are excluded.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- §8: "Out-of-stock Products may remain searchable but should rank below relevant available Products and clearly show: Currently unavailable." §8's availability filter, recorded on 2026-10-08, is off by default and excludes unavailable Products when on. R18.1 requires the same Product to present the same facts everywhere.
+- DD *Products*: `PRD-AA-005` Woven Leather Belt and `PRD-VH-002` Compact Power Bank are Out of Stock.
+- WO-011's initial verification run (2026-10-08) found defect D13 (checklist item F.01). For the query "linen" at 10:25, Products listed every Product in ID order with a price. The Belt and the Power Bank sat among available Products with no "Currently unavailable", under an "Available" chip shown as active.
+- Marketplace Search was out of WO-004's scope, so no earlier work order owned it.
+
+**DEPENDENCIES.**
+
+- WO-001: Product availability at the story moment.
+- WO-004: the discovery lists' presentation of an unavailable Product. An out-of-stock Product can be viewed but not bought.
+
+**IN SCOPE.**
+
+- Buyer › Search: the Products tab, and the Products preview on the Top tab.
+- The availability filter.
+- A guest and signed-in Maya alike (R3.6).
+- 10:25, and 12:30 (when `PRD-AA-006` appears).
+
+**OUT OF SCOPE.**
+
+- Query matching and the result corpus.
+- The Posts and Sellers tabs, and the Price and Category chips.
+- Product Post Detail, which is unchanged.
+- Other discovery channels (WO-004).
+- Product availability data (DEMO_DATA.md unchanged).
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. The availability filter is off by default (§8).
+2. With it off, in Products and in Top's Products preview, currently available Products come before unavailable Products, where other ranking conditions don't override the canonical eligibility rules (§8). Each group keeps its current relative order.
+3. With it off, unavailable Products may remain in the results. Each one shows "Currently unavailable" and is presented as the discovery lists present an unavailable Product, so it never looks available or purchasable (§8, R18.1; WO-004).
+4. With it on, unavailable Products are excluded from the Product results (§8).
+5. The filter's state is shown as text and exposed to assistive technology, not by colour alone (§57).
+6. Opening an unavailable result opens its Product Post Detail, where it can't be bought (WO-004).
+7. Requirements 1–6 hold for a guest and for Maya.
+
+**DATA REQUIREMENTS.**
+
+- DD *Products*: availability and prices.
+- DD *Buyer*: the recent searches "linen" and "lip tint", and the zero-result query "tripod".
+- No new record.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- The existing Search tabs, chips and Product cards, in Tailwind classes. The filter chip's default look changes from active to inactive, as §8 requires.
+- 360, 390 and 430, and the Buyer phone frame at 1440.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+- Availability comes from the WO-001 module at the story moment, with no copied lists.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker, as a guest and as Maya, at 360, 390, 430 and 1440, at 10:25 and 12:30:
+  - the filter is off by default;
+  - available Products come first, then unavailable ones;
+  - the Belt and the Power Bank show "Currently unavailable", with no purchase affordance;
+  - with the filter on they're excluded, and turning it off brings them back;
+  - opening the Belt opens a Product Post Detail where it can't be bought;
+  - "tripod" still shows zero results.
+- **Red/green.** On the f868fc4 reference build the ranking and label checks fail; on the candidate they pass.
+- **Mutations**, each of which must be caught:
+  - the filter on by default;
+  - the ranking dropped;
+  - the label dropped;
+  - a purchasable presentation restored;
+  - the filter on but not excluding;
+  - the Top preview left unranked.
+- **Earlier suites:** WO-004; WO-003 (guest Search); WO-011's checklist item F.01, with R2.4 and §63.03 still passing; the WO-007 audit for the Buyer app.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–7 hold at the listed widths and moments.
+2. WO-011's checklist item F.01 passes on the candidate.
+3. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus the observed Product order with the filter off and on, as a guest and as Maya, at 10:25 and 12:30, and the red/green and mutation results.
+
+### WO-017 — Payment Failure Seller Order Copy
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P1.
+
+**OBJECTIVE.** The System States "Payment failed" card states the failed attempt truthfully: no payment was confirmed, and the existing Seller Order remains in place for the retry.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- R5.9: "A failed payment attempt and its retry belong to the same Seller Order. A failed attempt never creates a second Seller Order."
+- DD *Seller Orders*: `PAY-24092-01` belongs to `ADU-24092` and fails at 10:06, and `PAY-24092-02` pays the same `ADU-24092` at 10:07. There is one Seller Order.
+- WO-011's initial verification run (2026-10-08) found defect D16 (checklist item R5.9). The card said "No charge was confirmed and no Seller Order was created.", followed by "The Nura Glow Cart remains saved."
+
+**DEPENDENCIES.**
+
+- WO-001: payment attempts.
+- WO-006: Flow D's failed attempt and retry, and the Buyer's own payment-failure screen.
+
+**IN SCOPE.**
+
+- The System States › Buyer › "Payment failed" card's description and detail.
+
+**OUT OF SCOPE.**
+
+- The card's title, its action and its retry outcome, which already says "The previous failed attempt remains recorded."
+- The other System States cards.
+- Checkout behaviour and the Buyer's own payment-failure screen.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. The card's description reads exactly: "Payment attempt failed. No payment was confirmed. The existing Seller Order remains in place for retry."
+2. The card no longer says that no Seller Order was created, in any wording.
+3. The card's Cart sentence is removed: the canonical scenario doesn't require it.
+4. The case stays `ADU-24092`'s: `PAY-24092-01` failed, the retry `PAY-24092-02` succeeds on that same Seller Order, and there is one Seller Order (R5.9; DD *Seller Orders*).
+
+**DATA REQUIREMENTS.**
+
+- DD *Seller Orders* (payment attempts). No new record.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- The existing card, at the System States section's §4 widths, with no overflow.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker on the captured System States text at every width:
+  - the approved description is present;
+  - nothing says no Seller Order was created;
+  - the card has no Cart sentence;
+  - the retry outcome is unchanged.
+- **Red/green.** On the f868fc4 reference build these checks fail; on the candidate they pass.
+- **Mutations**, each of which must be caught:
+  - the old sentence restored;
+  - the Cart sentence restored;
+  - the approved description altered;
+  - the retry outcome changed.
+- **Earlier suites:** WO-006 (the Buyer's failure screen and Flow D); WO-011's checklist item R5.9; the WO-007 audit for System States.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–4 hold.
+2. WO-011's checklist item R5.9 passes on the candidate.
+3. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus the card's before and after text.
+
+### WO-018 — Company Website Canonical Copy Corrections
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P2.
+
+**OBJECTIVE.** The Company Website's copy matches the rules:
+- Collections are private, and sharing them isn't advertised;
+- at final Courier delivery, the Courier displays the Delivery QR and the Buyer or authorized delegate scans it;
+- Adulis Seller admission doesn't require government-issued ID, stated without qualification.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- WO-011's initial verification run (2026-10-08) found three copy defects:
+  - **D3** (checklist items R2.6, §60.23 and §63.36): the For Buyers page's Collections card said "Share collections with friends." This is against R2.6, §9 ("Do not build public Collections in the MVP prototype"), §60 ("public Collection profiles") and DD *Buyer* ("Collections, all private (rule 2.6)").
+  - **D4** (checklist items R8.2 and §63.13): the For Sellers page's Courier Fulfilment card said "A Pickup QR verifies collection; the buyer's Delivery QR confirms receipt." This is against R8.2 and §19 ("THIS DIRECTION IS CRITICAL").
+  - **D5** (checklist item R13.1, owner-confirmed): Trust & Safety said "We do not require government-issued ID as part of the standard admission process.", and the 390 px note "Adulis does not require government-issued ID as part of the standard seller admission process." R13.1 is unconditional, and R13.2 keeps provider KYC separate.
+- The owner approved the replacement copy on 2026-10-08.
+
+**DEPENDENCIES.**
+
+- WO-001.
+- WO-003: the Website's account wording stays consistent with the authentication rules.
+- WO-006A: the direction wording for the final QR.
+- WO-012 and WO-013: the same Website, in separate regions.
+
+**IN SCOPE.**
+
+- The four sentences above, in every layout where they appear.
+
+**OUT OF SCOPE.**
+
+- Any other Website copy, and layout.
+- Account Deletion and Report Content (WO-012, WO-013).
+- Renaming the Shoppable Post entity: it keeps its current name in this remediation cycle.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. **D3.** The Collections card reads exactly: "Save Product Posts and Shoppable Posts into private Collections and come back to them later." It has no sharing language: no sharing with friends and no public Collections (R2.6, §9).
+2. **D4.** The Courier Fulfilment card's QR sentence becomes: "A Pickup QR verifies collection. At final Courier delivery, the Courier displays the Delivery QR and the Buyer or authorized delegate scans it." Nothing calls it the buyer's Delivery QR (R8.2, §19).
+3. **D5.** The Trust & Safety sentence and the 390 px note each read exactly: "Adulis does not require government-issued ID for Seller admission. Payment-provider KYC, where required, is separate." Neither is qualified with "standard", "ordinary", "normally" or "in most cases" (R13.1, R13.2).
+4. No Government ID, passport, national ID, selfie or identity-image requirement appears anywhere, and no exception to R13.1 is introduced.
+5. The rest of each card is unchanged.
+
+**DATA REQUIREMENTS.**
+
+- None.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- The existing cards and text styles, at the §4 widths, with no overflow or clipping.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints. Copy changes only.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker on the captured Website text at every width and in the 390 px preview:
+  - each old sentence is absent and its replacement present;
+  - no sharing or public-Collection wording;
+  - no "the buyer's Delivery QR";
+  - no "standard" admission qualifier;
+  - no ID-requirement wording.
+- **Red/green.** On the f868fc4 reference build all three defects are detected; on the candidate none is.
+- **Mutations**, each of which must be caught:
+  - any one old sentence restored;
+  - "standard" reintroduced in either place;
+  - "the buyer's" reintroduced;
+  - sharing language reintroduced;
+  - the KYC sentence dropped.
+- **Earlier suites:** WO-011's checklist items R2.6, R8.2, R13.1, §60.23, §63.13 and §63.36, with §60.05 and §63.27 still passing; the WO-007 audit for the Website; a capture comparison in which only these sentences change.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–5 hold in every layout.
+2. The six WO-011 checklist items above pass on the candidate.
+3. Only these sentences differ from f868fc4.
+4. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus each sentence's before and after text, with its location.
+
+### WO-019 — Prototype Guide and Master Demo Canonical Flow Corrections
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P2.
+
+**OBJECTIVE.** The Prototype Guide and the Master Demo describe the canonical flows:
+- Courier Delivery runs: Seller prepares → Ready for Courier → Seller sends Delivery Offer → Courier accepts Delivery Offer → Courier Assigned → pickup and delivery;
+- the Seller never accepts the Delivery Offer;
+- the launcher uses §61's labels;
+- the Guide's flow count matches DD's 13 flows.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- R6.10 and R6.11 set the sequence, R4.4 the Courier Delivery timeline, and §59 Flow G the fulfilment path. §61 names the launcher entries.
+- WO-011's initial verification run (2026-10-08) found three defects:
+  - **D17** (checklist items R4.4 and R6.11). The Guide's journey step 7 read "Seller prepares order → assigns courier from their pool → marks Ready for Pickup". The Guide's Flow G path put Assign before Mark Ready, and its Seller Order card read "Status: Paid → Preparing → Ready → Assigned → …". The Master Demo's Courier step was titled "Assign Courier and Mark Ready" and told the Seller to "accept the delivery offer", and Flow G's first step to "accept the offer". Both give the Courier's acceptance to the Seller.
+  - **D18** (checklist item F.03). The launcher rendered "View as" before each role, giving "View as Seller", "View as Seller Console" and "View as Operator Console".
+  - **D19** (checklist item F.04). The Guide said "seven product surfaces and fourteen end-to-end demo flows"; DD *Demo flows and the records they use* has 13 (A–M).
+- The owner's remediation decisions of 2026-10-08 require §59's and §61's exact wording wherever those sections define the copy.
+
+**DEPENDENCIES.**
+
+- WO-001: the canonical flow list, whose 13 flows are DD's A–M.
+- WO-006: Flows C and D.
+- WO-006A: Flow M and the Master Demo's flow order.
+- WO-008: Flows F, G and H, and offer semantics.
+- WO-015: the Seller Console's offer wording, which this matches.
+
+**IN SCOPE.**
+
+- The Guide's journey step 7, its Flow G path, its Seller Order card's status rule, its launcher labels and its flow count.
+- The Master Demo's Courier step: its title and instruction.
+- Flow G's first step: its instruction.
+
+**OUT OF SCOPE.**
+
+- Flow targets and stage structure: no screen key or target changes (standard constraint 5).
+- The Master Demo step whose target is inert (accepted).
+- Flow titles that no rule contradicts, and Flow K's wording.
+- The Guide's other content.
+- Any canonical Courier record.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. The Guide's journey step 7 reads: "Seller prepares the order → marks it Ready for Courier → sends a Delivery Offer to an approved Courier from their pool → the Courier accepts the Delivery Offer → Courier Assigned" (R6.10, R6.11).
+2. The Guide's Flow G path is §59 Flow G's, word for word: "Paid Order → Seller Companion → Prepare → Mark Ready → Assign / Offer to Daniel → Seller displays Pickup QR → Courier scans → Pickup Verified → checkpoint location attempted → Courier delivers → Courier displays Delivery QR → Buyer scans → Delivery Verified → checkpoint attempted → Completed." The Courier's name is read from the shared data.
+3. The Guide's Seller Order card lists the three timelines with their canonical names (R4.4–4.6):
+   - Courier Delivery: Paid → Preparing → Ready for Courier → Courier Assigned → Pickup Verified → Out for Delivery → Delivery Handoff → Completed;
+   - Seller Delivery: Paid → Preparing → Ready for Seller Delivery → Out for Seller Delivery → Delivery Handoff → Completed;
+   - Buyer Collection: Paid → Preparing → Ready for Collection → Collection Handoff → Completed.
+4. The Master Demo's Courier step:
+   - title: "Mark Ready and Offer to Courier";
+   - instruction: "Prepare the Paid Order, Mark Ready, select Daniel K. and send the Delivery Offer; Daniel K. accepts it (simulated in the prototype)."
+5. Flow G's first step instruction: "Prepare the Paid Order, Mark Ready, select Daniel and send the Delivery Offer; Daniel accepts it (simulated in the prototype); then display the Seller Pickup QR."
+6. Nothing in the Guide or the Master Demo tells the Seller to accept a Delivery Offer, assigns a Courier before Mark Ready, or calls the Courier Delivery Ready state "Ready for Pickup" (R4.4, R6.10, R6.11).
+7. The launcher's entries read exactly, in this order: "View as Buyer", "View as Seller Companion", "View as Courier", "Open Seller Console", "Open Operator Console". The block keeps its "PROTOTYPE NAVIGATION — NOT PRODUCTION UI" label (§61).
+8. The Guide's sentence reads "seven product surfaces and 13 end-to-end demo flows". The 13 is rendered from the canonical flow list (the flows A–M of DD *Demo flows and the records they use*), not typed as a literal. MASTER and the auxiliary E2 run aren't counted. The Guide's flow list shows the same 13.
+
+**DATA REQUIREMENTS.**
+
+- DD *Demo flows and the records they use*.
+- DD *Courier* (the Courier's name).
+
+**VISUAL / UX REQUIREMENTS.**
+
+- The existing Guide and flow-card layouts, at the §4 widths, with no overflow.
+- The flow card's docked and floating presentations are unchanged.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints. Constraint 5 especially: titles and instructions only, with no target or screen-key change.
+- Regression suites that assert the old wording are updated in the regression folder, and each change is listed in the completion report. No check is weakened: the old assertion becomes the new wording's assertion.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker:
+  - the Guide's text at every width has requirements 1–3, 7 and 8, and none of "marks Ready for Pickup", an Assign step before Mark Ready, "Ready → Assigned", "fourteen", "View as Seller Console", "View as Operator Console" or a bare "View as Seller";
+  - every Master Demo and Flow G card text has requirements 4–5, and no "accept the delivery offer" or "accept the offer";
+  - the displayed count equals the length of the canonical flow list.
+- **Red/green.** On the f868fc4 reference build these checks fail; on the candidate they pass.
+- **Mutations**, each of which must be caught:
+  - a hard-coded "fourteen";
+  - the Assign → Mark Ready order restored;
+  - "accept the delivery offer" restored;
+  - the "View as" pattern for every entry restored;
+  - a flow added to the canonical list without the count following;
+  - "Ready for Pickup" restored.
+- **Earlier suites:**
+  - smoke every flow from its first step, at 390 and 1440;
+  - WO-006, WO-006A and WO-008's flow-card checks;
+  - the WO-001 module checker;
+  - WO-011's checklist items R4.4, R6.11, F.03 and F.04, with its Demo-flow items still passing;
+  - the WO-007 audit for the Guide and the flow steps.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–8 hold.
+2. The WO-011 checklist items above pass on the candidate, and every flow still walks from its first step.
+3. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus each changed text with its before and after, and the list of regression assertions updated.
+
+### WO-020 — Accessible Names and Control Semantics
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P2.
+
+**OBJECTIVE.** Every control named in D9, D12 (name portion) and D15 (Back-button name portion) has an accessible name, and the Seller Console's switches expose their role and state.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- §57 calls for semantic labels and keyboard-accessible desktop controls. §28 lists the Seller Console top bar's Notifications and Help. §39 gives the Operator rail's collapsed icons their labels, which WO-009 implemented.
+- WO-011's initial verification run (2026-10-08) found these defects, all under checklist item §57.06:
+  - **D9.** The Seller Console's desktop rail, when collapsed, had 13 buttons with no usable name: 10 had none and 3 read only a count. The Seller Console's on/off switches had no name, role or state.
+  - **D12, name portion.** The console top bar's Notifications and Help icon buttons had no name, in the Seller and the Operator Console.
+  - **D15, Back-button name portion.** The Seller Storefront search screen's icon-only Back button had no name.
+
+**DEPENDENCIES.**
+
+- WO-007: the Seller Console tablet rail, whose buttons are named, and the drawers.
+- WO-009: collapsed sidebar items that keep their label as a visually hidden name, and the Operator rail.
+
+**IN SCOPE.**
+
+- The Seller Console's collapsed desktop rail.
+- The Seller Console's switches and every use of them: Store availability, the Automation and Settings rows, the Product editor's demo media and the Shoppable Post editor's hotspots.
+- The top bar icon buttons in both consoles.
+- The Seller Storefront search screen's Back button.
+
+**OUT OF SCOPE.**
+
+- Sidebar redesign, and any change to the Operator rail (WO-009).
+- A visible tooltip on the Seller rail: §39 requires one for the Operator rail only.
+- Focus styling (WO-022).
+- The Components board's icon-button specimens.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. In the collapsed desktop state, each of the 13 Seller rail buttons has its destination's label, with any count, as its accessible name, as WO-009's collapsed Operator items keep theirs. The collapsed rail's appearance is unchanged, and so are the expanded state, the tablet rail and the drawer (WO-007).
+2. Each Seller Console switch exposes the switch role, its on/off state and an accessible name taken from the row it controls (§57).
+3. The top bar icon buttons are named "Notifications" and "Help" (§28), in both consoles.
+4. The Storefront search Back button is named "Back to {Seller name}", matching the Storefront's other Back buttons, which show the Seller's name.
+5. The Collapse and Expand controls keep their names, and keyboard order is unchanged (§57).
+
+**DATA REQUIREMENTS.**
+
+- None.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- No visible change.
+- The collapsed rail at 1440 and 1280; the tablet rail at 1024 and 768, unchanged; the Storefront at 390.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+- Keep the Seller Console sidebar's class hook and the markup its responsive rules select on.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker, reading the accessibility tree and not only the labelling attributes:
+  - with the Seller rail collapsed at 1440 and 1280, all 13 buttons are named, with names equal to the expanded labels;
+  - every switch has the switch role, its state and a name;
+  - the top bar buttons are named in both consoles;
+  - the Storefront Back button is named at 390.
+- **Red/green.** On the f868fc4 reference build all four checks fail; on the candidate they pass.
+- **Mutations**, each of which must be caught:
+  - one rail name dropped;
+  - a switch's role or state dropped;
+  - one top bar name dropped;
+  - the Back button's name dropped;
+  - the tablet rail's names broken.
+- **Earlier suites:** WO-007's suite and audit for the Seller tablet rail and drawer; WO-009's suite and mutations; WO-011's checklist item §57.06, with §57.04 still passing; a capture comparison showing no visual change.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–5 hold.
+2. WO-011's checklist item §57.06 passes on the candidate.
+3. At rest, rendering is identical to f868fc4, apart from accepted noise.
+4. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus the accessible names before and after, from the accessibility tree.
+
+### WO-021 — Status Icon Accessibility
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P2.
+
+**OBJECTIVE.** Every status that the shared status badge (StatusBadge) shows reads as text plus a meaningful icon. The badge maps statuses centrally to five semantic icon families, using icons the prototype already draws. Text stays the primary label, and canonical state names don't change.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- §57 lists "text + icon status". WO-008 and WO-010 applied it to Courier availability and the Solo Coverage banner.
+- WO-011's initial verification run (2026-10-08) found defect D10 (checklist item §57.08). The Seller Console's status badges showed text alone or text with a colour dot, for example in the Orders rows, the Order Detail header and "Paid · read-only".
+- The owner approved the icon families on 2026-10-08, with the existing icons only and no new icon dependency.
+
+**DEPENDENCIES.**
+
+- WO-007: badge layouts at the audit widths.
+- WO-008: the existing text-plus-icon pattern and the badge's icon option.
+- WO-015: its "Awaiting Courier acceptance" status is part of the inventory.
+
+**IN SCOPE.**
+
+- An inventory of every status the shared status badge renders, on every surface and on the Components board.
+- The central mapping of those statuses to icon families, applied to every use of the badge.
+
+**OUT OF SCOPE.**
+
+- Canonical state names and labels (R4.4–4.6, §55).
+- Colours.
+- Status displays that the shared status badge doesn't draw: the mobile apps' own status chips and the Trust badge components.
+- Decorative icons with no status meaning.
+- A new icon dependency or icon library.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. The shared status badge maps every status centrally to one of five families. Each family uses an icon the prototype already draws:
+
+   | Family | Examples | Icon |
+   |---|---|---|
+   | Success | paid, verified, approved, completed, published; active where success semantics apply | an existing check or success icon |
+   | Pending / in progress | pending, preparing, awaiting, ready, assigned; out for delivery or processing where appropriate | an existing clock, activity or progress icon |
+   | Warning / attention | needs attention, claim or dispute, warning; rebuilding or an equivalent warning state where applicable | an existing warning icon |
+   | Failure / negative | failed, rejected, cancelled, removed, suspended | an existing error or X icon |
+   | Informational / neutral | read-only, a neutral informational status, any other status with no positive or negative implication | an existing information icon |
+
+2. The icon replaces the dot. The text remains the primary label and the icon reinforces it. The icon is hidden from assistive technology, so the accessible name stays the text (§57).
+3. Colour is never the only status cue (§57).
+4. Canonical state names and labels are unchanged.
+5. There is one mapping, in the shared badge, with no per-surface copies.
+6. Every actual status of the shared badge is inventoried and mapped explicitly. If an actual status doesn't fit a family, stop and report it rather than guessing.
+7. Badge width at the audit widths causes no overflow or clipping (WO-007).
+
+**DATA REQUIREMENTS.**
+
+- None.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- An icon replaces the dot in every affected badge, and nothing else changes.
+- The Seller Console at 1440 and 1024, the Components board, and the §4 widths for overflow.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+- One mapping in the shared badge, with no per-surface copies.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker:
+  - a source and render inventory in which every use of the shared badge renders its family's icon and no dot;
+  - the applied mapping equals the completion report's table;
+  - the text names are unchanged;
+  - the icons are hidden from assistive technology.
+- **Red/green.** On the f868fc4 reference build "no dot-only badge" fails; on the candidate it passes.
+- **Mutations**, each of which must be caught:
+  - one status reverted to a dot;
+  - a status mapped to the wrong family;
+  - the icon exposed as the name;
+  - a label changed;
+  - a per-surface override of the mapping.
+- **Earlier suites:** WO-008 (the Courier status icons, unchanged); the WO-007 audit, for badge widths; WO-011's checklist item §57.08; a capture comparison in which only the badges differ.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–7 hold.
+2. WO-011's checklist item §57.08 passes on the candidate.
+3. Visual differences from f868fc4 are exactly the approved icon changes.
+4. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus the inventory and the explicit mapping table (every status, its family and its icon), and before and after screenshots of the Seller Console's Orders and Order Detail.
+
+### WO-022 — Keyboard Focus Indicators and Focus Contrast
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P2.
+
+**OBJECTIVE.** Every keyboard focus indicator named in D6, D12 (focus portion), D14 and D15 (field-focus portion) is visible, with at least 3:1 contrast against what is behind it, using the existing focus tokens.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- §57 calls for visible keyboard focus and "WCAG-style accessible interaction principles", and WCAG sets 3:1 for a focus indicator.
+- CLAUDE.md: every control shows the global 3 px info-blue outline offset 2 px; it must not be suppressed inline; on a dark or photo surface where the blue lacks contrast, the light inverse token is used.
+- WO-011's initial verification run (2026-10-08) measured the rendered outlines and found these defects, under checklist item §57.03:
+  - **D6.** The Company Website's form fields showed no focus indicator, because it was suppressed inline.
+  - **D15, field-focus portion.** The Seller Storefront's search field showed no focus indicator, for the same reason.
+  - **D12, focus portion.** The Operator Console's main-area controls showed the info outline at 2.66:1 on its `#1C2028` panels. Only the Operator sidebar uses the inverse outline.
+  - **D14.** The Courier Pickup scanner's close control and "Simulate QR detected" showed the info outline at 2.95:1 on its `#1A1512` surface.
+
+**DEPENDENCIES.**
+
+- WO-007.
+- WO-009: the inverse outline already used in the Operator sidebar.
+- WO-012 and WO-013: their verification fields are in scope.
+
+**IN SCOPE.**
+
+- Every Company Website field and select, including the 390 px home waitlist and the WO-012 and WO-013 verification fields.
+- The Seller Storefront search field.
+- Focusable controls in the Operator Console's main area, its panels and its case workspaces.
+- The Courier Pickup scanner's controls.
+
+**OUT OF SCOPE.**
+
+- Any brand colour, and the global outline's colour or width elsewhere.
+- Hover and pressed styles.
+- Accessible names (WO-020).
+- The invalid colour values (standard constraint 6).
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. Website fields and the Storefront search field: nothing inline suppresses the global keyboard focus outline. Each shows the 3 px info outline, which renders 6.14:1 on `#FFFFFF`, 5.50:1 on `#F5F2ED` and 5.79:1 on `#FAF8F5`.
+2. Operator Console main area: focused controls use the light inverse outline (`#FAF8F5`), as the Operator sidebar already does. It renders 15.40:1 on `#1C2028`, 13.43:1 on `#252B35` and 17.42:1 on `#111418`.
+3. Courier Pickup scanner: its controls use the inverse outline on its dark surface, as the Buyer entry and camera screens do. It renders 17.08:1 on `#1A1512`.
+4. Focus stays keyboard-only, with no outline on mouse or touch activation (CLAUDE.md).
+5. Every indicator in scope renders at least 3:1 against what is behind it, measured from pixels (the median over the outline), at the widths below.
+
+**DATA REQUIREMENTS.**
+
+- None.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- Focus only: nothing changes at rest.
+- The Website at 390, 1024 and 1440; the Storefront at 390 and 1440; the Operator Console at 1440 and 1024; the Courier at 360, 390 and 430.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+- Existing tokens only, through the stylesheet's rules or the file's idiom.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker, reusing WO-011's pixel measurement of focus outlines. It applies keyboard focus, then compares screenshots focused and blurred:
+
+  | Control | Before (f868fc4) | After (required) |
+  |---|---|---|
+  | Website Content Type, link, detail, email, deletion reason | no outline pixels | ≥ 3:1 |
+  | Storefront search | no outline pixels | ≥ 3:1 |
+  | Operator View all work, Claim, Open | 2.66:1 | ≥ 3:1 |
+  | Courier close control, Simulate QR detected | 2.95:1 | ≥ 3:1 |
+
+  It also checks that no outline appears on a mouse click.
+- **Red/green.** On the f868fc4 reference build the "before" column fails; on the candidate every control passes.
+- **Mutations**, each of which must be caught:
+  - one inline suppression restored;
+  - the Operator rule limited to the sidebar again;
+  - the scanner back on the info outline;
+  - the outline shown on mouse focus.
+- **Earlier suites:** WO-003's and WO-004's focus audits; WO-009 (the Operator sidebar outline); WO-010 (the Solo Coverage focus checks); WO-006A (the Buyer camera); WO-011's checklist item §57.03; a capture comparison with no difference at rest.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–5 hold, with the before and after values recorded.
+2. WO-011's checklist item §57.03 passes on the candidate.
+3. At rest, capture is identical to f868fc4, apart from accepted noise.
+4. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus the before and after contrast table, measured from pixels.
+
+### WO-023 — Operator Muted-Text Contrast
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P2.
+
+**OBJECTIVE.** Operator Console muted text reaches at least 4.5:1 on every background it is rendered on, by taking the approved value `#8C95A9`. No other Operator colour and no Seller Console colour changes.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- §57 calls for strong contrast, "WCAG-style": 4.5:1 for text of normal size.
+- WO-011's initial verification run (2026-10-08) found defect D11 (checklist item §57.01). The Operator muted value `#7A8499` gives:
+  - 3.79:1 on the raised `#252B35`, used for table headers, a chart label and notes;
+  - 4.34:1 on the surface `#1C2028`, used for the Claim Work Item note and the "Desktop recommended" note;
+  - 4.91:1 on `#111418`.
+- The owner approved `#8C95A9` on 2026-10-08, only for the Operator muted-text treatment that fails. It gives 6.14:1 on `#111418`, 5.43:1 on `#1C2028` and 4.73:1 on `#252B35`.
+
+**DEPENDENCIES.**
+
+- WO-009: the Operator Console as it now renders.
+- WO-010: the Solo Coverage panels use the muted treatment.
+- WO-022: the focus outlines on the same panels.
+
+**IN SCOPE.**
+
+- The Operator muted-text treatment, wherever the Operator Console renders it.
+
+**OUT OF SCOPE.**
+
+- Operator primary text, accents, navigation, cards, buttons and borders: their own colours don't change.
+- Every Seller Console colour (its muted text is a separate token).
+- The Foundations board's printed colour values, which CLAUDE.md notes are partly stale.
+- The invalid tints (standard constraint 6).
+- Type sizes.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. The Operator muted-text value becomes `#8C95A9`, in place of `#7A8499`.
+2. The new value is used only for the Operator muted-text treatment. Operator primary text, accents, navigation, cards and buttons, and the Seller Console, are not recoloured.
+3. Every element in the treatment reaches at least 4.5:1 on every background it is rendered on, and its contrast is measured before and after.
+4. If the muted value turns out to colour something other than muted text and the muted icons drawn with it, for example a navigation item's state, a card or a button's own colour, stop and report it before changing that element.
+5. The change is made once, where the treatment is defined, with no per-use overrides.
+
+**DATA REQUIREMENTS.**
+
+- None.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- A visual change to Operator muted text, and the muted icons drawn with it, only.
+- The Operator Console at 1440, 1024 and 390 (the drawer).
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+- One change where the treatment is defined, with no per-use overrides.
+- The Foundations board is unchanged.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker:
+  - every Operator element rendered in the treatment, at the widths above, is at least 4.5:1 against its rendered background, from computed style and pixels;
+  - the value equals `#8C95A9`;
+  - the other Operator colours and the Seller Console's colours are unchanged.
+- **Red/green.** On the f868fc4 reference build it fails at 3.79:1; on the candidate it passes.
+- **Mutations**, each of which must be caught:
+  - the value reverted;
+  - a value under 4.5:1 on the raised background;
+  - a per-use override left at the old value;
+  - another Operator colour changed;
+  - a Seller Console colour changed.
+- **Earlier suites:** WO-009's and WO-010's suites and mutations; the WO-007 audit for the Operator Console; WO-011's checklist item §57.01; `run-all.cjs`.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–5 hold, with the exact before and after contrast values recorded for every background.
+2. WO-011's checklist item §57.01 passes on the candidate.
+3. Only Operator muted text, and the muted icons drawn with it, differ from f868fc4.
+4. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus the before and after contrast table for every background, and before and after screenshots of the Unified Work Queue at 1440.
+
+### WO-024 — Courier Card Design-System Figures
+
+**STATUS.** APPROVED FOR IMPLEMENTATION. Remediation priority P3.
+
+**OBJECTIVE.** The Components board's Courier Card and Assign Courier specimens show the approved two-number model, with DD's figures: completed for this Seller as the primary figure, and total completed deliveries across Sellers as secondary context.
+
+**WHY THIS WORK ORDER EXISTS.**
+
+- R7.4: "Any Seller-facing Courier selection/card … must distinguish completed deliveries for the current Seller from total completed deliveries." §23 gives the card. DD *Courier* gives the 13:35 Addis Atelier card: "Daniel K. · Available · 41 completed for your store · 64 total completed deliveries · ETB 180.00 for this delivery".
+- WO-011's initial verification run (2026-10-08) found defect D20 (checklist item R7.4), which the owner confirmed at lower priority. The design-system Courier Card had a single deliveries figure ("41 deliveries"), and the Assign Courier modal specimen read "41 completed deliveries".
+- The design-system card is used only on the Components board. The Seller Companion and the Seller Console have their own cards, which already pass (WO-008).
+
+**DEPENDENCIES.**
+
+- WO-008: the Seller-specific and total figures at the story moment (41 and 64, and ETB 180.00, for Addis Atelier and Daniel K. at 10:25).
+
+**IN SCOPE.**
+
+- The design-system Courier Card and its data.
+- The Components board's Courier Card specimen and Assign Courier modal specimen.
+
+**OUT OF SCOPE.**
+
+- The Seller Companion, the Seller Console and the Courier app, which are unchanged.
+- Courier data (DEMO_DATA.md unchanged).
+- The modal specimen's other wording.
+
+**IMPLEMENTATION REQUIREMENTS.**
+
+1. The card shows "41 completed for your store" as the primary figure and "64 total completed deliveries" as the secondary figure, in DD's wording, read from the shared module at the board's moment (R7.4, §23; DD *Courier*).
+2. The Assign Courier modal specimen shows the same two figures, in the same order and prominence, with the compensation.
+3. Visual primacy follows R7.4, within the existing component styles.
+4. No product surface and no Courier data changes.
+
+**DATA REQUIREMENTS.**
+
+- DD *Courier*: Daniel K. and Addis Atelier, 41 and 64, ETB 180.00, from the shared module at 10:25.
+
+**VISUAL / UX REQUIREMENTS.**
+
+- The Components board at its widths. The specimen exception for controls under 44 px still applies.
+
+**TECHNICAL CONSTRAINTS.**
+
+- The standard constraints.
+
+**VALIDATION.**
+
+- Type-check, build and `run-all.cjs` pass.
+- A focused checker:
+  - the board's Commerce Cards and Overlays texts show both figures, in order, equal to the module's values;
+  - the Seller Companion and Seller Console card texts are unchanged.
+- **Red/green.** On the f868fc4 reference build "two figures" fails; on the candidate it passes.
+- **Mutations**, each of which must be caught:
+  - the total dropped;
+  - the order swapped;
+  - a literal 41 in place of the module's value.
+- **Earlier suites:** WO-008's suite and module checks; WO-011's checklist item R7.4; a Components capture comparison.
+
+**ACCEPTANCE CRITERIA.**
+
+1. Requirements 1–4 hold.
+2. WO-011's checklist item R7.4 passes on the candidate.
+3. The standard checks pass.
+
+**REQUIRED COMMANDS.** The standard commands, plus `node ../AdulisCommercePlatformPrototype-regression/checkers/run-all.cjs` from the repository root, this work order's focused checker on the f868fc4 reference build and on the candidate build, and its mutation test.
+
+**COMPLETION REPORT FORMAT.** The standard report, plus before and after screenshots of both specimens.
+
 ## Revision history
 
 - 2026-10-02: File created as an empty scaffold. No work orders recorded.
@@ -1162,6 +2354,7 @@ Do not use another Buyer's Order in Maya's Buyer app:
 - 2026-10-07: Post-WO-008 reconciliation. Implementation progress records WO-008 — Courier Seller-Specific vs Platform Totals as implemented and merged into main. Seller-specific Courier completion counts are now separated from the Courier's platform-wide completion total: Seller-facing Courier views show completed deliveries for the current Seller first, with the total across Sellers as secondary context. Seller–Courier relationship status presentation was corrected where WO-008 owned it. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-009 is next and remains not started. No approval status, work-order body, dependency or execution order changed.
 - 2026-10-07: Post-WO-009 reconciliation. Implementation progress records WO-009 — Operator Sidebar Collapse / Expand as implemented and merged into main. The desktop Operator navigation now switches reliably between its Expanded and Collapsed states: the collapsed icon rail keeps an always-accessible Expand control, and each destination keeps its label and context through tooltip and focus treatment. At tablet and phone widths the Operator navigation is the temporary drawer, and the active destination is preserved through every sidebar transition. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-010 is next and remains not started. No approval status, work-order body, dependency or execution order changed.
 - 2026-10-08: Post-WO-010 reconciliation. Implementation progress records WO-010 — Solo Coverage Duration as implemented and merged into main. `SCV-1001`'s Solo Coverage state is derived from the prototype's story clock, and the record remains canonical and read-only; its 22 September replay is available. While Solo Coverage is active, a persistent warning and status treatment shows. Activation, extension and early stop are demonstrated as prototype behaviour without creating canonical demo records. The configured maximum continuous duration is 28 days from the original activation, an extension cannot restart it, and Market-local time is used. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-011 is next and remains not started. No approval status, work-order body, dependency or execution order changed.
+- 2026-10-08: Post-WO-011 remediation work orders added. WO-011's initial verification run found 20 confirmed defects (D1 to D20). The remediation work orders WO-012 to WO-024 are APPROVED FOR IMPLEMENTATION and not started, and each cites the defects it fixes. The purpose-bound Company Website verification for Account Deletion and Report Content, and the Marketplace Search availability filter, were first resolved in the specification (sections 12 and 8). WO-011 remains open: its progress is INITIAL VERIFICATION COMPLETE; REMEDIATION REQUIRED; FINAL RERUN PENDING, and it is rerun after WO-024 to close it, with no WO-025. WO-011's body is unchanged, and no canonical demo record changed.
 
 ## Related documents
 
