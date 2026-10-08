@@ -636,6 +636,12 @@ Out-of-stock Products may remain searchable but should rank below relevant avail
 
 Currently unavailable.
 
+Availability filter (Products results):
+
+Off by default. With it off, currently available Products rank before unavailable Products, where other ranking conditions do not override the canonical eligibility rules. Unavailable Products may remain in the results where the Search rules allow, and every unavailable Product shows "Currently unavailable" and never appears available or purchasable.
+
+With it on, unavailable Products are excluded from the Product results.
+
 ==================================================
 9. SAVED / COLLECTIONS
 ==================================================
@@ -1159,6 +1165,32 @@ This authentication presentation does NOT resolve the production multi-role Acco
 Do not build Account merging or role migration.
 
 Guest Report: Report submission requires authentication. A Guest who chooses Report sees the authentication requirement (Sign in / Create account) and, after successful authentication, continues into the Report flow where practical (section 7).
+
+Company Website verification: public Company Website browsing stays anonymous. The Website has no general login, no persistent Website session and no Website-owned Account. Two Website actions need a verified Adulis Platform Account, and each uses its own purpose-bound verification.
+
+Account Deletion:
+
+Phone number
+→ 6-digit OTP
+→ deletion verification succeeds
+→ a short-lived deletion capability for this deletion flow only
+→ preview of the consequences
+→ explicit confirmation
+→ the Platform's result: deletion requested, or deletion requested but currently blocked.
+
+The Website renders the Platform's result. It does not calculate blockers itself.
+
+Report Content: a guest can view the page but cannot submit a Report (rule 3.7). If no already-valid Platform authenticated context exists, submission requires:
+
+Phone number
+→ 6-digit OTP
+→ verified Account
+→ a short-lived report-submission capability
+→ the Report form is submitted.
+
+The deletion capability and the report-submission capability are separate. Neither authorizes the other's action or any Buyer or Seller commerce action, and neither becomes a general Website login. Both are transient prototype state that ends with its flow. The two flows may share the same phone and OTP screens, never the same capability. The Website never accepts an Account ID from the visitor: verification identifies the Account.
+
+In the prototype, Account Deletion's verification resolves deterministically to the demo Buyer, Maya Tesfaye, with no Website account record. At the 10:25 story snapshot Maya has active Orders, so Account Deletion ends in "deletion requested, but currently blocked by active Orders".
 
 ------------------------------
 GUEST TEMPORARY CART AFTER SIGN-IN
@@ -3460,6 +3492,7 @@ The final result should feel like one real commerce platform ready for product r
   - Report for a guest, and the guest's temporary Cart through sign-in as transient session state (section 12);
   - which Shoppable Posts need action on the Seller Console Home, and the Seller-facing message (section 29).
 - 2026-10-07: Solo Coverage maximum recorded (section 50). The previously unspecified maximum is resolved: Custom allows multiple weeks up to the current configured maximum continuous duration of 28 days, measured from the original activation; extensions use the same maximum; an entered time beyond it blocks activation or extension with explanatory copy; it is calculated in the Market-local timeline as an absolute duration from the activation. No canonical demo record changed; `SCV-1001` is unchanged.
+- 2026-10-08: Post-WO-011 remediation decisions recorded: the Company Website's purpose-bound verification for Account Deletion and Report Content, with separate short-lived capabilities and no general Website login, and Account Deletion resolving in the prototype to Maya, blocked by her active Orders at 10:25 (section 12); the Marketplace Search availability filter, off by default (section 8). No canonical demo record changed.
 
 ## Related documents
 
