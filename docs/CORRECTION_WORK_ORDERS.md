@@ -26,7 +26,7 @@ Because execution is sequential, a work order that is PENDING DECISION holds bac
 
 ## Implementation progress
 
-Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-07:
+Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-08:
 
 - WO-001 — IMPLEMENTED AND MERGED
 - WO-002 — IMPLEMENTED AND MERGED
@@ -38,7 +38,7 @@ Implementation progress is separate from approval status (see Work-order convent
 - WO-007 — IMPLEMENTED AND MERGED
 - WO-008 — IMPLEMENTED AND MERGED
 - WO-009 — IMPLEMENTED AND MERGED
-- WO-010 — NOT STARTED
+- WO-010 — IMPLEMENTED AND MERGED
 - WO-011 — NOT STARTED
 
 **Cross-work-order clarification (2026-10-05).** WO-003's availability-revalidation rule remains valid. After WO-004, already-unavailable Products cannot be added to Cart, so the canonical demo no longer naturally reaches the "became unavailable after add-to-cart" branch. Deterministic coverage of that race condition is assigned to WO-006's Checkout test environment. See WO-006 requirement 24.
@@ -1161,6 +1161,7 @@ Do not use another Buyer's Order in Maya's Buyer app:
 - 2026-10-06: Post-WO-007 reconciliation. Implementation progress records WO-007 — Full Responsive Layout Repair as implemented and merged into main. All twelve prototype sections were repaired across the approved audit widths: the responsive overflow, clipping and guided-flow accessibility issues that WO-007 owns were addressed, and the Seller Console and Operator Console responsive behaviour was implemented. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-008 is next and remains not started. No approval status, work-order body, dependency or execution order changed.
 - 2026-10-07: Post-WO-008 reconciliation. Implementation progress records WO-008 — Courier Seller-Specific vs Platform Totals as implemented and merged into main. Seller-specific Courier completion counts are now separated from the Courier's platform-wide completion total: Seller-facing Courier views show completed deliveries for the current Seller first, with the total across Sellers as secondary context. Seller–Courier relationship status presentation was corrected where WO-008 owned it. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-009 is next and remains not started. No approval status, work-order body, dependency or execution order changed.
 - 2026-10-07: Post-WO-009 reconciliation. Implementation progress records WO-009 — Operator Sidebar Collapse / Expand as implemented and merged into main. The desktop Operator navigation now switches reliably between its Expanded and Collapsed states: the collapsed icon rail keeps an always-accessible Expand control, and each destination keeps its label and context through tooltip and focus treatment. At tablet and phone widths the Operator navigation is the temporary drawer, and the active destination is preserved through every sidebar transition. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-010 is next and remains not started. No approval status, work-order body, dependency or execution order changed.
+- 2026-10-08: Post-WO-010 reconciliation. Implementation progress records WO-010 — Solo Coverage Duration as implemented and merged into main. `SCV-1001`'s Solo Coverage state is derived from the prototype's story clock, and the record remains canonical and read-only; its 22 September replay is available. While Solo Coverage is active, a persistent warning and status treatment shows. Activation, extension and early stop are demonstrated as prototype behaviour without creating canonical demo records. The configured maximum continuous duration is 28 days from the original activation, an extension cannot restart it, and Market-local time is used. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-011 is next and remains not started. No approval status, work-order body, dependency or execution order changed.
 
 ## Related documents
 
