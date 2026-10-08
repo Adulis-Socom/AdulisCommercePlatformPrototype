@@ -2,7 +2,7 @@
 // where DEMO_DATA states a figure "as at 10:25", later values add only the documented events that follow.
 import { adulisSurcharge, formatEtb } from './money.ts'
 import type { Santim } from './money.ts'
-import { DEFAULT_SNAPSHOT, happenedBefore } from './time.ts'
+import { DEFAULT_SNAPSHOT, addMinutes, happenedBefore } from './time.ts'
 import type { CalendarDate, Moment, Timestamp } from './time.ts'
 import { ORDER_TIMELINES } from './types.ts'
 import type { ClaimState, CourierAvailability, FulfilmentMode, OrderState, TrustLevel } from './types.ts'
@@ -24,8 +24,8 @@ import { CLAIMS } from './records/claims.ts'
 import type { ClaimId } from './records/claims.ts'
 import { CONVERSATIONS, CONVERSATION_IDS } from './records/conversations.ts'
 import type { ConversationId, MessageContext, MessageRecord } from './records/conversations.ts'
-import { HANDOFF_REVIEWS, MODERATION_CASES } from './records/operations.ts'
-import type { ModerationId } from './records/operations.ts'
+import { AUDIT_LOG, HANDOFF_REVIEWS, MODERATION_CASES, SOLO_COVERAGE } from './records/operations.ts'
+import type { ModerationId, SoloCoverageId } from './records/operations.ts'
 import { NOTIFICATIONS } from './records/notifications.ts'
 import type { NotificationRecord } from './records/notifications.ts'
 import { FOLLOWING_ORDER, FOR_YOU_ORDER, NEARBY_PROXIMITY } from './records/channels.ts'
@@ -682,4 +682,39 @@ export function notificationsAt(recipient: NotificationRecord['recipient'], at: 
   const timed = mine.filter(n => { const t = notificationTime(n); return t !== undefined && happenedBefore(t, at) })
     .sort((a, b) => (notificationTime(b) ?? '').localeCompare(notificationTime(a) ?? ''))
   return [...timed, ...mine.filter(n => notificationTime(n) === undefined)]
+}
+
+// ---------- Solo Coverage (rules 16.3–16.9; specification §49–§50) ----------
+
+const SOLO_COVERAGE_IDS = Object.keys(SOLO_COVERAGE) as SoloCoverageId[]
+
+/**
+ * The Solo Coverage period active at `at`, if any: activated before it and not yet expired. At its expiry it becomes
+ * inactive by itself (rule 16.6); nothing else ends or extends it in DEMO_DATA.
+ */
+export function soloCoverageAt(at: Moment = DEFAULT_SNAPSHOT): SoloCoverageId | undefined {
+  return SOLO_COVERAGE_IDS.find(id => happenedBefore(SOLO_COVERAGE[id].activated, at) && !happenedBefore(SOLO_COVERAGE[id].expires, at))
+}
+
+/** The Solo Coverage periods that had expired by `at`, oldest first. */
+export function soloCoverageEndedBefore(at: Moment = DEFAULT_SNAPSHOT): SoloCoverageId[] {
+  return SOLO_COVERAGE_IDS.filter(id => happenedBefore(SOLO_COVERAGE[id].expires, at))
+    .sort((a, b) => SOLO_COVERAGE[a].expires.localeCompare(SOLO_COVERAGE[b].expires))
+}
+
+/**
+ * The current configured maximum continuous Solo Coverage duration, in days (rule 16.4; specification §50). It runs from
+ * the original activation: neither the Custom expected return nor an extension may go past it, and an extension never
+ * restarts it.
+ */
+export const SOLO_COVERAGE_MAX_DAYS = 28
+
+/** The latest expected return for Solo Coverage activated at `activated`: the original activation plus the maximum. */
+export function soloCoverageMaxEnd(activated: Timestamp): Timestamp {
+  return addMinutes(activated, SOLO_COVERAGE_MAX_DAYS * 24 * 60)
+}
+
+/** The audit records written before `at`, oldest first. */
+export function auditLogAt(at: Moment = DEFAULT_SNAPSHOT): typeof AUDIT_LOG {
+  return AUDIT_LOG.filter(entry => happenedBefore(entry.at, at))
 }

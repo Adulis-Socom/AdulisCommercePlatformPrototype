@@ -124,3 +124,49 @@ export function formatWeekday(value: Timestamp | CalendarDate): string {
   const p = parts(value)
   return WEEKDAYS[new Date(Date.UTC(p.year, p.month - 1, p.day ?? 1)).getUTCDay()]
 }
+
+// Lengths of story time, for Solo Coverage's expected durations (specification §50). Like the rest of story time they
+// never read the device's clock or time zone. They work in Market-local time: each result keeps the UTC offset of the
+// moment it starts from, or the Market's offset it is given, so they hold no zone of their own.
+
+const ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00[+-]\d{2}:\d{2}$/
+
+/** A timestamp's UTC offset: '+03:00' for '2026-10-02T10:25:00+03:00'. */
+function offsetOf(at: Timestamp): string {
+  if (!ZONED.test(at)) throw new Error(`Not a story timestamp: ${at}`)
+  return at.slice(-6)
+}
+
+/** The timestamp `ms` milliseconds after the Unix epoch, written in a UTC offset such as '+03:00'. */
+function fromEpoch(ms: number, offset: string): Timestamp {
+  const minutes = (offset.startsWith('-') ? -1 : 1) * (Number(offset.slice(1, 3)) * 60 + Number(offset.slice(4, 6)))
+  return `${new Date(ms + minutes * 60000).toISOString().slice(0, 16)}:00${offset}`
+}
+
+/** `at` moved by whole minutes (back, when negative), in `at`'s own offset. */
+export function addMinutes(at: Timestamp, minutes: number): Timestamp {
+  const offset = offsetOf(at)
+  return fromEpoch(Date.parse(at) + minutes * 60000, offset)
+}
+
+/** The end of `at`'s Market-local day: midnight, as the next day starts, in `at`'s own offset. */
+export function endOfDay(at: Timestamp): Timestamp {
+  const offset = offsetOf(at)
+  return fromEpoch(Date.parse(`${at.slice(0, 10)}T00:00:00${offset}`) + 86400000, offset)
+}
+
+/**
+ * A date-and-time field's value ('2026-10-20T09:00') read in a Market's UTC offset ('+03:00'), or undefined when it
+ * isn't a real date and time there.
+ */
+export function storyTimestamp(value: string, utcOffset: string): Timestamp | undefined {
+  const at = `${value}:00${utcOffset}`
+  if (!ZONED.test(at) || Number.isNaN(Date.parse(at))) return undefined
+  return fromEpoch(Date.parse(at), utcOffset) === at ? at : undefined
+}
+
+/** '30m', '4h', '13h 35m', '1d 23h', '7d': a length of time in whole minutes, largest unit first. */
+export function formatDuration(minutes: number): string {
+  const days = Math.floor(minutes / 1440), hours = Math.floor((minutes % 1440) / 60), rest = minutes % 60
+  return [days && `${days}d`, hours && `${hours}h`, rest && `${rest}m`].filter(Boolean).join(' ') || '0m'
+}

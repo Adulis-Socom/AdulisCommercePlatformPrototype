@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useId, useState, type CSSProperties, type ReactNode } from 'react'
 import { SearchInput, Textarea, TextInput } from '../components/ui/Input'
 import {
   ConsoleTopBar, SidebarItem, SidebarSeparator, SidebarGroupLabel, useDrawer,
@@ -8,12 +8,15 @@ import {
 import { AdulisLogo } from '../App'
 import { useStory } from '../StoryClock'
 import {
-  AUDIT_LOG, BUYERS, CLAIMS, CLAIM_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DECISIONS, HANDOFF_REVIEWS, MARKET, MODERATION_CASES, ORDERS,
-  ORDER_IDS, OPERATORS, PRODUCTS, SELLERS, SELLER_IDS, SHOPPABLE_POSTS, SHOPPABLE_POST_IDS, STAFF, SUPPORT_CASES, TRUST_APPEALS, VERIFICATION_CASES,
-  claimStateAt, claimSubmitted, formatAge, formatClock, formatDate, formatDayMonth, formatEtb, formatMonthShortYear, happenedBefore,
-  isForYouEligibleAt, isPubliclyEligibleAt, lineOptions, messagesAt, minutesBetween, orderStateAt, orderTotals, paidAt, paymentReference,
-  restrictionAt, shortName, stateTime, trustAt, trustLabel,
-  type ClaimId, type HandoffReviewId, type ModerationId, type Moment, type SupportId, type Timestamp, type TrustAppealId, type VerificationId,
+  BUYERS, CLAIMS, CLAIM_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DECISIONS, HANDOFF_REVIEWS, MARKET, MODERATION_CASES, ORDERS,
+  ORDER_IDS, OPERATORS, PRODUCTS, SELLERS, SELLER_IDS, SHOPPABLE_POSTS, SHOPPABLE_POST_IDS, SOLO_COVERAGE, SOLO_COVERAGE_MAX_DAYS, STAFF,
+  SUPPORT_CASES, TRUST_APPEALS, VERIFICATION_CASES,
+  addMinutes, auditLogAt, claimStateAt, claimSubmitted, endOfDay, formatAge, formatClock, formatDate, formatDayMonth, formatDuration, formatEtb,
+  formatMonthShortYear, happenedBefore, isForYouEligibleAt, isPubliclyEligibleAt, lineOptions, messagesAt, minutesBetween, orderStateAt,
+  orderTotals, paidAt, paymentReference, restrictionAt, shortName, soloCoverageAt, soloCoverageEndedBefore, soloCoverageMaxEnd, stateTime,
+  storyTimestamp, trustAt, trustLabel,
+  type ClaimId, type HandoffReviewId, type ModerationId, type Moment, type SoloCoverageId, type SupportId, type Timestamp, type TrustAppealId,
+  type VerificationId,
 } from '../demo-data'
 
 type NavKey =
@@ -24,7 +27,6 @@ type NavKey =
 
 type QueueFilter = 'All' | 'Support' | 'Moderation' | 'Claims' | 'Verification / Recovery' | 'Trust Appeals' | 'Manual Handoff'
 type FounderActor = 'CEO' | 'COO/CTO'
-type SoloState = 'inactive' | 'active' | 'expired'
 
 interface NavItem { key: NavKey; label: string; icon: ReactNode; badge?: number }
 
@@ -138,7 +140,8 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav)
   // Desktop has two persistent sidebar states, Expanded and the Collapsed icon rail (spec §39).
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [soloState, setSoloState] = useState<SoloState>('inactive')
+  // The Solo Coverage session Operator Access starts (a prototype interaction; see SoloSession).
+  const [session, setSession] = useState<SoloSession | null>(null)
   // Below desktop widths the sidebar is a temporary drawer instead, opened from the top bar's menu button (index.css;
   // spec §4 and §39). The drawer doesn't change the desktop state.
   const drawer = useDrawer()
@@ -174,6 +177,8 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
     'wq-verification': queueCount('Verification / Recovery'), 'wq-trust-appeals': queueCount('Trust Appeals'), 'wq-handoff': queueCount('Manual Handoff'),
     'gov-approvals': pendingDecisions(at).length,
   }
+  // Solo Coverage at the story moment, derived rather than stored, so it is never shown active outside its period.
+  const live = liveSoloCoverage(at, session)
 
   return (
     <div className="operator-console flex" style={{ height: '100%', background: BG }}>
@@ -192,8 +197,8 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
         <nav className="flex flex-1 flex-col overflow-y-auto py-2" onScroll={() => setTip(null)}>
           {NAV_STRUCTURE.map((group, index) => <div key={group.group ?? index}>{group.group && (labelled ? <SidebarGroupLabel label={group.group} dark /> : <><SidebarSeparator dark /><span className="sr-only">{group.group}</span></>)}{!group.group && index > 0 && <SidebarSeparator dark />}{group.items.map(item => <SidebarItem key={item.key} label={item.label} icon={item.icon} active={activeNav === item.key} onClick={() => open(item.key)} dark badge={badges[item.key]} collapsed={rail} />)}</div>)}
         </nav>
-        {labelled && (soloState === 'active'
-          ? <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}><p className="text-xs font-semibold" style={{ color: 'var(--color-danger)' }}>EXCEPTIONAL SOLO COVERAGE</p><p className="mt-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>Audited · Expires in 42m</p></div>
+        {labelled && (live
+          ? <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}><p className="text-xs font-semibold" style={{ color: 'var(--color-danger)' }}>EXCEPTIONAL SOLO COVERAGE</p><p className="mt-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>Audited · Expires in {formatDuration(live.remaining)}</p></div>
           : <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: `${ACCENT}40`, background: `${ACCENT}10` }}><p className="text-xs font-semibold" style={{ color: ACCENT }}>PRIVILEGED SESSION</p><p className="mt-1 text-xs" style={{ color: MUTED }}>Reasoned access · Audit logging · Named actions only</p></div>)}
         {/* Beside the rail and outside the scrolling nav, so nothing clips it. The button it describes is already named. */}
         {rail && tip && <div className="operator-rail-tooltip pointer-events-none absolute z-40 whitespace-nowrap rounded-md border px-2 py-1 text-xs font-medium" aria-hidden="true" style={{ left: 'calc(100% + 8px)', top: tip.top, transform: 'translateY(-50%)', background: RAISED, borderColor: BORDER, color: TEXT, boxShadow: 'var(--shadow-lg)' }}>{tip.label}</div>}
@@ -202,6 +207,7 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <ConsoleTopBar dark menu={drawer.menu('Open Operator navigation')} />
+        {live && <SoloCoverageBanner view={live} />}
         <div className="operator-content flex-1 overflow-y-auto">
           {/* Below desktop widths (index.css): the Operator Console stays desktop-first (spec §4). */}
           <p className="operator-desktop-note" role="note">Desktop recommended</p>
@@ -211,9 +217,9 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
           {activeNav === 'search-sellers' && <SearchPanel at={at} mode="seller" />}
           {activeNav === 'search-accounts' && <SearchPanel at={at} mode="account" />}
           {activeNav === 'gov-config' && <ConfigurationPanel />}
-          {activeNav === 'gov-access' && <OperatorAccessPanel soloState={soloState} setSoloState={setSoloState} />}
+          {activeNav === 'gov-access' && <OperatorAccessPanel at={at} live={live} session={session} setSession={setSession} />}
           {activeNav === 'gov-approvals' && <FounderDecisionsPanel at={at} />}
-          {activeNav === 'gov-audit' && <AuditPanel />}
+          {activeNav === 'gov-audit' && <AuditPanel at={at} />}
           {activeNav === 'gov-health' && <SystemHealthPanel />}
         </div>
       </div>
@@ -703,20 +709,24 @@ function FounderDecisionsPanel({ at }: { at: Moment }) {
   )
 }
 
-function OperatorAccessPanel({ soloState, setSoloState }: { soloState: SoloState; setSoloState: (state: SoloState) => void }) {
+function OperatorAccessPanel({ at, live, session, setSession }: { at: Moment; live: SoloView | null; session: SoloSession | null; setSession: (session: SoloSession | null) => void }) {
   const [actor, setActor] = useState<FounderActor>('COO/CTO')
-  const [reauth, setReauth] = useState(false)
-  const [reason, setReason] = useState('')
-  const [duration, setDuration] = useState('60 minutes')
-  const [confirmed, setConfirmed] = useState(false)
+  // Current, or one of DEMO_DATA's Solo Coverage periods at its replay snapshot: a read-only historical view, like the
+  // Seller Console's Pre-publication Setup Snapshot, that leaves the console's story moment unchanged.
+  const [view, setView] = useState<'current' | SoloCoverageId>('current')
+  const replay: Moment | undefined = view === 'current' ? undefined : { at: SOLO_COVERAGE[view].replay }
+  const shown = view !== 'current' && replay ? recordView(view, replay) : live
+  const status = (role: FounderActor) => (shown?.other === role ? 'Unavailable' : 'Active')
   return (
     <div className="mx-auto max-w-7xl p-8">
-      <OperatorHeader title="Operator Access" description="Founder access, exceptional Solo Coverage, and future staff reference." trailing={<FounderSwitcher actor={actor} setActor={setActor} />} />
+      <OperatorHeader title="Operator Access" description="Founder access, exceptional Solo Coverage, and future staff reference." trailing={!replay && <FounderSwitcher actor={actor} setActor={setActor} />} />
+      <div className="mb-5"><SoloViewSwitch view={view} setView={setView} /></div>
+      {replay && shown && <SoloCoverageBanner view={shown} replay={replay.at} />}
       <div className="grid grid-cols-[1.2fr_.8fr] gap-5">
         <div className="flex flex-col gap-5">
-          <DarkPanel title="Current Founder access">
-            <AccessRow name="CEO" scope="Material review · Approval · Controlled actions" status="Active" />
-            <AccessRow name="COO/CTO" scope="Operations · Technical governance · Approval" status="Active" />
+          <DarkPanel title={replay ? `Founder access · ${dateTime(replay.at)}` : 'Current Founder access'}>
+            <AccessRow name="CEO" scope="Material review · Approval · Controlled actions" status={status('CEO')} />
+            <AccessRow name="COO/CTO" scope="Operations · Technical governance · Approval" status={status('COO/CTO')} />
             <CaseNotice>Material decisions normally require both Founders. Solo Coverage is not an everyday operating mode.</CaseNotice>
           </DarkPanel>
           <DarkPanel title="Future Staff Operations · Reference">
@@ -729,26 +739,315 @@ function OperatorAccessPanel({ soloState, setSoloState }: { soloState: SoloState
           </DarkPanel>
         </div>
         <DarkPanel title="Solo Coverage">
-          {soloState === 'active' && <div className="mb-5 rounded-xl border p-4" style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}><div className="text-sm font-semibold" style={{ color: 'var(--color-danger)' }}>Exceptional Solo Coverage active</div><div className="mt-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>Activated by {actor} · Reason audited · Expires in 42m</div><button onClick={() => setSoloState('expired')} className="mt-3 text-xs font-semibold" style={{ color: 'var(--color-danger)' }}>Preview Expiry State</button></div>}
-          {soloState === 'expired' && <div className="mb-5 rounded-xl p-4" style={{ background: RAISED }}><div className="text-sm font-semibold" style={{ color: TEXT }}>Solo Coverage expired</div><div className="mt-1 text-xs" style={{ color: MUTED }}>Dual-review requirements are restored. A new activation requires fresh reauthentication.</div><OperatorButton variant="secondary" onClick={() => { setSoloState('inactive'); setReauth(false); setConfirmed(false); setReason('') }}>Start New Activation</OperatorButton></div>}
-          {soloState === 'inactive' && <>
-            <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-danger)', background: `${ACCENT}08` }}><div className="text-sm font-semibold" style={{ color: ACCENT }}>Exceptional use only</div><p className="mt-1 text-xs leading-relaxed" style={{ color: MUTED }}>Use only when the other Founder is genuinely unavailable and delay would create material operational risk.</p></div>
-            <div className="mt-5"><button onClick={() => setReauth(true)} className="flex w-full items-center justify-between rounded-lg border p-3 text-left" style={{ borderColor: reauth ? 'var(--color-success)' : BORDER, background: RAISED }}><span><span className="block text-xs font-semibold" style={{ color: TEXT }}>Fresh reauthentication</span><span className="text-[10px]" style={{ color: MUTED }}>Required immediately before activation</span></span><OperatorState tone={reauth ? 'success' : 'warning'}>{reauth ? 'Verified' : 'Required'}</OperatorState></button></div>
-            <div className="mt-4"><Textarea label="Exceptional reason" value={reason} onChange={event => setReason(event.target.value)} rows={4} placeholder="Explain why dual review is temporarily unavailable and why delay creates risk." /></div>
-            <div className="mt-4"><div className="mb-2 text-xs font-semibold" style={{ color: MUTED }}>Expected duration</div><div className="flex gap-2">{['30 minutes', '60 minutes', '2 hours'].map(value => <button key={value} onClick={() => setDuration(value)} className="rounded-full border px-3 py-2 text-xs font-semibold" style={{ borderColor: duration === value ? ACCENT : BORDER, color: duration === value ? ACCENT : MUTED, background: duration === value ? `${ACCENT}12` : SURFACE }}>{value}</button>)}</div></div>
-            <button onClick={() => setConfirmed(!confirmed)} className="mt-4 flex items-start gap-3 text-left"><span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border" style={{ borderColor: confirmed ? ACCENT : BORDER, background: confirmed ? ACCENT : SURFACE, color: BG }}>{confirmed && '✓'}</span><span className="text-xs leading-relaxed" style={{ color: MUTED }}>I confirm this is exceptional, time-bound, audited, and that normal dual-review controls resume at expiry.</span></button>
-            <OperatorButton disabled={!reauth || !reason || !confirmed} onClick={() => setSoloState('active')}>Activate Solo Coverage for {duration}</OperatorButton>
-          </>}
+          {replay && shown ? <SoloRecord view={shown} label={`Replay snapshot · ${dateTime(replay.at)} · read-only`} />
+            : live?.id ? <SoloRecord view={live} label={`Active at ${dateTime(at.at)}`} />
+            : session?.ended ? <SoloEnded at={at} session={session} onRestart={() => setSession(null)} />
+            : session && live ? <SoloActive at={at} session={session} view={live} onChange={setSession} />
+            : <><SoloHistory at={at} /><SoloActivation at={at} actor={actor} onActivate={setSession} /></>}
         </DarkPanel>
       </div>
     </div>
   )
 }
 
-function AuditPanel() {
+/** An audit record with §49's fields: timestamp, actor, action, target, reason and result. */
+interface SoloAuditEntry { readonly at: Timestamp; readonly actor: string; readonly action: string; readonly target: string; readonly reason: string; readonly result: 'Succeeded' }
+
+/**
+ * The Solo Coverage session Operator Access starts, extends, stops or lets expire (specification §50): a prototype
+ * interaction at the story moment, never a canonical record, so it has no ID and its audit entries stay in its panel.
+ */
+interface SoloSession {
+  actor: FounderActor
+  other: FounderActor
+  reason: string
+  /** The expected duration as chosen: an option, or the length up to a Custom date and time. */
+  duration: string
+  started: Timestamp
+  expires: Timestamp
+  ended?: { at: Timestamp; how: 'expired' | 'stopped' }
+  audit: SoloAuditEntry[]
+}
+
+/** An active Solo Coverage period or session as the console shows it at a moment. */
+interface SoloView { id?: SoloCoverageId; actor: string; other: string; reason: string; duration: string; started: Timestamp; expires: Timestamp; remaining: number; audit: readonly SoloAuditEntry[] }
+
+// The session's audit target and label say what it is, in the prototype's own wording for session-only state ("Prototype
+// test · …", "Prototype · Switch Seller"): never an SCV ID, never DEMO_DATA's audit log.
+const SESSION_TARGET = 'Prototype session'
+const SESSION_LABEL = 'Prototype session · not a canonical demo record'
+
+// Expected durations (specification §50; rule 16.4), from minutes to multiple weeks: each gives an expected return and
+// expiry from the story moment.
+const SOLO_DURATIONS = ['30 minutes', '1 hour', '4 hours', 'Rest of day', '1 day', '3 days', '1 week', 'Custom date/time'] as const
+type SoloDuration = (typeof SOLO_DURATIONS)[number]
+const DURATION_MINUTES: Partial<Record<SoloDuration, number>> = { '30 minutes': 30, '1 hour': 60, '4 hours': 240, '1 day': 1440, '3 days': 4320, '1 week': 10080 }
+
+/** The expected return and expiry for an option chosen at `from`; undefined while Custom has no real date and time. */
+function expiryFor(option: SoloDuration, from: Timestamp, custom: string): Timestamp | undefined {
+  if (option === 'Rest of day') return endOfDay(from)
+  if (option === 'Custom date/time') return storyTimestamp(custom, MARKET.utcOffset)
+  return addMinutes(from, DURATION_MINUTES[option] ?? 0)
+}
+
+/** Whether `expires` can be the expected return: later than `after`, and no later than `latest`, the maximum (rule 16.4). */
+function allowedExpiry(expires: Timestamp | undefined, after: Timestamp, latest: Timestamp): expires is Timestamp {
+  return expires !== undefined && minutesBetween(after, expires) > 0 && minutesBetween(expires, latest) >= 0
+}
+
+/** '22 Sep 2026, 10:00' */
+function dateTime(time: Timestamp) {
+  return `${formatDate(time)}, ${formatClock(time)}`
+}
+
+/** A DEMO_DATA Solo Coverage period as it stood at `at`, with the audit records written by then. */
+function recordView(id: SoloCoverageId, at: Moment): SoloView {
+  const period = SOLO_COVERAGE[id]
+  return {
+    id, actor: OPERATORS[period.actor].role, other: OPERATORS[period.otherFounder].role, reason: period.reason, duration: period.expectedDuration,
+    started: period.activated, expires: period.expires, remaining: minutesBetween(at.at, period.expires), audit: auditLogAt(at).filter(entry => entry.target === id),
+  }
+}
+
+/** Solo Coverage at the story moment: DEMO_DATA's period if one is active then, otherwise the console's session until it ends. */
+function liveSoloCoverage(at: Moment, session: SoloSession | null): SoloView | null {
+  const id = soloCoverageAt(at)
+  if (id) return recordView(id, at)
+  return session && !session.ended ? { ...session, remaining: minutesBetween(at.at, session.expires) } : null
+}
+
+/**
+ * The privileged state's banner (specification §50), in text with an icon: across the content column while Solo
+ * Coverage is active, so no sidebar state hides it, or at the top of Operator Access for a replay snapshot. The
+ * prototype session says it is one; a DEMO_DATA period never does.
+ */
+function SoloCoverageBanner({ view, replay }: { view: SoloView; replay?: Timestamp }) {
+  return (
+    <div role="status" className={`operator-solo-banner flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3${replay ? ' mb-5 rounded-xl border' : ' border-b'}`} style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}>
+      <span className="flex items-center gap-2 text-xs font-bold tracking-wider" style={{ color: 'var(--color-danger)' }}><span aria-hidden="true"><IconShield size={14} /></span>SOLO COVERAGE ACTIVE</span>
+      {replay && <span className="text-xs font-semibold" style={{ color: 'var(--color-text-primary)' }}>Replay snapshot · {dateTime(replay)}</span>}
+      {!view.id && <SessionLabel />}
+      <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Activated by {view.actor} · {view.other} unavailable · Expected return {dateTime(view.expires)}, an estimate · <span className="whitespace-nowrap">Expires in {formatDuration(view.remaining)}</span></span>
+      <span className="text-xs font-semibold" style={{ color: 'var(--color-text-secondary)' }}>Audit warning: Solo Coverage is exceptional and audited.</span>
+    </div>
+  )
+}
+
+/** The prototype session's label, styled as the prototype's other session-only labels. */
+function SessionLabel({ dark }: { dark?: boolean }) {
+  return <span className="font-mono text-[10px] font-semibold uppercase tracking-wider" style={{ color: dark ? MUTED : 'var(--color-text-secondary)' }}>{SESSION_LABEL}</span>
+}
+
+function SoloViewSwitch({ view, setView }: { view: 'current' | SoloCoverageId; setView: (view: 'current' | SoloCoverageId) => void }) {
+  const options: ['current' | SoloCoverageId, string][] = [['current', 'Current'], ...keys(SOLO_COVERAGE).map((id): [SoloCoverageId, string] => [id, `${id} replay`])]
+  return <div role="group" aria-label="Solo Coverage view" className="inline-flex max-w-full flex-wrap rounded-lg p-1" style={{ background: RAISED }}>{options.map(([value, label]) => <button key={value} onClick={() => setView(value)} aria-pressed={view === value} className="rounded px-3 py-2 text-xs font-semibold" style={{ background: view === value ? SURFACE : 'transparent', color: view === value ? ACCENT : MUTED }}>{label}</button>)}</div>
+}
+
+/** A DEMO_DATA period, read-only: its facts and the audit records written by the moment shown. */
+function SoloRecord({ view, label }: { view: SoloView; label: string }) {
+  return (
+    <>
+      <div className="mb-3 text-xs font-semibold" style={{ color: MUTED }}>{label}</div>
+      <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4"><span className="text-sm font-semibold" style={{ color: 'var(--color-danger)' }}>Exceptional Solo Coverage active</span><span className="whitespace-nowrap font-mono text-xs font-semibold" style={{ color: 'var(--color-danger)' }}>{view.id}</span></div>
+        <SoloFacts view={view} />
+      </div>
+      <SoloAudit title="Audit records" entries={view.audit} />
+    </>
+  )
+}
+
+function SoloFacts({ view }: { view: SoloView }) {
+  const facts: [string, string][] = [
+    ['Activated by', view.actor], ['Other Founder', `${view.other} · unavailable`], ['Reason', view.reason],
+    ['Activated', `${dateTime(view.started)}, after fresh strong reauthentication`], ['Expected duration', `${view.duration} · an estimate`],
+    ['Expected return and expiry', dateTime(view.expires)], ['Expires in', formatDuration(view.remaining)],
+  ]
+  return (
+    <>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">{facts.map(([label, value]) => <div key={label}><dt className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>{label}</dt><dd className="mt-0.5 text-xs" style={{ color: 'var(--color-text-primary)' }}>{value}</dd></div>)}</dl>
+      <p className="mt-3 text-xs leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>Expected duration is an estimate and temporary governance boundary, not permanent authority.</p>
+    </>
+  )
+}
+
+function SoloAudit({ title, entries }: { title: string; entries: readonly SoloAuditEntry[] }) {
+  return (
+    <div className="mt-5">
+      <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>{title}</h3>
+      {entries.length ? <ol className="mt-2">{entries.map((entry, index) => <li key={index} className="border-t py-3 text-xs first:border-t-0" style={{ borderColor: BORDER }}>
+        <div className="flex items-center justify-between gap-2"><span className="font-mono" style={{ color: MUTED }}>{dateTime(entry.at)}</span><OperatorState tone="success">{entry.result}</OperatorState></div>
+        <div className="mt-1 font-semibold" style={{ color: TEXT }}>{entry.actor} · {entry.action}</div>
+        <div className="mt-1" style={{ color: MUTED }}>Target <span className="font-mono" style={{ color: ACCENT }}>{entry.target}</span> · Reason: {entry.reason}</div>
+      </li>)}</ol> : <div className="mt-2 text-xs" style={{ color: MUTED }}>—</div>}
+    </div>
+  )
+}
+
+/** The last DEMO_DATA period that had expired by the story moment, and how it ended, from its audit records. */
+function SoloHistory({ at }: { at: Moment }) {
+  const ended = soloCoverageEndedBefore(at)
+  const id = ended[ended.length - 1]
+  if (!id) return null
+  const period = SOLO_COVERAGE[id]
+  const end = auditLogAt(at).find(entry => entry.target === id && entry.at === period.expires)
+  return (
+    <div className="mb-5 rounded-xl p-4 text-xs leading-relaxed" style={{ background: RAISED, color: MUTED }}>
+      <div className="text-sm font-semibold" style={{ color: TEXT }}>Inactive</div>
+      <div className="mt-1">Last Solo Coverage: <span className="font-mono" style={{ color: ACCENT }}>{id}</span>, activated by the {OPERATORS[period.actor].role} on {dateTime(period.activated)} for an expected {period.expectedDuration}. {end && `${end.action}${end.actor === 'System' ? ' automatically' : ''} on ${dateTime(end.at)} (${end.reason.toLowerCase()}). `}Normal dual review resumed.</div>
+    </div>
+  )
+}
+
+/** A required step, as the reauthentication step looked on main: Required until done. */
+function SoloStep({ label, detail, done, doneText, onDone }: { label: string; detail: string; done: boolean; doneText: string; onDone: () => void }) {
+  return <button onClick={onDone} aria-pressed={done} className="flex w-full items-center justify-between rounded-lg border p-3 text-left" style={{ borderColor: done ? 'var(--color-success)' : BORDER, background: RAISED }}><span><span className="block text-xs font-semibold" style={{ color: TEXT }}>{label}</span><span className="text-[10px]" style={{ color: MUTED }}>{detail}</span></span><OperatorState tone={done ? 'success' : 'warning'}>{done ? doneText : 'Required'}</OperatorState></button>
+}
+
+/**
+ * The expected-duration options, a Custom date and time when chosen, and the expected return they give: later than
+ * `after` and no later than `latest`, the maximum. A time beyond the maximum is refused as entered, never moved to it.
+ */
+function DurationPicker({ from, after, latest, option, custom, onOption, onCustom }: { from: Timestamp; after: Timestamp; latest: Timestamp; option: SoloDuration; custom: string; onOption: (option: SoloDuration) => void; onCustom: (value: string) => void }) {
+  const fieldId = useId()
+  const expires = expiryFor(option, from, custom)
+  return (
+    <>
+      <div role="group" aria-label="Expected duration" className="flex flex-wrap gap-2">{SOLO_DURATIONS.map(value => <button key={value} onClick={() => onOption(value)} disabled={value !== 'Custom date/time' && !allowedExpiry(expiryFor(value, from, custom), after, latest)} aria-pressed={option === value} className="rounded-full border px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ borderColor: option === value ? ACCENT : BORDER, color: option === value ? ACCENT : MUTED, background: SURFACE }}>{option === value && <span aria-hidden="true">✓ </span>}{value}</button>)}</div>
+      {option === 'Custom date/time' && <div className="mt-3"><label htmlFor={fieldId} className="mb-1 block text-xs font-semibold" style={{ color: MUTED }}>Custom date and time ({MARKET.timeZone})</label><input id={fieldId} type="datetime-local" value={custom} min={after.slice(0, 16)} max={latest.slice(0, 16)} onChange={event => onCustom(event.target.value)} className="w-full rounded-lg border px-3 py-2 text-xs" style={{ borderColor: BORDER, background: RAISED, color: TEXT, colorScheme: 'dark' }} /></div>}
+      <div className="mt-3 rounded-lg p-3 text-xs leading-relaxed" style={{ background: RAISED, color: MUTED }}>
+        {allowedExpiry(expires, after, latest)
+          ? <div><span className="font-semibold" style={{ color: TEXT }}>Expected return and expiry: {dateTime(expires)}</span> · {formatDuration(minutesBetween(from, expires))} from {dateTime(from)}</div>
+          : minutesBetween(after, latest) <= 0 ? <div role="alert" className="font-semibold" style={{ color: ACCENT }}>Solo Coverage already runs to its maximum, {dateTime(latest)}, so it can't be extended further.</div>
+          : expires && minutesBetween(expires, latest) < 0 ? <div role="alert" className="font-semibold" style={{ color: ACCENT }}>Error: {dateTime(expires)} is beyond the maximum. Choose a date and time no later than {dateTime(latest)}.</div>
+          : custom ? <div role="alert" className="font-semibold" style={{ color: ACCENT }}>Error: choose a date and time after {dateTime(after)}.</div> : <div>Choose a date and time after {dateTime(after)}.</div>}
+        <div className="mt-1">Maximum Solo Coverage: {SOLO_COVERAGE_MAX_DAYS} days from activation, until {dateTime(latest)}.</div>
+        <div className="mt-1">Expected duration is an estimate and temporary governance boundary, not permanent authority.</div>
+      </div>
+    </>
+  )
+}
+
+/** Activation (rule 16.3; specification §50): the other Founder unavailable, fresh strong reauthentication, a reason, an expected duration with its expiry, and the confirmation. */
+function SoloActivation({ at, actor, onActivate }: { at: Moment; actor: FounderActor; onActivate: (session: SoloSession) => void }) {
+  const other: FounderActor = actor === 'CEO' ? 'COO/CTO' : 'CEO'
+  const [unavailable, setUnavailable] = useState(false)
+  const [reauth, setReauth] = useState(false)
+  const [reason, setReason] = useState('')
+  const [option, setOption] = useState<SoloDuration>('1 hour')
+  const [custom, setCustom] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  // Activation is the session's original activation, so the maximum runs from it (rule 16.4).
+  const latest = soloCoverageMaxEnd(at.at)
+  const expires = expiryFor(option, at.at, custom)
+  const allowed = allowedExpiry(expires, at.at, latest)
+  const ready = unavailable && reauth && reason.trim() !== '' && allowed && confirmed
+  const duration = option === 'Custom date/time' && expires ? formatDuration(minutesBetween(at.at, expires)) : option
+  const activate = () => {
+    if (!ready || !expires) return
+    onActivate({ actor, other, reason: reason.trim(), duration, started: at.at, expires, audit: [{ at: at.at, actor, action: `Solo Coverage activated, expected duration ${duration}`, target: SESSION_TARGET, reason: reason.trim(), result: 'Succeeded' }] })
+  }
+  return (
+    <>
+      <div className="mb-3"><SessionLabel dark /></div>
+      <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-danger)', background: `${ACCENT}08` }}><div className="text-sm font-semibold" style={{ color: ACCENT }}>Exceptional use only</div><p className="mt-1 text-xs leading-relaxed" style={{ color: MUTED }}>Use only when the other Founder is genuinely unavailable and delay would create material operational risk.</p></div>
+      <div className="mt-5"><SoloStep label={`${other} unavailable`} detail="Required: the other Founder is unavailable for dual review" done={unavailable} doneText="Confirmed" onDone={() => setUnavailable(true)} /></div>
+      <div className="mt-3"><SoloStep label="Fresh strong reauthentication" detail="Required immediately before activation" done={reauth} doneText="Verified" onDone={() => setReauth(true)} /></div>
+      <div className="mt-4"><Textarea label="Exceptional reason" value={reason} onChange={event => setReason(event.target.value)} rows={4} placeholder="Explain why dual review is temporarily unavailable and why delay creates risk." /></div>
+      <div className="mt-4"><div className="mb-2 text-xs font-semibold" style={{ color: MUTED }}>Expected duration</div><DurationPicker from={at.at} after={at.at} latest={latest} option={option} custom={custom} onOption={setOption} onCustom={setCustom} /></div>
+      <button onClick={() => setConfirmed(!confirmed)} aria-pressed={confirmed} className="mt-4 flex items-start gap-3 text-left"><span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border" style={{ borderColor: confirmed ? ACCENT : BORDER, background: confirmed ? ACCENT : SURFACE, color: BG }}>{confirmed && '✓'}</span><span className="text-xs leading-relaxed" style={{ color: MUTED }}>I confirm this is exceptional, time-bound, audited, and that normal dual-review controls resume at expiry.</span></button>
+      <OperatorButton disabled={!ready} onClick={activate}>Activate Solo Coverage {option === 'Rest of day' || option === 'Custom date/time' ? (expires && allowed ? `until ${dateTime(expires)}` : 'until a custom date and time') : `for ${option}`}</OperatorButton>
+    </>
+  )
+}
+
+/** The active session: its facts, extension, early stop, and the expected expiry passing. */
+function SoloActive({ at, session, view, onChange }: { at: Moment; session: SoloSession; view: SoloView; onChange: (session: SoloSession) => void }) {
+  const [step, setStep] = useState<'extend' | 'stop' | null>(null)
+  // The expected expiry passing (story time doesn't run by itself): the System ends the session at its expiry and
+  // changes nothing else, so nothing is approved because it expired (rules 16.6–16.7).
+  const expire = () => onChange({ ...session, ended: { at: session.expires, how: 'expired' }, audit: [...session.audit, { at: session.expires, actor: 'System', action: 'Solo Coverage expired', target: SESSION_TARGET, reason: 'Expected duration reached', result: 'Succeeded' }] })
+  return (
+    <>
+      <div className="mb-5 rounded-xl border p-4" style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}>
+        <div className="mb-1"><SessionLabel /></div>
+        <div className="text-sm font-semibold" style={{ color: 'var(--color-danger)' }}>Exceptional Solo Coverage active</div>
+        <div className="mt-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>Activated by {session.actor} · Reason audited · <span className="whitespace-nowrap">Expires in {formatDuration(view.remaining)}</span></div>
+        <SoloFacts view={view} />
+        {!step && <div className="mt-3 flex flex-wrap gap-2"><OperatorButton onClick={() => setStep('extend')}>Extend Solo Coverage</OperatorButton><OperatorButton variant="secondary" onClick={() => setStep('stop')}>Stop Solo Coverage early</OperatorButton></div>}
+        <button onClick={expire} className="mt-3 block text-xs font-semibold" style={{ color: 'var(--color-danger)' }}>Preview Expiry State</button>
+      </div>
+      {step === 'extend' && <SoloExtension at={at} session={session} onExtend={extended => { onChange(extended); setStep(null) }} onCancel={() => setStep(null)} />}
+      {step === 'stop' && <SoloStop at={at} session={session} onStop={onChange} onCancel={() => setStep(null)} />}
+      <SoloAudit title="Audit entries · prototype session" entries={session.audit} />
+    </>
+  )
+}
+
+/** Extension before expiry (rule 16.8): a deliberate action, fresh strong reauthentication, a reason, an updated expected return and an audit entry. */
+function SoloExtension({ at, session, onExtend, onCancel }: { at: Moment; session: SoloSession; onExtend: (session: SoloSession) => void; onCancel: () => void }) {
+  // The maximum still runs from the original activation, whenever the extension is made and however often (rule 16.4).
+  const latest = soloCoverageMaxEnd(session.started)
+  const [reauth, setReauth] = useState(false)
+  const [reason, setReason] = useState('')
+  const [option, setOption] = useState<SoloDuration>(() => SOLO_DURATIONS.find(value => allowedExpiry(expiryFor(value, at.at, ''), session.expires, latest)) ?? 'Custom date/time')
+  const [custom, setCustom] = useState('')
+  const expires = expiryFor(option, at.at, custom)
+  const allowed = allowedExpiry(expires, session.expires, latest)
+  const ready = reauth && reason.trim() !== '' && allowed
+  const extend = () => {
+    if (!ready || !expires) return
+    onExtend({ ...session, expires, duration: `${formatDuration(minutesBetween(session.started, expires))}, extended`, audit: [...session.audit, { at: at.at, actor: session.actor, action: `Solo Coverage extended, expected return ${dateTime(expires)}`, target: SESSION_TARGET, reason: reason.trim(), result: 'Succeeded' }] })
+  }
+  return (
+    <div className="mb-5 rounded-xl border p-4" style={{ borderColor: BORDER, background: RAISED }}>
+      <div className="text-sm font-semibold" style={{ color: TEXT }}>Extend Solo Coverage</div>
+      <p className="mt-1 text-xs leading-relaxed" style={{ color: MUTED }}>Before expiry only. Extension needs fresh strong reauthentication, a reason and an updated expected return, and is written to the audit log. The maximum still runs from the original activation.</p>
+      <div className="mt-3"><SoloStep label="Fresh strong reauthentication" detail="Required immediately before extension" done={reauth} doneText="Verified" onDone={() => setReauth(true)} /></div>
+      <div className="mt-3"><Textarea label="Extension reason" value={reason} onChange={event => setReason(event.target.value)} rows={3} placeholder="Explain why the other Founder is still unavailable." /></div>
+      <div className="mt-3"><div className="mb-2 text-xs font-semibold" style={{ color: MUTED }}>Updated expected return</div><DurationPicker from={at.at} after={session.expires} latest={latest} option={option} custom={custom} onOption={setOption} onCustom={setCustom} /></div>
+      <div className="mt-3 flex flex-wrap gap-2"><OperatorButton disabled={!ready} onClick={extend}>{expires && allowed ? `Extend Solo Coverage to ${dateTime(expires)}` : 'Extend Solo Coverage'}</OperatorButton><OperatorButton variant="secondary" onClick={onCancel}>Cancel</OperatorButton></div>
+    </div>
+  )
+}
+
+/** Early stop (rule 16.9): a deliberate, confirmed action with a reason; dual review resumes at once. */
+function SoloStop({ at, session, onStop, onCancel }: { at: Moment; session: SoloSession; onStop: (session: SoloSession) => void; onCancel: () => void }) {
+  const [reason, setReason] = useState('')
+  const stop = () => onStop({ ...session, ended: { at: at.at, how: 'stopped' }, audit: [...session.audit, { at: at.at, actor: session.actor, action: 'Solo Coverage stopped early', target: SESSION_TARGET, reason: reason.trim(), result: 'Succeeded' }] })
+  return (
+    <div className="mb-5 rounded-xl border p-4" style={{ borderColor: BORDER, background: RAISED }}>
+      <div className="text-sm font-semibold" style={{ color: TEXT }}>Stop Solo Coverage early?</div>
+      <p className="mt-1 text-xs leading-relaxed" style={{ color: MUTED }}>Solo Coverage ends now and normal dual review resumes. The stop is written to the audit log.</p>
+      <div className="mt-3"><Textarea label="Reason for stopping early" value={reason} onChange={event => setReason(event.target.value)} rows={3} placeholder="For example, the other Founder is available again." /></div>
+      <div className="mt-3 flex flex-wrap gap-2"><OperatorButton disabled={!reason.trim()} onClick={stop}>Stop Solo Coverage now</OperatorButton><OperatorButton variant="secondary" onClick={onCancel}>Cancel</OperatorButton></div>
+    </div>
+  )
+}
+
+/** After expiry or an early stop: dual review is back, and Founder decisions awaiting the other Founder stay pending (rule 16.7). */
+function SoloEnded({ at, session, onRestart }: { at: Moment; session: SoloSession; onRestart: () => void }) {
+  const ended = session.ended
+  const pending = pendingDecisions(at)
+  if (!ended) return null
+  return (
+    <>
+      <div className="mb-5 rounded-xl p-4" style={{ background: RAISED }}>
+        <div className="mb-1"><SessionLabel dark /></div>
+        <div className="text-sm font-semibold" style={{ color: TEXT }}>{ended.how === 'expired' ? 'Solo Coverage expired' : 'Solo Coverage stopped early'}</div>
+        <div className="mt-1 text-xs leading-relaxed" style={{ color: MUTED }}>{ended.how === 'expired' ? `Inactive automatically at its expected expiry, ${dateTime(ended.at)}.` : `Stopped by the ${session.actor} at ${dateTime(ended.at)}.`} Dual-review requirements are restored. A new activation requires fresh strong reauthentication.</div>
+        <div className="mt-2 text-xs leading-relaxed" style={{ color: MUTED }}>Unfinished consequential actions that require dual review stay blocked or pending; nothing is approved because Solo Coverage {ended.how === 'expired' ? 'expired' : 'stopped'}. {pending.length ? `Still pending: ${pending.join(', ')}.` : 'No dual-review action is pending.'}</div>
+        <div className="mt-3"><OperatorButton variant="secondary" onClick={onRestart}>Start New Activation</OperatorButton></div>
+      </div>
+      <SoloAudit title="Audit entries · prototype session" entries={session.audit} />
+    </>
+  )
+}
+
+function AuditPanel({ at }: { at: Moment }) {
   const [filter, setFilter] = useState('All')
-  // DEMO_DATA's audit records (specification §49), most recent first.
-  const events = AUDIT_LOG.slice().reverse()
+  // DEMO_DATA's audit records (specification §49) written by the story moment, most recent first.
+  const events = auditLogAt(at).slice().reverse()
     .map(event => [dayTime(event.at), event.actor, event.action, event.target, event.reason, event.result])
     .filter(event => filter === 'All' || event[1] === filter)
   return (
@@ -813,7 +1112,7 @@ function ApprovalHistoryRow({ refId, decision, result, actors }: { refId: string
 }
 
 function AccessRow({ name, scope, status }: { name: string; scope: string; status: string }) {
-  return <div className="flex items-center justify-between border-t py-4 first:border-t-0" style={{ borderColor: BORDER }}><span><span className="block text-sm font-semibold" style={{ color: TEXT }}>{name}</span><span className="text-xs" style={{ color: MUTED }}>{scope}</span></span><OperatorState tone="success">{status}</OperatorState></div>
+  return <div className="flex items-center justify-between border-t py-4 first:border-t-0" style={{ borderColor: BORDER }}><span><span className="block text-sm font-semibold" style={{ color: TEXT }}>{name}</span><span className="text-xs" style={{ color: MUTED }}>{scope}</span></span><OperatorState tone={status === 'Active' ? 'success' : 'warning'}>{status}</OperatorState></div>
 }
 
 function FutureRole({ role, queues, escalation }: { role: string; queues: string; escalation: string }) {
