@@ -1,14 +1,14 @@
 # Adulis Correction Work Orders
 
-**Purpose.** This holds the approved implementation work orders for the prototype, listed in the order they are to be executed. Implement only what an approved work order covers.
+**Purpose.** This holds the approved implementation work orders for the prototype, listed in the order they are to be executed, except the remediation work orders WO-012 to WO-024, which are listed by number and run in the order given under Execution order. Implement only what an approved work order covers.
 
-**Status.** Execution order approved — 2026-10-02 (WO-001 to WO-011), and amended on 2026-10-04 to add WO-006A between WO-006 and WO-007. Bodies drafted on 2026-10-02 from the approved documents, then updated the same day with the approved work-order decisions and the final decisions. On 2026-10-04, approved amendments discovered during WO-002 extended WO-004 and WO-006 and added WO-006A, and a cleanup the same day made WO-006A PENDING DECISION. On 2026-10-05 its decision was recorded in DEMO_DATA.md: the canonical Maya Buyer Collection scenario, `ADU-24094` (2 October, Paid 17:30 to Completed 17:56). On 2026-10-08, after WO-011's initial verification run, the remediation work orders WO-012 to WO-024 were approved and added after WO-011, which is rerun after WO-024 to close it. APPROVED FOR IMPLEMENTATION: WO-001 to WO-006, WO-006A and WO-007 to WO-024. PENDING DECISION: none. Implementation progress is recorded separately, under Implementation progress.
+**Status.** Execution order approved — 2026-10-02 (WO-001 to WO-011), and amended on 2026-10-04 to add WO-006A between WO-006 and WO-007. Bodies drafted on 2026-10-02 from the approved documents, then updated the same day with the approved work-order decisions and the final decisions. On 2026-10-04, approved amendments discovered during WO-002 extended WO-004 and WO-006 and added WO-006A, and a cleanup the same day made WO-006A PENDING DECISION. On 2026-10-05 its decision was recorded in DEMO_DATA.md: the canonical Maya Buyer Collection scenario, `ADU-24094` (2 October, Paid 17:30 to Completed 17:56). On 2026-10-08, after WO-011's initial verification run, the remediation work orders WO-012 to WO-024 were approved and added after WO-011, which is rerun after them to close it. On 2026-10-09 the owner set their execution order for the prototype's showcase value (see Execution order). APPROVED FOR IMPLEMENTATION: WO-001 to WO-006, WO-006A and WO-007 to WO-024. PENDING DECISION: none. Implementation progress is recorded separately, under Implementation progress.
 
 ## Execution order
 
 `plans/you-are-an-expert-quirky-shell.md` states that each work order is executed sequentially and in full before the next begins.
 
-The work orders below are listed in execution order. The sequence was set on 2026-10-02. It re-orders the original Figma correction list based on what the technical audit found, and puts a new work order, WO-001, first. The request that set the order explains why:
+The work orders below are listed in execution order, apart from the remediation work orders WO-012 to WO-024, which are listed by number and run in the order set on 2026-10-09 (below). The sequence was set on 2026-10-02. It re-orders the original Figma correction list based on what the technical audit found, and puts a new work order, WO-001, first. The request that set the order explains why:
 
 > Notice the new first work order:
 >
@@ -26,7 +26,14 @@ Because execution is sequential, a work order that is PENDING DECISION holds bac
 
 On 2026-10-08 the sequence was extended after WO-011's initial verification run, which found 20 confirmed defects (D1 to D20). The remediation work orders WO-012 to WO-024 were added after WO-011, without renumbering any existing work order, and WO-011 is then rerun against the remediated prototype. WO-011 stays open until that final rerun. There is no WO-025.
 
-The remaining execution order is WO-012, WO-013, WO-014, WO-015, WO-016, WO-017, WO-018, WO-019, WO-020, WO-021, WO-022, WO-023 and WO-024, then the rerun of WO-011.
+On 2026-10-09 the owner reprioritised the remediation work orders for the prototype's showcase value: visible UI, UX and frontend corrections run first. Every remediation work order stays required, with its defect mapping and acceptance criteria unchanged; only the order changed. The remaining execution order is:
+
+- Tier 1, direct showcase value: WO-014, WO-016, WO-019, WO-020, WO-021, WO-022, WO-023, WO-024;
+- Tier 2, interaction fidelity: WO-015, WO-017, WO-018;
+- Tier 3, low showcase value but still required: WO-012, WO-013;
+- then the rerun of WO-011, the closure gate.
+
+Two remediation work orders list another as a dependency, and the order keeps both: WO-013 depends on WO-012 for its reusable verification screens and state, and WO-023 lists WO-022 (the focus outlines on the same panels). The other relationships between remediation work orders are coordination only, and none waits for another. Each body's remediation priority (P0 to P3) is unchanged; the tiers set only the execution order. The next work order is WO-014.
 
 Each remediation work order cites the WO-011 defects it fixes under WHY THIS WORK ORDER EXISTS:
 
@@ -1522,7 +1529,7 @@ Do not use another Buyer's Order in Maya's Buyer app:
 **VISUAL / UX REQUIREMENTS.**
 
 - The existing Order Detail cards and buttons, and WO-008's card pattern for the selection, in Tailwind classes.
-- "Awaiting Courier acceptance" uses the existing status badge. WO-021's icon mapping covers it when that work order runs.
+- "Awaiting Courier acceptance" uses the existing status badge. WO-021 defines the shared status-icon mapping it uses.
 - The Seller Console at 1440 and 1024, and its drawer layout at phone widths as WO-007 left it.
 
 **TECHNICAL CONSTRAINTS.**
@@ -1749,7 +1756,7 @@ Do not use another Buyer's Order in Maya's Buyer app:
 - WO-001.
 - WO-003: the Website's account wording stays consistent with the authentication rules.
 - WO-006A: the direction wording for the final QR.
-- WO-012 and WO-013: the same Website, in separate regions.
+- Coordinates with WO-012 and WO-013, which change the same Company Website in separate regions. WO-018 does not wait for them, and verification behaviour is not WO-018's.
 
 **IN SCOPE.**
 
@@ -1835,7 +1842,7 @@ Do not use another Buyer's Order in Maya's Buyer app:
 - WO-006: Flows C and D.
 - WO-006A: Flow M and the Master Demo's flow order.
 - WO-008: Flows F, G and H, and offer semantics.
-- WO-015: the Seller Console's offer wording, which this matches.
+- Coordinates with WO-015: both must follow the same approved Courier sequence; neither waits for the other.
 
 **IN SCOPE.**
 
@@ -2013,7 +2020,7 @@ Do not use another Buyer's Order in Maya's Buyer app:
 
 - WO-007: badge layouts at the audit widths.
 - WO-008: the existing text-plus-icon pattern and the badge's icon option.
-- WO-015: its "Awaiting Courier acceptance" status is part of the inventory.
+- Coordinates with WO-015: if WO-015 introduces or displays "Awaiting Courier acceptance", that status belongs to WO-021's pending / in-progress icon family. Neither work order waits for the other, and WO-021 may define the mapping before WO-015 exists.
 
 **IN SCOPE.**
 
@@ -2109,11 +2116,11 @@ Do not use another Buyer's Order in Maya's Buyer app:
 
 - WO-007.
 - WO-009: the inverse outline already used in the Operator sidebar.
-- WO-012 and WO-013: their verification fields are in scope.
+- Coordinates with WO-012 and WO-013: their later verification fields must use the same approved focus treatment. WO-022 does not wait for them.
 
 **IN SCOPE.**
 
-- Every Company Website field and select, including the 390 px home waitlist and the WO-012 and WO-013 verification fields.
+- Every Company Website field and select that exists when WO-022 runs, including the 390 px home waitlist. The verification fields WO-012 and WO-013 add later must reuse the focus treatment WO-022 establishes; WO-022 doesn't build them.
 - The Seller Storefront search field.
 - Focusable controls in the Operator Console's main area, its panels and its case workspaces.
 - The Courier Pickup scanner's controls.
@@ -2355,6 +2362,7 @@ Do not use another Buyer's Order in Maya's Buyer app:
 - 2026-10-07: Post-WO-009 reconciliation. Implementation progress records WO-009 — Operator Sidebar Collapse / Expand as implemented and merged into main. The desktop Operator navigation now switches reliably between its Expanded and Collapsed states: the collapsed icon rail keeps an always-accessible Expand control, and each destination keeps its label and context through tooltip and focus treatment. At tablet and phone widths the Operator navigation is the temporary drawer, and the active destination is preserved through every sidebar transition. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-010 is next and remains not started. No approval status, work-order body, dependency or execution order changed.
 - 2026-10-08: Post-WO-010 reconciliation. Implementation progress records WO-010 — Solo Coverage Duration as implemented and merged into main. `SCV-1001`'s Solo Coverage state is derived from the prototype's story clock, and the record remains canonical and read-only; its 22 September replay is available. While Solo Coverage is active, a persistent warning and status treatment shows. Activation, extension and early stop are demonstrated as prototype behaviour without creating canonical demo records. The configured maximum continuous duration is 28 days from the original activation, an extension cannot restart it, and Market-local time is used. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-011 is next and remains not started. No approval status, work-order body, dependency or execution order changed.
 - 2026-10-08: Post-WO-011 remediation work orders added. WO-011's initial verification run found 20 confirmed defects (D1 to D20). The remediation work orders WO-012 to WO-024 are APPROVED FOR IMPLEMENTATION and not started, and each cites the defects it fixes. The purpose-bound Company Website verification for Account Deletion and Report Content, and the Marketplace Search availability filter, were first resolved in the specification (sections 12 and 8). WO-011 remains open: its progress is INITIAL VERIFICATION COMPLETE; REMEDIATION REQUIRED; FINAL RERUN PENDING, and it is rerun after WO-024 to close it, with no WO-025. WO-011's body is unchanged, and no canonical demo record changed.
+- 2026-10-09: Remediation execution order reprioritised for the prototype's showcase value, visible UI, UX and frontend corrections first: Tier 1 WO-014, WO-016, WO-019, WO-020, WO-021, WO-022, WO-023 and WO-024; Tier 2 WO-015, WO-017 and WO-018; Tier 3 WO-012 and WO-013; then the rerun of WO-011, which remains the closure gate. No remediation scope was removed. Four dependency lines written on 2026-10-08 (in WO-018, WO-019, WO-021 and WO-022) were drafting errors and now state coordination relationships, as do the two lines that assumed the same order (WO-022's scope and WO-015's status icon). WO-013 → WO-012 remains the only in-series dependency affected by this ordering. No canonical demo record or product rule changed, and every remediation work order remains NOT STARTED.
 
 ## Related documents
 
