@@ -156,9 +156,17 @@ export function isPubliclyEligibleAt(post: ShoppablePostId, at: Moment = DEFAULT
   return isPublishedAt(post, at) && !restrictionAt(post, at)
 }
 
+/**
+ * The tag-availability rule (rules 1.7–1.8): at least one of these Products exists at `at` and isn't out of stock. Low
+ * Stock counts as available. Posts apply it to their tags; the Seller Console's post editor applies it to its selection.
+ */
+export function hasAvailableProductAt(products: readonly ProductId[], at: Moment = DEFAULT_SNAPSHOT): boolean {
+  return products.some(p => productExistsAt(p, at) && PRODUCTS[p].availability !== 'Out of Stock')
+}
+
 /** At least one tagged Product exists and isn't out of stock (rule 1.8). */
 export function hasAvailableTagAt(post: ShoppablePostId, at: Moment = DEFAULT_SNAPSHOT): boolean {
-  return SHOPPABLE_POSTS[post].tags.some(p => productExistsAt(p, at) && PRODUCTS[p].availability !== 'Out of Stock')
+  return hasAvailableProductAt(SHOPPABLE_POSTS[post].tags, at)
 }
 
 /** For You eligibility (rules 1.7–1.8, 2.1): published, not restricted, with at least one available tagged Product. */

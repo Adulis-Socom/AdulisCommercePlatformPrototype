@@ -17,7 +17,7 @@ import {
   SELLER_SESSIONS, SELLER_SETTINGS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, VOLT_HOUSE_PREPUBLICATION,
   activeDiscount, awaitingSellerReplyAt, byMessageTime, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt, contextKey,
   contextSubject, courierCardAt, courierCompensationAt, currentPrice, effectiveMessagesAt, formatAge, formatCalendarDate, formatClock, formatDate,
-  formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, isForYouEligibleAt, lineOptions, messagesAt,
+  formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, hasAvailableProductAt, isForYouEligibleAt, lineOptions, messagesAt,
   moderationIssuesAt, onAdulisSince, orderStateAt, orderTotals, ordersAt, ordersRequiringPreparationAt, paidAt,
   paymentReference, postsNeedingAttentionAt, preparationAt, prepublicationCards, prepublicationSnapshotFor, productQualityAt, relationshipHistoryAt,
   relationshipStatusAt, restrictionAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, sessionStaffOn, shortName,
@@ -635,12 +635,16 @@ function ShoppablePostEditor({ sellerId, at, initialProduct, onBack }: { sellerI
   const [published, setPublished] = useState(false)
   const toggleProduct = (id: ProductId) => setSelected(values => values.includes(id) ? values.filter(value => value !== id) : [...values, id])
   const seller = SELLERS[sellerId].name
-  const eligible = selected.length > 0
+  // Hotspots need a selected Product; For You eligibility needs a selected Product that is available now. One result
+  // drives the eligibility step, the Preview and the publish confirmation, so they can't disagree.
+  const tagged = selected.length > 0
+  const eligibility = editorEligibility(selected, at)
+  const eligible = eligibility === 'eligible'
   return (
     <div className="mx-auto max-w-7xl p-8">
       <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand">← Back to Shoppable Posts</button>
       <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">Create Shoppable Post</h1><p className="mt-1 text-sm text-text-muted">Product selection and hotspots are optional.</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setPreview(!preview)}>{preview ? 'Close Preview' : 'Preview'}</Button><Button onClick={() => setPublished(true)}>Publish</Button></div></div>
-      {published && <div className="mb-5 rounded-xl border border-success/20 bg-success-bg p-4"><div className="flex items-center gap-3"><CheckIcon /><div className="flex-1"><div className="text-sm font-semibold text-success">Shoppable Post published</div><div className="mt-1 text-xs text-text-secondary">{eligible ? 'Published · FYP Eligible' : 'Published · Not eligible for For You because no Products are tagged.'}</div></div><StatusBadge status="published" /><EligibilityBadge eligible={eligible} /></div></div>}
+      {published && <div className="mb-5 rounded-xl border border-success/20 bg-success-bg p-4"><div className="flex items-center gap-3"><CheckIcon /><div className="min-w-60 flex-1"><div className="text-sm font-semibold text-success">Shoppable Post published</div><div className="mt-1 text-xs text-text-secondary">{eligibility === 'eligible' ? 'Published · FYP Eligible' : eligibility === 'unavailable' ? NOT_ELIGIBLE.publication : 'Published · Not eligible for For You because no Products are tagged.'}</div>{eligibility === 'unavailable' && <div className="mt-1 text-xs text-text-secondary">{NOT_ELIGIBLE.sentence}</div>}</div><div className="flex items-center gap-3"><StatusBadge status="published" /><EligibilityBadge eligible={eligible} /></div></div></div>}
       <div className={`grid gap-5 ${preview ? 'grid-cols-[1.25fr_.75fr]' : 'grid-cols-1'}`}>
         <div className="flex flex-col gap-5">
           <EditorSection step="01" title="Media"><div className="grid grid-cols-[220px_1fr] gap-4"><ContentMedia index={0} large /><button className="flex min-h-56 items-center justify-center rounded-xl border border-dashed border-border-strong bg-surface-raised text-sm font-semibold text-text-muted">Replace media</button></div></EditorSection>
@@ -650,15 +654,36 @@ function ShoppablePostEditor({ sellerId, at, initialProduct, onBack }: { sellerI
             <div className="grid grid-cols-3 gap-3">{products.map((id, index) => <button key={id} onClick={() => toggleProduct(id)} className={`rounded-xl border p-3 text-left ${selected.includes(id) ? 'border-brand bg-brand-muted' : 'border-border'}`}><div className="flex items-start justify-between"><ProductThumb index={index} /><span className={`flex h-5 w-5 items-center justify-center rounded border ${selected.includes(id) ? 'border-brand bg-brand text-white' : 'border-border-strong'}`}>{selected.includes(id) && '✓'}</span></div><div className="mt-3 text-xs font-semibold">{PRODUCTS[id].name}</div><div className="mt-1 text-[10px] text-text-muted">{seller} · {id}</div></button>)}</div>
           </EditorSection>
           <EditorSection step="04" title="Optional hotspots">
-            <div className="flex items-start justify-between"><div><div className="text-sm font-semibold">Product hotspots</div><div className="text-xs text-text-muted">{selected.length ? 'Place visual entry points for selected Products.' : 'Unavailable because no Products are selected.'}</div></div><Toggle checked={hotspots && eligible} onChange={() => eligible && setHotspots(!hotspots)} disabled={!eligible} /></div>
-            {eligible && hotspots && <div className="relative mt-4 max-w-sm"><ContentMedia index={0} large /><span className="absolute left-[42%] top-[35%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-white shadow">+</span></div>}
+            <div className="flex items-start justify-between"><div><div className="text-sm font-semibold">Product hotspots</div><div className="text-xs text-text-muted">{selected.length ? 'Place visual entry points for selected Products.' : 'Unavailable because no Products are selected.'}</div></div><Toggle checked={hotspots && tagged} onChange={() => tagged && setHotspots(!hotspots)} disabled={!tagged} /></div>
+            {tagged && hotspots && <div className="relative mt-4 max-w-sm"><ContentMedia index={0} large /><span className="absolute left-[42%] top-[35%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-white shadow">+</span></div>}
           </EditorSection>
-          <EditorSection step="05" title="Preview and eligibility"><div className="grid grid-cols-2 gap-4"><div className="rounded-xl bg-surface-raised p-4"><div className="text-xs text-text-muted">Publication state</div><div className="mt-2"><StatusBadge status="published" customLabel="Will publish" /></div></div><div className="rounded-xl bg-surface-raised p-4"><div className="text-xs text-text-muted">For You eligibility</div><div className="mt-2"><EligibilityBadge eligible={eligible} /></div></div></div><p className="mt-3 text-xs text-text-muted">Publishing is allowed with {selected.length} tagged Product{selected.length === 1 ? '' : 's'}. Eligibility does not control publication.</p></EditorSection>
+          <EditorSection step="05" title="Preview and eligibility"><div className="grid grid-cols-2 gap-4"><div className="rounded-xl bg-surface-raised p-4"><div className="text-xs text-text-muted">Publication state</div><div className="mt-2"><StatusBadge status="published" customLabel="Will publish" /></div></div><div className="rounded-xl bg-surface-raised p-4"><div className="text-xs text-text-muted">For You eligibility</div><div className="mt-2"><EligibilityBadge eligible={eligible} /></div></div></div>{eligibility === 'unavailable' && <NotEligibleNote />}<p className="mt-3 text-xs text-text-muted">Publishing is allowed with {selected.length} tagged Product{selected.length === 1 ? '' : 's'}. Eligibility does not control publication.</p></EditorSection>
         </div>
-        {preview && <ShoppablePreview seller={seller} caption={caption || 'Your caption will appear here.'} productCount={selected.length} hotspots={hotspots} />}
+        {preview && <ShoppablePreview seller={seller} caption={caption || 'Your caption will appear here.'} productCount={selected.length} hotspots={hotspots} eligibility={eligibility} />}
       </div>
     </div>
   )
+}
+
+// The post editor's For You eligibility (rules 1.6–1.8): no selected Product, or none available at the story moment by
+// the module's tag-availability rule, or eligible. The editor applies the module's rule; it keeps no copy of it.
+type EditorEligibility = 'eligible' | 'no-tags' | 'unavailable'
+
+function editorEligibility(selected: ProductId[], at: Moment): EditorEligibility {
+  return selected.length === 0 ? 'no-tags' : hasAvailableProductAt(selected, at) ? 'eligible' : 'unavailable'
+}
+
+// The approved wording for a post whose tagged Products are all unavailable: the full reason, and the publication line.
+const NOT_ELIGIBLE = {
+  label: 'For You eligibility:',
+  reason: 'Not eligible — no tagged Product is currently available.',
+  sentence: 'For You eligibility: Not eligible — no tagged Product is currently available.',
+  publication: 'Published · Not eligible for For You',
+}
+
+/** Why a tagged post isn't eligible for For You, in the pattern Home uses for Shoppable Posts needing action. */
+function NotEligibleNote() {
+  return <p className="mt-3 rounded-xl border border-warning/20 bg-warning-bg px-4 py-3 text-xs leading-relaxed text-text-secondary"><span className="font-semibold text-warning">{NOT_ELIGIBLE.label}</span> {NOT_ELIGIBLE.reason}</p>
 }
 
 function EditorSection({ step, title, children }: { step: string; title: string; children: ReactNode }) {
@@ -669,8 +694,8 @@ function ProductPreview({ name, category, price, description }: { name: string; 
   return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-surface p-4 shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-text-muted">Product Post Preview</div><div className="mt-4 h-80 rounded-2xl bg-gradient-to-br from-brand-muted to-warning-bg" /><div className="mt-4 text-[10px] font-semibold uppercase tracking-wider text-brand">{category}</div><div className="mt-1 font-display text-xl font-semibold">{name}</div><div className="mt-2 font-bold text-brand">{price}</div><p className="mt-3 text-xs leading-relaxed text-text-secondary">{description || 'Product description'}</p><Button style={{ width: '100%', marginTop: 16 }}>Add to Cart</Button><div className="mt-3 text-center text-[10px] text-text-muted">Exactly one Product · Commerce detail surface</div></aside>
 }
 
-function ShoppablePreview({ seller, caption, productCount, hotspots }: { seller: string; caption: string; productCount: number; hotspots: boolean }) {
-  return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-text-primary p-3 text-white shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-white/60">Shoppable Post Preview</div><div className="relative mt-3 h-[460px] overflow-hidden rounded-2xl bg-gradient-to-br from-brand to-brand-dark">{hotspots && productCount > 0 && <span className="absolute left-[45%] top-[38%] flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-brand text-white">+</span>}<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-5 pt-20"><div className="text-sm font-semibold">{seller}</div><p className="mt-2 text-sm leading-relaxed text-white/80">{caption}</p>{productCount > 0 && <div className="mt-3 inline-flex rounded-full bg-white px-3 py-2 text-xs font-semibold text-text-primary">In this post · {productCount} Product{productCount > 1 ? 's' : ''}</div>}</div></div><div className="mt-3 text-center text-[10px] text-white/60">{productCount ? 'Published · FYP Eligible' : 'Published · Not eligible for For You'}</div></aside>
+function ShoppablePreview({ seller, caption, productCount, hotspots, eligibility }: { seller: string; caption: string; productCount: number; hotspots: boolean; eligibility: EditorEligibility }) {
+  return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-text-primary p-3 text-white shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-white/60">Shoppable Post Preview</div><div className="relative mt-3 h-[460px] overflow-hidden rounded-2xl bg-gradient-to-br from-brand to-brand-dark">{hotspots && productCount > 0 && <span className="absolute left-[45%] top-[38%] flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-brand text-white">+</span>}<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-5 pt-20"><div className="text-sm font-semibold">{seller}</div><p className="mt-2 text-sm leading-relaxed text-white/80">{caption}</p>{productCount > 0 && <div className="mt-3 inline-flex rounded-full bg-white px-3 py-2 text-xs font-semibold text-text-primary">In this post · {productCount} Product{productCount > 1 ? 's' : ''}</div>}</div></div><div className="mt-3 text-center text-[10px] text-white/60">{eligibility === 'eligible' ? 'Published · FYP Eligible' : NOT_ELIGIBLE.publication}</div>{eligibility === 'unavailable' && <p className="mx-2 mt-1 text-center text-[10px] leading-relaxed text-white/60">{NOT_ELIGIBLE.sentence}</p>}</aside>
 }
 
 // A Product's variant groups as DEMO_DATA gives them: one price per Product, with no inventory tracking defined.
