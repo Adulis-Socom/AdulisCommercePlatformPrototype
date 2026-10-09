@@ -1578,11 +1578,23 @@ function SearchLanding({ recent, onQuery }: { recent: readonly string[]; onQuery
   )
 }
 
+// A Product as a Search result (§8): whether a Buyer can buy it now, by the module's rule at the story moment.
+type SearchProduct = { id: ProductId; available: boolean }
+
+/** Search's Product results (§8): the Products Buyers can see, currently available ones first, each group in its current
+ * order. With the availability filter on, only the available ones. Top's Products preview and the Products tab read it. */
+function searchProducts(at: Moment, availableOnly: boolean): SearchProduct[] {
+  const all = buyerVisibleProductsAt(at).map(id => ({ id, available: isPurchasableAt(id, at) }))
+  return [...all.filter(p => p.available), ...(availableOnly ? [] : all.filter(p => !p.available))]
+}
+
 function TopResults({ at, onProduct, onPost, onSeller }: { at: Moment; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void }) {
   const products = buyerVisibleProductsAt(at), posts = buyerVisiblePostsAt(at), sellers = buyerVisibleSellers()
+  // The Products preview is the first of Search's Product results, ranked as the Products tab ranks them (§8).
+  const first = searchProducts(at, false)[0].id
   return (
     <div>
-      <ResultHeading title="Products" count={String(products.length)} /><ProductRow productId={products[0]} onClick={() => onProduct(products[0])} />
+      <ResultHeading title="Products" count={String(products.length)} /><ProductRow productId={first} onClick={() => onProduct(first)} />
       <ResultHeading title="Posts" count={String(posts.length)} /><PostRow postId={posts[0]} onClick={() => onPost(posts[0])} />
       <ResultHeading title="Sellers" count={String(sellers.length)} /><SellerRow sellerId={sellers[0]} at={at} onClick={() => onSeller(sellers[0])} />
     </div>
@@ -1590,7 +1602,11 @@ function TopResults({ at, onProduct, onPost, onSeller }: { at: Moment; onProduct
 }
 
 function ProductResults({ at, onProduct }: { at: Moment; onProduct: (id: ProductId) => void }) {
-  return <div><div className="mb-3 flex gap-2"><Choice active>Available</Choice><Choice>Price</Choice><Choice>Category</Choice></div><div className="grid grid-cols-2 gap-3">{buyerVisibleProductsAt(at).map(id => <ProductCard key={id} name={PRODUCTS[id].name} price={<InlinePrice productId={id} />} onClick={() => onProduct(id)} />)}</div></div>
+  // §8's availability filter: off by default, and with it on, unavailable Products are excluded. Its state shows as a
+  // check mark and as the pressed state, not by colour alone (§57). An unavailable Product shows "Currently unavailable"
+  // where the price would be, as the discovery lists present it (WO-004), and still opens its Product Post.
+  const [availableOnly, setAvailableOnly] = useState(false)
+  return <div><div className="mb-3 flex gap-2"><Choice active={availableOnly} pressed={availableOnly} onClick={() => setAvailableOnly(on => !on)}>{availableOnly && <span aria-hidden="true">✓ </span>}Available</Choice><Choice>Price</Choice><Choice>Category</Choice></div><div className="grid grid-cols-2 gap-3">{searchProducts(at, availableOnly).map(({ id, available }) => <ProductCard key={id} name={PRODUCTS[id].name} price={available ? <InlinePrice productId={id} /> : <span className="font-semibold text-text-muted">{availabilityText(id)}</span>} onClick={() => onProduct(id)} />)}</div></div>
 }
 
 function PostResults({ at, onPost }: { at: Moment; onPost: (id: ShoppablePostId) => void }) {
@@ -2874,8 +2890,8 @@ function SectionLabel({ children }: { children: ReactNode }) {
   return <div className="mb-3 mt-6 text-xs font-semibold uppercase tracking-wider text-text-muted">{children}</div>
 }
 
-function Choice({ children, active, onClick }: { children: ReactNode; active?: boolean; onClick?: () => void }) {
-  return <button onClick={onClick} className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold ${active ? 'border-brand bg-brand-muted text-brand-dark' : 'border-border bg-surface text-text-secondary'}`}>{children}</button>
+function Choice({ children, active, pressed, onClick }: { children: ReactNode; active?: boolean; pressed?: boolean; onClick?: () => void }) {
+  return <button onClick={onClick} aria-pressed={pressed} className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold ${active ? 'border-brand bg-brand-muted text-brand-dark' : 'border-border bg-surface text-text-secondary'}`}>{children}</button>
 }
 
 function IconButton({ children, label, onClick, dark }: { children: ReactNode; label: string; onClick?: () => void; dark?: boolean }) {
