@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AdulisLogo } from '../App'
-import { BUYERS, COURIERS, DEMO_CARTS, GUEST_STATE, ORDERS, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName, paymentAttempts, stageFor } from '../demo-data'
+import { BUYERS, CANONICAL_FLOW_STAGES, COURIERS, DEMO_CARTS, GUEST_STATE, ORDERS, ORDER_TIMELINES, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName, paymentAttempts, stageFor } from '../demo-data'
 
 // Demo personas and record names are read from the canonical module (WO-001).
 const BUYER_NAME = BUYERS[SURFACE_DEFAULTS.buyer].name
@@ -12,6 +12,9 @@ const [CART_ORDER, SECOND_CART_ORDER] = DEMO_CARTS
 const [FAILED_ATTEMPT, RETRY_ATTEMPT] = paymentAttempts(SECOND_CART_ORDER).map(attempt => attempt.ref)
 // Flow M's Buyer, who collects the Buyer Collection Order and scans its final QR (WO-006A).
 const COLLECTOR = firstName(BUYERS[ORDERS[stageFor('M', 0).focus!.order!].buyer].name)
+// The canonical demo flows, A–M (DEMO_DATA › Demo flows and the records they use). The Master Demo and the auxiliary E2
+// run are presentation paths, not among them.
+const CANONICAL_FLOWS = Object.keys(CANONICAL_FLOW_STAGES)
 
 /* ═══════════════════════════════════════════════
    00 — PROTOTYPE GUIDE
@@ -85,7 +88,7 @@ function GuideHeader() {
         <p style={{ color: '#C8BDB5', fontSize: 16, maxWidth: 640, lineHeight: 1.65, margin: '0 0 32px' }}>
           A commerce platform ecosystem connecting buyers, sellers, and couriers through structured
           product discovery, verified fulfilment, and trust-based commerce. This prototype demonstrates
-          seven product surfaces and fourteen end-to-end demo flows.
+          seven product surfaces and {CANONICAL_FLOWS.length} end-to-end demo flows.
         </p>
         <div className="flex flex-wrap gap-3">
           {[
@@ -450,7 +453,8 @@ const OBJECTS = [
     icon: '📋',
     definition: 'A paid order from a single seller. Created after successful payment verification.',
     fields: ['Order reference (ADU-XXXXX)', 'Status', 'Buyer-safe identity', 'Products snapshot', 'Payment summary', 'Fulfilment', 'Courier', 'Timeline'],
-    rules: ['Reference format: ADU-XXXXX (never internal UUID)', 'PAID established by backend only', 'Seller cannot confirm/accept payment', 'Status: Paid → Preparing → Ready → Assigned → Pickup Verified → Out for Delivery → Delivery Handoff → Completed'],
+    // Each fulfilment mode's timeline, with the Order states' canonical names (rules 4.4–4.6).
+    rules: ['Reference format: ADU-XXXXX (never internal UUID)', 'PAID established by backend only', 'Seller cannot confirm/accept payment', ...Object.entries(ORDER_TIMELINES).map(([mode, states]) => `${mode}: ${states.join(' → ')}`)],
   },
   {
     name: 'Courier Assignment',
@@ -627,8 +631,8 @@ const JOURNEY_STEPS = [
   {
     step: 7,
     label: 'Fulfilment',
-    detail: 'Seller prepares order → assigns courier from their pool → marks Ready for Pickup',
-    actors: ['Seller', 'Seller Team'],
+    detail: 'Seller prepares the order → marks it Ready for Courier → sends a Delivery Offer to an approved Courier from their pool → the Courier accepts the Delivery Offer → Courier Assigned',
+    actors: ['Seller', 'Seller Team', 'Courier'],
     surface: 'Seller Console / Seller Companion',
     color: '#2D7A4F',
   },
@@ -783,7 +787,7 @@ const DEMO_FLOWS = [
   {
     id: 'G',
     label: 'Fulfilment',
-    path: `Paid Order → Seller Companion → Prepare → Assign ${firstName(COURIER_NAME)} → Mark Ready → Seller displays Pickup QR → Courier scans → Pickup Verified → checkpoint location → Courier delivers → Courier displays Delivery QR → Buyer scans → Delivery Verified → checkpoint → Completed`,
+    path: `Paid Order → Seller Companion → Prepare → Mark Ready → Assign / Offer to ${firstName(COURIER_NAME)} → Seller displays Pickup QR → Courier scans → Pickup Verified → checkpoint location attempted → Courier delivers → Courier displays Delivery QR → Buyer scans → Delivery Verified → checkpoint attempted → Completed.`,
     screens: 14,
     color: '#2D7A4F',
     critical: true,
@@ -883,9 +887,12 @@ function DemoFlowsList() {
    6. PROTOTYPE-ONLY ROLE LAUNCHER
 ═══════════════════════════════════════════════ */
 
+// Each entry's action is §61's launcher entry: View as Buyer, View as Seller Companion, View as Courier, Open Seller
+// Console, Open Operator Console.
 const ROLE_ENTRIES = [
   {
     role: 'Buyer',
+    action: 'View as Buyer',
     persona: BUYER_NAME,
     description: 'Browse For You, search, cart, checkout, orders, handoff, reviews, and claims.',
     section: '05-buyer' as const,
@@ -896,6 +903,7 @@ const ROLE_ENTRIES = [
   },
   {
     role: 'Seller',
+    action: 'View as Seller Companion',
     persona: SELLER_NAME,
     description: 'Seller Companion mobile — alerts, orders, inbox, and quick operations.',
     section: '06-seller-companion' as const,
@@ -906,6 +914,7 @@ const ROLE_ENTRIES = [
   },
   {
     role: 'Courier',
+    action: 'View as Courier',
     persona: COURIER_NAME,
     description: 'Delivery assignments, pickup QR scanner, delivery QR display.',
     section: '07-courier' as const,
@@ -916,6 +925,7 @@ const ROLE_ENTRIES = [
   },
   {
     role: 'Seller Console',
+    action: 'Open Seller Console',
     persona: `${SELLER_NAME} — Full Admin`,
     description: 'Products, content, orders, inbox, insights, store, automation, and settings.',
     section: '08-seller-console' as const,
@@ -926,6 +936,7 @@ const ROLE_ENTRIES = [
   },
   {
     role: 'Operator Console',
+    action: 'Open Operator Console',
     persona: 'CEO / COO',
     description: 'Support, moderation, claims, trust appeals, handoff review, and governance.',
     section: '09-operator-console' as const,
@@ -1065,7 +1076,7 @@ function LauncherCard({ entry, onNavigate }: { entry: typeof ROLE_ENTRIES[0]; on
           onMouseLeave={() => setPressed(false)}
           onClick={() => onNavigate?.(entry.section)}
         >
-          View as {entry.role}
+          {entry.action}
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M3 7H11M11 7L7.5 3.5M11 7L7.5 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
