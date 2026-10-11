@@ -33,7 +33,7 @@ On 2026-10-09 the owner reprioritised the remediation work orders for the protot
 - Tier 3, low showcase value but still required: WO-012, WO-013;
 - then the rerun of WO-011, the closure gate.
 
-Two remediation work orders list another as a dependency, and the order keeps both: WO-013 depends on WO-012 for its reusable verification screens and state, and WO-023 lists WO-022 (the focus outlines on the same panels). The other relationships between remediation work orders are coordination only, and none waits for another. Each body's remediation priority (P0 to P3) is unchanged; the tiers set only the execution order. The next work order is WO-019.
+Two remediation work orders list another as a dependency, and the order keeps both: WO-013 depends on WO-012 for its reusable verification screens and state, and WO-023 lists WO-022 (the focus outlines on the same panels). The other relationships between remediation work orders are coordination only, and none waits for another. Each body's remediation priority (P0 to P3) is unchanged; the tiers set only the execution order. The next work order is WO-020.
 
 Each remediation work order cites the WO-011 defects it fixes under WHY THIS WORK ORDER EXISTS:
 
@@ -53,7 +53,7 @@ Each remediation work order cites the WO-011 defects it fixes under WHY THIS WOR
 
 ## Implementation progress
 
-Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-10:
+Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-11:
 
 - WO-001 — IMPLEMENTED AND MERGED
 - WO-002 — IMPLEMENTED AND MERGED
@@ -74,7 +74,7 @@ Implementation progress is separate from approval status (see Work-order convent
 - WO-016 — IMPLEMENTED AND MERGED
 - WO-017 — NOT STARTED
 - WO-018 — NOT STARTED
-- WO-019 — NOT STARTED
+- WO-019 — IMPLEMENTED AND MERGED
 - WO-020 — NOT STARTED
 - WO-021 — NOT STARTED
 - WO-022 — NOT STARTED
@@ -2365,6 +2365,7 @@ Do not use another Buyer's Order in Maya's Buyer app:
 - 2026-10-09: Remediation execution order reprioritised for the prototype's showcase value, visible UI, UX and frontend corrections first: Tier 1 WO-014, WO-016, WO-019, WO-020, WO-021, WO-022, WO-023 and WO-024; Tier 2 WO-015, WO-017 and WO-018; Tier 3 WO-012 and WO-013; then the rerun of WO-011, which remains the closure gate. No remediation scope was removed. Four dependency lines written on 2026-10-08 (in WO-018, WO-019, WO-021 and WO-022) were drafting errors and now state coordination relationships, as do the two lines that assumed the same order (WO-022's scope and WO-015's status icon). WO-013 → WO-012 remains the only in-series dependency affected by this ordering. No canonical demo record or product rule changed, and every remediation work order remains NOT STARTED.
 - 2026-10-09: Post-WO-014 reconciliation. Implementation progress records WO-014 — Shoppable Post FYP Availability Eligibility as implemented and merged into main (implementation commit `3d13e35`). For You eligibility in Seller Console › Create Shoppable Post now derives from the current availability of the tagged Products, by the shared tag-availability rule, so a post with no currently available tagged Product is never shown as For You eligible. The editor's eligibility step, the Preview and the publish confirmation share one derived result, and the publish confirmation's phone presentation was corrected. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-016 is next and remains not started, as the execution order now states. No approval status, work-order body, dependency or execution order changed.
 - 2026-10-10: Post-WO-016 reconciliation. Implementation progress records WO-016 — Search Out-of-Stock Product Availability as implemented and merged into main (implementation commit `2db439a`). Buyer › Search's Product results now rank currently available Products before unavailable ones, and an unavailable Product's card says "Currently unavailable" instead of presenting a purchasable price. The Available filter is off by default and, when turned on, excludes unavailable Products. Seller and Shoppable Post Search results are unchanged. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-019 is next and remains not started, as the execution order now states. No approval status, work-order body, dependency or execution order changed.
+- 2026-10-11: Post-WO-019 reconciliation. Implementation progress records WO-019 — Prototype Guide and Master Demo Canonical Flow Corrections as implemented and merged into main (implementation commit `9c9e07b`). The Prototype Guide and the Master Demo now tell the canonical Courier sequence: the Seller marks the Order Ready for Courier and sends the Delivery Offer, and the Courier accepts it before Courier Assigned; journey step 7 identifies the Seller, the Seller Team and the Courier. The launcher's labels match the approved prototype specification, and the Guide counts the 13 canonical flows, A–M, with the Master Demo kept separate from them. WO-011's final rerun is to capture Master Demo step 10 under its current title. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-020 is next and remains not started, as the execution order now states. No approval status, work-order body, dependency or execution order changed.
 
 ## Related documents
 
