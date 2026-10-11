@@ -173,9 +173,9 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
           <button ref={drawer.closeRef} onClick={drawer.close} aria-label="Close Seller Console navigation" className="console-drawer-close flex-shrink-0 items-center justify-center rounded-lg text-lg text-text-muted">×</button>
         </div>
         <nav className="flex flex-1 flex-col overflow-y-auto py-2">
-          {PRIMARY_NAV.map(item => <SidebarItem key={item.key} label={sidebarOpen || drawer.open ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => navigate(item.key)} badge={badges[item.key]} />)}
+          {PRIMARY_NAV.map(item => <SidebarItem key={item.key} label={item.label} labelHidden={!sidebarOpen && !drawer.open} icon={item.icon} active={activeNav === item.key} onClick={() => navigate(item.key)} badge={badges[item.key]} />)}
           <SidebarSeparator />
-          {SECONDARY_NAV.map(item => <SidebarItem key={item.key} label={sidebarOpen || drawer.open ? item.label : ''} icon={item.icon} active={activeNav === item.key} onClick={() => navigate(item.key)} />)}
+          {SECONDARY_NAV.map(item => <SidebarItem key={item.key} label={item.label} labelHidden={!sidebarOpen && !drawer.open} icon={item.icon} active={activeNav === item.key} onClick={() => navigate(item.key)} />)}
         </nav>
       </aside>
       {drawer.open && <div className="console-drawer-backdrop" aria-hidden="true" onClick={drawer.close} />}
@@ -561,7 +561,7 @@ function ProductEditor({ sellerId, at, productId, onBack }: { sellerId: SellerId
           <EditorSection step="05" title="Price and inventory"><div className="grid grid-cols-3 gap-4"><TextInput label="Price (ETB)" value={price} onChange={event => setPrice(event.target.value)} placeholder="0" /><TextInput label="Available inventory" value={inventory} onChange={event => setInventory(event.target.value)} placeholder="0" /><TextInput label="Inventory policy" defaultValue="" /></div></EditorSection>
           <EditorSection step="06" title="Fulfilment"><div className="flex gap-3"><CheckOption label="Buyer Collection" checked={offered.includes('Buyer Collection')} /><CheckOption label="Seller Delivery" checked={offered.includes('Seller Delivery')} /><CheckOption label="Courier Delivery" checked={offered.includes('Courier Delivery')} /></div></EditorSection>
           <EditorSection step="07" title="Product demo embed">
-            <div className="flex items-start justify-between"><div><div className="text-sm font-semibold">Demo media</div><div className="text-xs text-text-muted">Optional embed shown in this Product Post gallery.</div></div><Toggle checked={demoEmbed} onChange={() => setDemoEmbed(!demoEmbed)} /></div>
+            <div className="flex items-start justify-between"><div><div className="text-sm font-semibold">Demo media</div><div className="text-xs text-text-muted">Optional embed shown in this Product Post gallery.</div></div><Toggle label="Demo media" checked={demoEmbed} onChange={() => setDemoEmbed(!demoEmbed)} /></div>
             {demoEmbed && <div className="mt-4"><TextInput label="Demo URL" defaultValue="" hint="Supported provider embeds are rendered in the Product Post." /></div>}
           </EditorSection>
         </div>
@@ -654,7 +654,7 @@ function ShoppablePostEditor({ sellerId, at, initialProduct, onBack }: { sellerI
             <div className="grid grid-cols-3 gap-3">{products.map((id, index) => <button key={id} onClick={() => toggleProduct(id)} className={`rounded-xl border p-3 text-left ${selected.includes(id) ? 'border-brand bg-brand-muted' : 'border-border'}`}><div className="flex items-start justify-between"><ProductThumb index={index} /><span className={`flex h-5 w-5 items-center justify-center rounded border ${selected.includes(id) ? 'border-brand bg-brand text-white' : 'border-border-strong'}`}>{selected.includes(id) && '✓'}</span></div><div className="mt-3 text-xs font-semibold">{PRODUCTS[id].name}</div><div className="mt-1 text-[10px] text-text-muted">{seller} · {id}</div></button>)}</div>
           </EditorSection>
           <EditorSection step="04" title="Optional hotspots">
-            <div className="flex items-start justify-between"><div><div className="text-sm font-semibold">Product hotspots</div><div className="text-xs text-text-muted">{selected.length ? 'Place visual entry points for selected Products.' : 'Unavailable because no Products are selected.'}</div></div><Toggle checked={hotspots && tagged} onChange={() => tagged && setHotspots(!hotspots)} disabled={!tagged} /></div>
+            <div className="flex items-start justify-between"><div><div className="text-sm font-semibold">Product hotspots</div><div className="text-xs text-text-muted">{selected.length ? 'Place visual entry points for selected Products.' : 'Unavailable because no Products are selected.'}</div></div><Toggle label="Product hotspots" checked={hotspots && tagged} onChange={() => tagged && setHotspots(!hotspots)} disabled={!tagged} /></div>
             {tagged && hotspots && <div className="relative mt-4 max-w-sm"><ContentMedia index={0} large /><span className="absolute left-[42%] top-[35%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-white shadow">+</span></div>}
           </EditorSection>
           <EditorSection step="05" title="Preview and eligibility"><div className="grid grid-cols-2 gap-4"><div className="rounded-xl bg-surface-raised p-4"><div className="text-xs text-text-muted">Publication state</div><div className="mt-2"><StatusBadge status="published" customLabel="Will publish" /></div></div><div className="rounded-xl bg-surface-raised p-4"><div className="text-xs text-text-muted">For You eligibility</div><div className="mt-2"><EligibilityBadge eligible={eligible} /></div></div></div>{eligibility === 'unavailable' && <NotEligibleNote />}<p className="mt-3 text-xs text-text-muted">Publishing is allowed with {selected.length} tagged Product{selected.length === 1 ? '' : 's'}. Eligibility does not control publication.</p></EditorSection>
@@ -712,8 +712,9 @@ function CheckOption({ label, checked }: { label: string; checked?: boolean }) {
   return <button onClick={() => setSelected(!selected)} className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold ${selected ? 'border-brand bg-brand-muted text-brand-dark' : 'border-border'}`}><span className={`flex h-5 w-5 items-center justify-center rounded border ${selected ? 'border-brand bg-brand text-white' : 'border-border-strong'}`}>{selected && '✓'}</span>{label}</button>
 }
 
-function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
-  return <button onClick={onChange} disabled={disabled} className={`console-toggle relative h-6 w-11 rounded-full transition-colors ${checked ? 'bg-brand' : 'bg-border-strong'} ${disabled ? 'opacity-50' : ''}`}><span className={`console-toggle-knob absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${checked ? 'left-6' : 'left-1'}`} /></button>
+/** An on/off switch: named by the setting it controls, which doesn't change with its state, and exposing that state (§57). */
+function Toggle({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: () => void; disabled?: boolean }) {
+  return <button role="switch" aria-checked={checked} aria-label={label} onClick={onChange} disabled={disabled} className={`console-toggle relative h-6 w-11 rounded-full transition-colors ${checked ? 'bg-brand' : 'bg-border-strong'} ${disabled ? 'opacity-50' : ''}`}><span className={`console-toggle-knob absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${checked ? 'left-6' : 'left-1'}`} /></button>
 }
 
 function ProductThumb({ index, className }: { index: number; className?: string }) {
@@ -951,14 +952,14 @@ function StorePanel({ sellerId, at, onOpenCouriers }: { sellerId: SellerId; at: 
             <DetailCard title="Store Profile"><div className="grid grid-cols-2 gap-4"><TextInput label="Store name" defaultValue={seller.name} /><TextInput label="Handle" defaultValue={seller.handle} hint="Public and unique." /><div className="col-span-2"><Textarea label="Bio" defaultValue={seller.bio ?? ''} rows={3} /></div><TextInput label="Physical Location" defaultValue={`${seller.area}, ${MARKET.city}`} /><TextInput label="Customer-facing contact" defaultValue="" /></div><div className="mt-5 flex justify-end"><Button onClick={() => setSaved(true)}>Save Profile</Button></div></DetailCard>
             <DetailCard title="Physical Location"><StoreMap sellerId={sellerId} /></DetailCard>
           </div>
-          <div className="flex flex-col gap-5"><DetailCard title="Availability"><div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">{available ? 'Store available' : 'Store unavailable'}</span><span className="text-xs text-text-muted">Controls new ordering availability.</span></span><Toggle checked={available} onChange={() => setAvailable(!available)} /></div></DetailCard><DetailCard title="Public handle"><div className="font-mono text-sm font-semibold text-brand">{seller.handle}</div><div className="mt-2 text-xs text-text-muted">Handle changes affect future shared links.</div></DetailCard></div>
+          <div className="flex flex-col gap-5"><DetailCard title="Availability"><div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">{available ? 'Store available' : 'Store unavailable'}</span><span className="text-xs text-text-muted">Controls new ordering availability.</span></span><Toggle label="Store availability" checked={available} onChange={() => setAvailable(!available)} /></div></DetailCard><DetailCard title="Public handle"><div className="font-mono text-sm font-semibold text-brand">{seller.handle}</div><div className="mt-2 text-xs text-text-muted">Handle changes affect future shared links.</div></DetailCard></div>
         </div>
       )}
       {tab === 'fulfilment' && (
         <div className="grid grid-cols-2 gap-5">
-          <DetailCard title="Buyer Collection"><FulfilmentSetting title={collection ? 'Enabled' : 'Disabled'} detail={collection ? `${collection.place} · ${collection.hours}` : '—'} checked={!!collection} /></DetailCard>
-          <DetailCard title="Seller Delivery"><FulfilmentSetting title={delivery ? 'Enabled' : 'Disabled'} detail={delivery ? [formatEtb(delivery.charge), delivery.coverage].filter(Boolean).join(' · ') : '—'} checked={!!delivery} /></DetailCard>
-          <DetailCard title="Courier Delivery"><FulfilmentSetting title={courier ? 'Enabled' : 'Disabled'} detail={courier ? `${formatEtb(courier.charge)} · Approved Seller Courier Pool · price shown before payment` : '—'} checked={!!courier} /><Button variant="tertiary" onClick={onOpenCouriers} style={{ marginTop: 16 }}>Manage Couriers</Button></DetailCard>
+          <DetailCard title="Buyer Collection"><FulfilmentSetting label="Buyer Collection" title={collection ? 'Enabled' : 'Disabled'} detail={collection ? `${collection.place} · ${collection.hours}` : '—'} checked={!!collection} /></DetailCard>
+          <DetailCard title="Seller Delivery"><FulfilmentSetting label="Seller Delivery" title={delivery ? 'Enabled' : 'Disabled'} detail={delivery ? [formatEtb(delivery.charge), delivery.coverage].filter(Boolean).join(' · ') : '—'} checked={!!delivery} /></DetailCard>
+          <DetailCard title="Courier Delivery"><FulfilmentSetting label="Courier Delivery" title={courier ? 'Enabled' : 'Disabled'} detail={courier ? `${formatEtb(courier.charge)} · Approved Seller Courier Pool · price shown before payment` : '—'} checked={!!courier} /><Button variant="tertiary" onClick={onOpenCouriers} style={{ marginTop: 16 }}>Manage Couriers</Button></DetailCard>
           <DetailCard title="Preparation settings"><InfoGrid rows={[['Default lead time', '—'], ['Made-to-order lead time', '—'], ['Ready reminder', '—']]} /></DetailCard>
         </div>
       )}
@@ -1227,9 +1228,10 @@ function EvidenceTile({ label }: { label: string }) {
   return <div className="flex h-24 items-end rounded-xl bg-gradient-to-br from-surface-raised to-border p-3 text-xs font-semibold text-text-secondary">{label}</div>
 }
 
-function FulfilmentSetting({ title, detail, checked }: { title: string; detail: string; checked?: boolean }) {
+// The switch is named by its card's fulfilment mode (`label`); the row's title is the mode's Enabled or Disabled state.
+function FulfilmentSetting({ label, title, detail, checked }: { label: string; title: string; detail: string; checked?: boolean }) {
   const [enabled, setEnabled] = useState(!!checked)
-  return <div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">{title}</span><span className="text-xs text-text-muted">{detail}</span></span><Toggle checked={enabled} onChange={() => setEnabled(!enabled)} /></div>
+  return <div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">{title}</span><span className="text-xs text-text-muted">{detail}</span></span><Toggle label={label} checked={enabled} onChange={() => setEnabled(!enabled)} /></div>
 }
 
 function VerificationRow({ label, detail, status }: { label: string; detail: string; status: string }) {
@@ -1265,7 +1267,7 @@ function SessionRow({ device, person, detail, current }: { device: string; perso
 
 function SettingToggle({ title, detail, defaultChecked }: { title: string; detail: string; defaultChecked?: boolean }) {
   const [enabled, setEnabled] = useState(!!defaultChecked)
-  return <div className="flex items-center justify-between border-b border-border py-4"><span><span className="block text-sm font-semibold">{title}</span><span className="text-xs text-text-muted">{detail}</span></span><Toggle checked={enabled} onChange={() => setEnabled(!enabled)} /></div>
+  return <div className="flex items-center justify-between border-b border-border py-4"><span><span className="block text-sm font-semibold">{title}</span><span className="text-xs text-text-muted">{detail}</span></span><Toggle label={title} checked={enabled} onChange={() => setEnabled(!enabled)} /></div>
 }
 
 function SettingRow({ title, detail, action }: { title: string; detail: string; action: string }) {

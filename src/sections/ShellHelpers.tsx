@@ -301,8 +301,8 @@ export function ConsoleTopBar<T extends string>({
 
       {/* Icon cluster */}
       <div className="flex items-center gap-1">
-        <TopBarIcon dark={dark}><IconBell size={16} /></TopBarIcon>
-        <TopBarIcon dark={dark}><IconHelp size={16} /></TopBarIcon>
+        <TopBarIcon dark={dark} label="Notifications"><IconBell size={16} /></TopBarIcon>
+        <TopBarIcon dark={dark} label="Help"><IconHelp size={16} /></TopBarIcon>
         <div
           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ml-1"
           style={{ background: dark ? 'var(--color-operator-raised)' : 'var(--color-brand-muted)', color: dark ? 'var(--color-operator-accent)' : 'var(--color-brand-dark)' }}
@@ -388,9 +388,11 @@ function SellerMenu<T extends string>({ sellerName, options, selected, onSelect,
   )
 }
 
-function TopBarIcon({ children, dark }: { children: ReactNode; dark?: boolean }) {
+/** An icon-only top bar button, named by its function for assistive technology (spec §28, §57). */
+function TopBarIcon({ children, dark, label }: { children: ReactNode; dark?: boolean; label: string }) {
   return (
     <button
+      aria-label={label}
       className="console-topbar-icon flex items-center justify-center rounded-lg transition-colors"
       style={{ width: 32, height: 32, color: dark ? 'var(--color-operator-muted)' : 'var(--color-text-muted)' }}
     >
@@ -486,7 +488,8 @@ export function IconHistory({ size = 22 }: { size?: number }) {
 /**
  * With `collapsed`, the item is one icon of a collapsed icon rail: the icon is centred, the label stays the button's
  * accessible name without being shown (`data-rail-label` carries it for the rail's tooltip), and the count badge sits
- * on the icon's corner.
+ * on the icon's corner. With `labelHidden`, the item keeps its layout but shows no label: the label stays the button's
+ * accessible name, visually hidden (the Seller Console's collapsed desktop rail).
  */
 export function SidebarItem({
   label,
@@ -497,6 +500,7 @@ export function SidebarItem({
   indent,
   badge,
   collapsed,
+  labelHidden,
 }: {
   label: string
   icon?: ReactNode
@@ -506,6 +510,7 @@ export function SidebarItem({
   indent?: boolean
   badge?: string | number
   collapsed?: boolean
+  labelHidden?: boolean
 }) {
   const activeBg = dark ? 'rgba(232,135,74,0.12)' : 'var(--color-brand-muted)'
   const activeText = dark ? 'var(--color-operator-accent)' : 'var(--color-brand-dark)'
@@ -530,7 +535,7 @@ export function SidebarItem({
       onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
       {icon && <span className="flex-shrink-0" style={{ width: 16, height: 16, display: 'flex', alignItems: 'center' }}>{icon}</span>}
-      <span className={collapsed ? 'sr-only' : 'flex-1 truncate'}>{label}</span>
+      <span className={collapsed ? 'sr-only' : 'flex-1 truncate'}>{labelHidden ? <span className="sr-only">{label}</span> : label}</span>
       {badge !== undefined && (
         <span
           className="flex-shrink-0 text-xs font-bold rounded-full px-1.5 py-0.5"
