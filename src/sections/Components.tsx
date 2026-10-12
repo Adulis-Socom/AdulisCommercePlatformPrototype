@@ -436,7 +436,7 @@ function BadgeShowcase() {
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{id}</span>
                 <span style={{ fontSize: 12, color: 'var(--color-text-muted)', marginLeft: 10 }}>{BUYERS[ORDERS[id].buyer].name} · {itemCount(id)} item{itemCount(id) === 1 ? '' : 's'}</span>
               </div>
-              <StatusBadge {...stateBadge(orderStateAt(id, AT)!)} size="md" showDot />
+              <StatusBadge {...stateBadge(orderStateAt(id, AT)!)} size="md" />
             </div>
           ))}
         </div>

@@ -23,38 +23,38 @@ export type AnyStatus =
   | OrderStatus | ContentStatus | TrustLevel | ClaimStatus
   | PaymentStatus | CourierStatus | 'pending' | 'active' | 'suspended'
 
-interface StatusConfig {
-  label: string
-  bg: string
-  color: string
-  dot?: string
-  icon?: string
-}
+/** A status's semantic family (specification §57, text + icon status). Each family has one icon, shown beside the text
+ * in place of a dot; the text stays the label. */
+export type StatusFamily = 'success' | 'pending' | 'warning' | 'failure' | 'info'
+
+/** Every status names its family. The Trust levels keep their own icons instead: they are Trust displays, not part of
+ * the status families. */
+type StatusConfig = { label: string; bg: string; color: string } & ({ family: StatusFamily; icon?: never } | { family?: never; icon: string })
 
 const STATUS_MAP: Record<string, StatusConfig> = {
   /* ── Order statuses ── */
-  paid:              { label: 'Paid',             bg: 'var(--color-success-bg)',  color: 'var(--color-success)',  dot: 'var(--color-success)' },
-  processing:        { label: 'Processing',       bg: 'var(--color-info-bg)',     color: 'var(--color-info)',     dot: 'var(--color-info)' },
-  preparing:         { label: 'Preparing',        bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',  dot: 'var(--color-warning)' },
-  ready:             { label: 'Ready',            bg: '#EBF0FC',                  color: '#2D5CC2',               dot: '#2D5CC2' },
-  assigned:          { label: 'Courier Assigned', bg: '#F0ECFA',                  color: '#5B3FAF',               dot: '#5B3FAF' },
-  'pickup-verified': { label: 'Pickup Verified',  bg: '#EAF5EE',                  color: 'var(--color-success)',  dot: 'var(--color-success)' },
-  'in-delivery':     { label: 'In Delivery',      bg: '#F0ECFA',                  color: '#5B3FAF',               dot: '#5B3FAF' },
-  'delivery-verified':{ label: 'Delivery Verified', bg: 'var(--color-success-bg)', color: 'var(--color-success)', dot: 'var(--color-success)' },
-  completed:         { label: 'Completed',        bg: 'var(--color-success-bg)',  color: 'var(--color-success)' },
-  cancelled:         { label: 'Cancelled',        bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)' },
-  refunded:          { label: 'Refunded',         bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)' },
+  paid:              { label: 'Paid',             bg: 'var(--color-success-bg)',  color: 'var(--color-success)',  family: 'success' },
+  processing:        { label: 'Processing',       bg: 'var(--color-info-bg)',     color: 'var(--color-info)',     family: 'pending' },
+  preparing:         { label: 'Preparing',        bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',  family: 'pending' },
+  ready:             { label: 'Ready',            bg: '#EBF0FC',                  color: '#2D5CC2',               family: 'pending' },
+  assigned:          { label: 'Courier Assigned', bg: '#F0ECFA',                  color: '#5B3FAF',               family: 'pending' },
+  'pickup-verified': { label: 'Pickup Verified',  bg: '#EAF5EE',                  color: 'var(--color-success)',  family: 'success' },
+  'in-delivery':     { label: 'In Delivery',      bg: '#F0ECFA',                  color: '#5B3FAF',               family: 'pending' },
+  'delivery-verified':{ label: 'Delivery Verified', bg: 'var(--color-success-bg)', color: 'var(--color-success)', family: 'success' },
+  completed:         { label: 'Completed',        bg: 'var(--color-success-bg)',  color: 'var(--color-success)',  family: 'success' },
+  cancelled:         { label: 'Cancelled',        bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)', family: 'failure' },
+  refunded:          { label: 'Refunded',         bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',  family: 'warning' },
 
   /* ── Payment ── */
-  failed:            { label: 'Failed',           bg: 'var(--color-danger-bg)',   color: 'var(--color-danger)',   dot: 'var(--color-danger)' },
-  reconciling:       { label: 'Reconciling',      bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',  dot: 'var(--color-warning)' },
+  failed:            { label: 'Failed',           bg: 'var(--color-danger-bg)',   color: 'var(--color-danger)',   family: 'failure' },
+  reconciling:       { label: 'Reconciling',      bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',  family: 'pending' },
 
   /* ── Content ── */
-  draft:             { label: 'Draft',            bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)' },
-  published:         { label: 'Published',        bg: 'var(--color-success-bg)',  color: 'var(--color-success)' },
-  restricted:        { label: 'Restricted',       bg: 'var(--color-danger-bg)',   color: 'var(--color-danger)' },
-  unavailable:       { label: 'Unavailable',      bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)' },
-  'fyp-ineligible':  { label: 'Not FYP Eligible', bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
+  draft:             { label: 'Draft',            bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)', family: 'info' },
+  published:         { label: 'Published',        bg: 'var(--color-success-bg)',  color: 'var(--color-success)',  family: 'success' },
+  restricted:        { label: 'Restricted',       bg: 'var(--color-danger-bg)',   color: 'var(--color-danger)',   family: 'failure' },
+  unavailable:       { label: 'Unavailable',      bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)', family: 'info' },
+  'fyp-ineligible':  { label: 'Not FYP Eligible', bg: 'var(--color-warning-bg)', color: 'var(--color-warning)',  family: 'warning' },
 
   /* ── Trust ── */
   new:               { label: 'NEW',              bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',   icon: '🌱' },
@@ -63,19 +63,39 @@ const STATUS_MAP: Record<string, StatusConfig> = {
   trusted:           { label: 'TRUSTED',           bg: 'var(--color-success-bg)',  color: 'var(--color-success)',   icon: '✓' },
 
   /* ── Claim ── */
-  open:              { label: 'Open',             bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',  dot: 'var(--color-warning)' },
-  'evidence-required':{ label: 'Evidence Required', bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
-  'under-review':    { label: 'Under Review',     bg: 'var(--color-info-bg)',     color: 'var(--color-info)' },
-  resolved:          { label: 'Resolved',         bg: 'var(--color-success-bg)',  color: 'var(--color-success)' },
+  open:              { label: 'Open',             bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',  family: 'warning' },
+  'evidence-required':{ label: 'Evidence Required', bg: 'var(--color-warning-bg)', color: 'var(--color-warning)', family: 'warning' },
+  'under-review':    { label: 'Under Review',     bg: 'var(--color-info-bg)',     color: 'var(--color-info)',     family: 'pending' },
+  resolved:          { label: 'Resolved',         bg: 'var(--color-success-bg)',  color: 'var(--color-success)',  family: 'success' },
 
   /* ── Courier ── */
-  available:         { label: 'Available',        bg: 'var(--color-success-bg)',  color: 'var(--color-success)',  dot: 'var(--color-success)' },
-  busy:              { label: 'Busy',             bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',  dot: 'var(--color-warning)' },
+  available:         { label: 'Available',        bg: 'var(--color-success-bg)',  color: 'var(--color-success)',  family: 'success' },
+  busy:              { label: 'Busy',             bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',  family: 'pending' },
 
   /* ── General ── */
-  pending:           { label: 'Pending',          bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)' },
-  active:            { label: 'Active',           bg: 'var(--color-success-bg)',  color: 'var(--color-success)',  dot: 'var(--color-success)' },
-  suspended:         { label: 'Suspended',        bg: 'var(--color-danger-bg)',   color: 'var(--color-danger)' },
+  pending:           { label: 'Pending',          bg: 'var(--color-warning-bg)',  color: 'var(--color-warning)',  family: 'pending' },
+  active:            { label: 'Active',           bg: 'var(--color-success-bg)',  color: 'var(--color-success)',  family: 'success' },
+  suspended:         { label: 'Suspended',        bg: 'var(--color-danger-bg)',   color: 'var(--color-danger)',   family: 'failure' },
+}
+
+/** Custom labels whose meaning differs from their variant's family, by variant and label ("#" stands for a count).
+ * Every other custom label takes its variant's family. */
+const LABEL_FAMILY: Record<string, StatusFamily> = {
+  'active · Current':         'info',    // the current Trust level; the current session
+  'active · # open':          'info',    // the Daily Operations Brief's count of open priorities ("6 open")
+  'published · Will publish': 'pending', // the Shoppable Post editor's preview: not yet published
+  'resolved · None':          'info',    // Order Detail with no active claim
+}
+const labelKey = (status: string, label: string) => `${status} · ${label.replace(/^\d+(?= open$)/, '#')}`
+
+/** Each family's icon, drawn on a 16-unit grid in the badge's own colour: shapes the prototype already uses (the Seller
+ * Console's status check and clock, the System States warning triangle, the Handoff failure cross, the information "i"). */
+const FAMILY_ICON: Record<StatusFamily, ReactNode> = {
+  success: <path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />,
+  pending: <><circle cx="8" cy="8" r="6.2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 4.6V8l2.3 1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></>,
+  warning: <><path d="M8 2.2L1.6 13.4h12.8L8 2.2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M8 6.4v3.2M8 11.6v.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></>,
+  failure: <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />,
+  info:    <><circle cx="8" cy="8" r="6.2" stroke="currentColor" strokeWidth="1.6" /><path d="M8 7.4v3.8M8 4.9v.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></>,
 }
 
 export type BadgeSize = 'sm' | 'md' | 'lg'
@@ -83,27 +103,32 @@ export type BadgeSize = 'sm' | 'md' | 'lg'
 interface BadgeProps {
   status: string
   size?: BadgeSize
-  showDot?: boolean
   customLabel?: string
-  /** An icon beside the label, in place of the dot, so the status reads as text plus icon (specification §57). */
-  icon?: ReactNode
 }
 
-const BADGE_SIZE: Record<BadgeSize, { fontSize: number; px: number; py: number; gap: number; dot: number }> = {
-  sm: { fontSize: 10, px: 6,  py: 2,  gap: 3,  dot: 5 },
-  md: { fontSize: 12, px: 8,  py: 3,  gap: 4,  dot: 6 },
-  lg: { fontSize: 13, px: 10, py: 4,  gap: 5,  dot: 7 },
+// The icon is as tall as the label's text.
+const BADGE_SIZE: Record<BadgeSize, { fontSize: number; px: number; py: number; gap: number; icon: number }> = {
+  sm: { fontSize: 10, px: 6,  py: 2,  gap: 3,  icon: 10 },
+  md: { fontSize: 12, px: 8,  py: 3,  gap: 4,  icon: 12 },
+  lg: { fontSize: 13, px: 10, py: 4,  gap: 5,  icon: 13 },
 }
 
-export function StatusBadge({ status, size = 'md', showDot, customLabel, icon }: BadgeProps) {
-  const cfg = STATUS_MAP[status] ?? { label: status, bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)' }
+/** A status reads as its text plus its family's icon (specification §57). The icon is decorative: the text is the label,
+ * for assistive technology too. */
+export function StatusBadge({ status, size = 'md', customLabel }: BadgeProps) {
+  // A status missing from the map shows its own name, as neutral information.
+  const cfg: StatusConfig = STATUS_MAP[status] ?? { label: status, bg: 'var(--color-surface-raised)', color: 'var(--color-text-muted)', family: 'info' }
   const sz = BADGE_SIZE[size]
+  const label = customLabel ?? cfg.label
 
+  // A family badge's items align on the label's baseline, so in a line of text the badge sits where its label did (the
+  // icon, coming first, would otherwise set the badge's baseline); the icon itself stays centred. A Trust badge keeps
+  // its centred alignment.
   return (
     <span
       style={{
         display: 'inline-flex',
-        alignItems: 'center',
+        alignItems: cfg.family ? 'baseline' : 'center',
         gap: sz.gap,
         paddingLeft: sz.px,
         paddingRight: sz.px,
@@ -119,20 +144,10 @@ export function StatusBadge({ status, size = 'md', showDot, customLabel, icon }:
         whiteSpace: 'nowrap',
       }}
     >
-      {icon ?? (cfg.icon && <span style={{ fontSize: sz.fontSize + 1 }}>{cfg.icon}</span>)}
-      {(showDot ?? !!cfg.dot) && !cfg.icon && !icon && (
-        <span
-          style={{
-            display: 'inline-block',
-            width: sz.dot,
-            height: sz.dot,
-            borderRadius: '50%',
-            background: cfg.dot ?? cfg.color,
-            flexShrink: 0,
-          }}
-        />
-      )}
-      {customLabel ?? cfg.label}
+      {cfg.family
+        ? <svg width={sz.icon} height={sz.icon} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flexShrink: 0, alignSelf: 'center' }}>{FAMILY_ICON[LABEL_FAMILY[labelKey(status, label)] ?? cfg.family]}</svg>
+        : <span style={{ fontSize: sz.fontSize + 1 }}>{cfg.icon}</span>}
+      {label}
     </span>
   )
 }

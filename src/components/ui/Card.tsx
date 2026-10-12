@@ -280,7 +280,7 @@ export function CourierCard({ courier, onSelect, selected = false }: {
               <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{courier.deliveries} {courier.deliveries === 1 ? 'delivery' : 'deliveries'}</div>
             </div>
           </div>
-          <StatusBadge status={courier.status} size="sm" showDot />
+          <StatusBadge status={courier.status} size="sm" />
         </div>
         {courier.compensation !== undefined && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>

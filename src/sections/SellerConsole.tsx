@@ -1053,7 +1053,7 @@ function CouriersPanel({ sellerId, at, advanceTo }: { sellerId: SellerId; at: Mo
           return <button key={item.courier} onClick={() => setSelected(item.courier)} className={`flex w-full items-center gap-3 border-b border-border p-4 text-left last:border-b-0 ${relationship.courier === item.courier ? 'bg-brand-muted' : ''}`}><AvatarText name={card.name} /><span className="flex-1"><span className="block text-sm font-semibold">{card.name}</span><span className="text-xs text-text-muted">{meta(item)}</span><span className="mt-2 block text-xs font-semibold">{card.completedForSeller} completed for your store</span><span className="block text-xs text-text-muted">{card.totalCompleted} total completed deliveries</span>{itemTerms && <span className="block text-xs text-text-muted">{itemTerms}</span>}</span><AvailabilityStatus availability={card.availability} className="text-xs font-semibold" /></button>
         })}</div>
         <div className="rounded-2xl border border-border bg-surface p-6">
-          <div className="flex items-start justify-between"><div className="flex items-center gap-4"><AvatarText name={courier.name} large /><span><span className="block font-display text-2xl font-semibold">{courier.name}</span><span className="text-xs text-text-muted">Seller Courier relationship · {seller}</span></span></div><StatusBadge status={status === 'Approved' ? 'active' : 'pending'} customLabel={status ?? undefined} icon={status === 'Approved' ? <StatusCheckIcon /> : <StatusClockIcon />} /></div>
+          <div className="flex items-start justify-between"><div className="flex items-center gap-4"><AvatarText name={courier.name} large /><span><span className="block font-display text-2xl font-semibold">{courier.name}</span><span className="text-xs text-text-muted">Seller Courier relationship · {seller}</span></span></div><StatusBadge status={status === 'Approved' ? 'active' : 'pending'} customLabel={status ?? undefined} /></div>
           <div className="mt-6 grid grid-cols-3 gap-4"><Field label="Availability" value={<AvailabilityStatus availability={courier.availability} />} /><Field label="Seller relationship" value={meta(relationship)} /><Field label="Current terms" value={termsFor(relationship) ?? '—'} /></div>
           <SectionLabelInline>Compensation</SectionLabelInline>
           <div className="flex flex-wrap items-end gap-3"><div className="w-56"><TextInput label="Future delivery compensation (ETB)" value={compensation} onChange={event => setEdited(event.target.value)} hint="Applies only to future offers." /></div><Button variant="tertiary" onClick={() => setAction(`Future compensation updated to ETB ${compensation}`)}>Update Future Compensation</Button></div>
@@ -1326,7 +1326,7 @@ function DotIcon() {
   return <span className="h-2 w-2 rounded-full bg-border-strong" />
 }
 
-// Status icons beside their text (specification §57): approved or available, and pending or busy.
+// Status icons beside their text (specification §57): available, and busy.
 function StatusCheckIcon() {
   return <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
 }
