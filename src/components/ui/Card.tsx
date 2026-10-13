@@ -257,10 +257,24 @@ export function OrderCard({ order, onOpen }: { order: OrderCardData; onOpen?: ()
 export interface CourierCardData {
   name: string
   status: 'available' | 'busy' | 'unavailable'
-  deliveries: number
+  /** Deliveries completed for the Seller viewing the card: the primary figure (rule 7.4). */
+  completedForSeller: number
+  /** Deliveries completed across Sellers: secondary context, never broken down by Seller (rules 7.3–7.4). */
+  totalCompleted: number
   relationship?: string
   compensation?: number
   currency?: string
+}
+
+/** A Seller-facing Courier's two figures in the approved order and prominence (rule 7.4; spec §23): completed for the
+ *  Seller's store first and primary, the total across Sellers second as context. */
+export function CourierCompletedFigures({ completedForSeller, totalCompleted }: { completedForSeller: number; totalCompleted: number }) {
+  return (
+    <div style={{ marginTop: 2 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>{completedForSeller} completed for your store</div>
+      <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{totalCompleted} total completed {totalCompleted === 1 ? 'delivery' : 'deliveries'}</div>
+    </div>
+  )
 }
 
 export function CourierCard({ courier, onSelect, selected = false }: {
@@ -277,7 +291,7 @@ export function CourierCard({ courier, onSelect, selected = false }: {
             <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--color-surface-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🚴</div>
             <div>
               <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>{courier.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{courier.deliveries} {courier.deliveries === 1 ? 'delivery' : 'deliveries'}</div>
+              <CourierCompletedFigures completedForSeller={courier.completedForSeller} totalCompleted={courier.totalCompleted} />
             </div>
           </div>
           <StatusBadge status={courier.status} size="sm" />

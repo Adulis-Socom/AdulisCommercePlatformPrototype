@@ -8,7 +8,7 @@ import {
 } from '../components/ui/Input'
 import {
   ProductCard, ShoppablePostCard, SellerCard, OrderCard,
-  CourierCard, ReviewCard, TrustCard, ClaimCard,
+  CourierCard, CourierCompletedFigures, ReviewCard, TrustCard, ClaimCard,
   NotificationCard, StarRating, Price,
   type ProductCardData, type ShoppablePostCardData, type SellerCardData, type OrderCardData, type CourierCardData,
   type ReviewCardData, type ClaimCardData, type NotificationData,
@@ -492,7 +492,7 @@ function CardShowcase() {
 
   const courier: CourierCardData = {
     name: COURIER_CARD.name, status: COURIER_CARD.availability.toLowerCase() as CourierCardData['status'],
-    deliveries: COURIER_CARD.completedForSeller,
+    completedForSeller: COURIER_CARD.completedForSeller, totalCompleted: COURIER_CARD.totalCompleted,
     compensation: COURIER_CARD.compensation === undefined ? undefined : COURIER_CARD.compensation / 100,
   }
 
@@ -725,7 +725,8 @@ function OverlayShowcase() {
           <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: '0 0 16px' }}>Assigning {COURIER} to order {ORDER}. He will receive a delivery offer notification.</p>
           <div style={{ background: 'var(--color-surface-raised)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
             <div style={{ fontWeight: 600, fontSize: 14 }}>{COURIER}</div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>Compensation: {COURIER_CARD.compensation === undefined ? '—' : formatEtb(COURIER_CARD.compensation)} · {COURIER_CARD.completedForSeller} completed {COURIER_CARD.completedForSeller === 1 ? 'delivery' : 'deliveries'}</div>
+            <CourierCompletedFigures completedForSeller={COURIER_CARD.completedForSeller} totalCompleted={COURIER_CARD.totalCompleted} />
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 8 }}>Compensation: {COURIER_CARD.compensation === undefined ? '—' : formatEtb(COURIER_CARD.compensation)}</div>
           </div>
         </Modal>
       </ShowSection>
