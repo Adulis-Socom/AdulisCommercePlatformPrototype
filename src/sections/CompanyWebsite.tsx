@@ -1260,7 +1260,7 @@ function Field({ label, value, onChange, error, required, type = 'text', placeho
           padding: '10px 14px', borderRadius: 10, fontSize: 14,
           border: `1.5px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
           background: 'var(--color-surface)', color: 'var(--color-text-primary)',
-          outline: 'none', width: '100%', boxSizing: 'border-box',
+          width: '100%', boxSizing: 'border-box',
         }}
       />
       {error && <p id={errorId} role="alert" style={{ fontSize: 12, color: 'var(--color-danger)', margin: 0 }}>Error: {error}</p>}
@@ -1290,7 +1290,7 @@ function SelectField({ label, value, onChange, error, required, options }: {
           padding: '10px 14px', borderRadius: 10, fontSize: 14,
           border: `1.5px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
           background: 'var(--color-surface)', color: value ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-          outline: 'none', width: '100%', cursor: 'pointer',
+          width: '100%', cursor: 'pointer',
         }}
       >
         <option value="">Select a category…</option>
@@ -1322,7 +1322,7 @@ function HelpPage({ navigate }: { navigate: (p: PageKey) => void }) {
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--color-surface)', border: '1.5px solid var(--color-border)', borderRadius: 14, padding: '12px 18px', maxWidth: 420, margin: '0 auto' }}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4" stroke="var(--color-text-muted)" strokeWidth="1.5"/><path d="M11 11L14 14" stroke="var(--color-text-muted)" strokeWidth="1.5" strokeLinecap="round"/></svg>
-            <input aria-label="Search help articles" placeholder="Search help articles…" style={{ border: 'none', outline: 'none', fontSize: 14, color: 'var(--color-text-primary)', background: 'transparent', flex: 1 }} />
+            <input aria-label="Search help articles" placeholder="Search help articles…" style={{ border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 14, color: 'var(--color-text-primary)', background: 'transparent', flex: 1 }} />
           </div>
         </div>
       </section>
@@ -1391,7 +1391,7 @@ function ContactPage() {
             value={msg.message}
             onChange={e => setMsg(m => ({ ...m, message: e.target.value }))}
             rows={5}
-            style={{ padding: '10px 14px', borderRadius: 10, fontSize: 14, border: '1.5px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-primary)', outline: 'none', resize: 'vertical', fontFamily: 'var(--font-body)' }}
+            style={{ padding: '10px 14px', borderRadius: 10, fontSize: 14, border: '1.5px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-primary)', resize: 'vertical', fontFamily: 'var(--font-body)' }}
           />
         </div>
         <button type="submit" style={{ background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
@@ -1486,7 +1486,7 @@ function AccountDeletionPage() {
             <label htmlFor="deletion-reason" style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', display: 'block', marginBottom: 8 }}>
               Why are you deleting your account? (optional)
             </label>
-            <select id="deletion-reason" value={reason} onChange={e => setReason(e.target.value)} style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14, border: '1.5px solid var(--color-border)', background: 'var(--color-surface)', color: reason ? 'var(--color-text-primary)' : 'var(--color-text-muted)', outline: 'none' }}>
+            <select id="deletion-reason" value={reason} onChange={e => setReason(e.target.value)} style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14, border: '1.5px solid var(--color-border)', background: 'var(--color-surface)', color: reason ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
               <option value="">Select a reason…</option>
               <option>I'm not using the platform</option>
               <option>I have privacy concerns</option>
@@ -1531,7 +1531,7 @@ function ConfirmDeleteForm({ onConfirm, onCancel }: { onConfirm: () => void; onC
         value={val}
         onChange={e => setVal(e.target.value)}
         placeholder="Type DELETE"
-        style={{ padding: '12px 16px', borderRadius: 10, fontSize: 15, border: '2px solid var(--color-danger)', background: 'var(--color-surface)', color: 'var(--color-text-primary)', outline: 'none' }}
+        style={{ padding: '12px 16px', borderRadius: 10, fontSize: 15, border: '2px solid var(--color-danger)', background: 'var(--color-surface)', color: 'var(--color-text-primary)' }}
       />
       <button
         onClick={onConfirm}
@@ -1607,7 +1607,7 @@ function ReportContentPage() {
             onChange={e => setForm(f => ({ ...f, detail: e.target.value }))}
             rows={3}
             placeholder="Any additional context that will help our team…"
-            style={{ padding: '10px 14px', borderRadius: 10, fontSize: 14, border: '1.5px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-primary)', outline: 'none', resize: 'vertical', fontFamily: 'var(--font-body)' }}
+            style={{ padding: '10px 14px', borderRadius: 10, fontSize: 14, border: '1.5px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-primary)', resize: 'vertical', fontFamily: 'var(--font-body)' }}
           />
         </div>
         <Field

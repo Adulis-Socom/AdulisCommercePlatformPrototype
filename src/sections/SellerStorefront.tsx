@@ -941,7 +941,7 @@ function SearchView({ onBack, navigate }: { onBack: () => void; navigate: (s: Sc
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder={`Search ${seller.name}…`}
-            style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: 'var(--color-text-primary)', flex: 1 }}
+            style={{ border: 'none', borderRadius: 'var(--radius-sm)', background: 'transparent', fontSize: 13, color: 'var(--color-text-primary)', flex: 1 }}
           />
         </div>
       </div>

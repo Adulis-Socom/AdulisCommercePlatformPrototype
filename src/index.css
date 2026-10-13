@@ -108,6 +108,23 @@ textarea {
   outline-color: var(--color-text-inverse);
 }
 
+/* The rest of the Operator Console is dark too: the top bar, the main area's panels and its case workspaces. Their
+   controls' focus ring uses the same light inverse token (WO-022; spec §57: visible keyboard focus). The shared text
+   fields there (components/ui/Input) set no outline of their own, so they are given the ring here; the search field's
+   Clear button sits on the field's light surface and keeps the info ring. */
+.operator-console :focus-visible {
+  outline-color: var(--color-text-inverse);
+}
+
+.operator-console :is(input, textarea):focus-visible {
+  outline: 3px solid var(--color-text-inverse) !important;
+  outline-offset: 2px;
+}
+
+.operator-console [aria-label='Clear search']:focus-visible {
+  outline-color: var(--color-info);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

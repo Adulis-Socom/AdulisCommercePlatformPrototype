@@ -266,15 +266,18 @@ function EmptyActive({ onAssignments, completed }: { onAssignments: () => void; 
   )
 }
 
+// On the dark scanner the keyboard focus outline uses the light inverse colour, so it stays visible (§57).
+const ON_SCANNER = { outlineColor: 'var(--color-text-inverse)' }
+
 function PickupScanner({ onBack, onScan }: { onBack: () => void; onScan: () => void }) {
   return (
     <div className="flex flex-1 flex-col bg-text-primary text-white">
-      <div className="flex items-center gap-3 p-4"><button onClick={onBack} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-xl">×</button><div className="font-display text-lg font-semibold">Scan Seller Pickup QR</div></div>
+      <div className="flex items-center gap-3 p-4"><button onClick={onBack} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-xl" style={ON_SCANNER}>×</button><div className="font-display text-lg font-semibold">Scan Seller Pickup QR</div></div>
       <div className="flex flex-1 flex-col items-center justify-center">
         <ScanFrame />
         <p className="mt-6 px-8 text-center text-sm text-white/70">The seller displays the Pickup QR. Position it inside the frame.</p>
       </div>
-      <div className="p-5 pb-8"><Button size="lg" onClick={onScan} style={{ width: '100%' }}>Simulate QR detected</Button></div>
+      <div className="p-5 pb-8"><Button size="lg" onClick={onScan} style={{ width: '100%', ...ON_SCANNER }}>Simulate QR detected</Button></div>
     </div>
   )
 }
