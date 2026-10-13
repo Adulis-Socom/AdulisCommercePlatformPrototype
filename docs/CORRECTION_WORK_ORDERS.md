@@ -33,7 +33,7 @@ On 2026-10-09 the owner reprioritised the remediation work orders for the protot
 - Tier 3, low showcase value but still required: WO-012, WO-013;
 - then the rerun of WO-011, the closure gate.
 
-Two remediation work orders list another as a dependency, and the order keeps both: WO-013 depends on WO-012 for its reusable verification screens and state, and WO-023 lists WO-022 (the focus outlines on the same panels). The other relationships between remediation work orders are coordination only, and none waits for another. Each body's remediation priority (P0 to P3) is unchanged; the tiers set only the execution order. The next work order is WO-022.
+Two remediation work orders list another as a dependency, and the order keeps both: WO-013 depends on WO-012 for its reusable verification screens and state, and WO-023 lists WO-022 (the focus outlines on the same panels). The other relationships between remediation work orders are coordination only, and none waits for another. Each body's remediation priority (P0 to P3) is unchanged; the tiers set only the execution order. The next work order is WO-023.
 
 Each remediation work order cites the WO-011 defects it fixes under WHY THIS WORK ORDER EXISTS:
 
@@ -53,7 +53,7 @@ Each remediation work order cites the WO-011 defects it fixes under WHY THIS WOR
 
 ## Implementation progress
 
-Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-12:
+Implementation progress is separate from approval status (see Work-order conventions). As of 2026-10-13:
 
 - WO-001 — IMPLEMENTED AND MERGED
 - WO-002 — IMPLEMENTED AND MERGED
@@ -77,7 +77,7 @@ Implementation progress is separate from approval status (see Work-order convent
 - WO-019 — IMPLEMENTED AND MERGED
 - WO-020 — IMPLEMENTED AND MERGED
 - WO-021 — IMPLEMENTED AND MERGED
-- WO-022 — NOT STARTED
+- WO-022 — IMPLEMENTED AND MERGED
 - WO-023 — NOT STARTED
 - WO-024 — NOT STARTED
 
@@ -2368,6 +2368,7 @@ Do not use another Buyer's Order in Maya's Buyer app:
 - 2026-10-11: Post-WO-019 reconciliation. Implementation progress records WO-019 — Prototype Guide and Master Demo Canonical Flow Corrections as implemented and merged into main (implementation commit `9c9e07b`). The Prototype Guide and the Master Demo now tell the canonical Courier sequence: the Seller marks the Order Ready for Courier and sends the Delivery Offer, and the Courier accepts it before Courier Assigned; journey step 7 identifies the Seller, the Seller Team and the Courier. The launcher's labels match the approved prototype specification, and the Guide counts the 13 canonical flows, A–M, with the Master Demo kept separate from them. WO-011's final rerun is to capture Master Demo step 10 under its current title. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-020 is next and remains not started, as the execution order now states. No approval status, work-order body, dependency or execution order changed.
 - 2026-10-11: Post-WO-020 reconciliation. Implementation progress records WO-020 — Accessible Names and Control Semantics as implemented and merged into main (implementation commit `7152bf1`). The Seller Console's collapsed desktop navigation keeps each destination's name for assistive technology, and its switches expose a stable name, the switch role and their on/off state; the Store's availability switch is named "Store availability", a name that doesn't change with its state. The shared console top bar's Notifications and Help buttons are named in both consoles, and the Storefront search screen's Back button names the Storefront's current Seller. No visible styling changed, no canonical demo record changed, and the earlier work orders' regression checks remained green. WO-011's checklist item §57.06 (semantic labels) now passes; §57.03 (visible keyboard focus) remains for WO-022. WO-021 is next and remains not started, as the execution order now states. No approval status, work-order body, dependency or execution order changed.
 - 2026-10-12: Post-WO-021 reconciliation. Implementation progress records WO-021 — Status Icon Accessibility as implemented and merged into main (implementation commit `7a6dd38`). Ordinary statuses in the shared status badge now show their text with a semantic icon, which replaces the former colour dot, and the status-to-icon mapping is defined once, centrally, in the shared status badge (`Badge.tsx`). The owner's mapping decisions Q1–Q12 are applied: Unavailable is Informational, the payment provider's Ready is Success, an Order's Ready states are Pending, and the Trust levels are excluded from the conversion and unchanged. The approved baseline-alignment refinement (option B) is part of the result, so badges with a semantic icon keep their text baseline within 1 px of the reference. The Shoppable Post specimen's overlap is pre-existing, measured at 43% before and 46% after, within the approved gate, and there is no new clipping or occlusion. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-011's checklist item §57.08 (text plus icon status) now passes; §57.03 (visible keyboard focus) remains pending WO-022, and §57.01 (strong contrast) pending WO-023. WO-022 is next and remains not started, as the execution order now states. No approval status, work-order body, dependency or execution order changed.
+- 2026-10-13: Post-WO-022 reconciliation. Implementation progress records WO-022 — Keyboard Focus Indicators and Focus Contrast as implemented and merged into main (implementation commit `b74fa16`). The Company Website's form fields and the Seller Storefront's search field no longer suppress their focus outline, so they show the standard accessible info outline on their light surfaces. The Operator Console's controls use the light inverse focus outline on its dark surfaces, and its search field's Clear button keeps the info outline on the field's white surface. The Courier Pickup scanner's controls use the inverse focus outline. Only existing colours and tokens are used. No canonical demo record changed, and the earlier work orders' regression checks remained green. WO-011's checklist item §57.03 (visible keyboard focus) now passes; §57.06 (semantic labels) and §57.08 (text plus icon status) remain passing, and §57.01 (strong contrast) remains pending WO-023. WO-023 is next and remains not started, as the execution order now states. No approval status, work-order body, dependency or execution order changed.
 
 ## Related documents
 
