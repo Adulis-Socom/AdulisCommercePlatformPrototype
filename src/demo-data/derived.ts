@@ -473,6 +473,21 @@ export function offerBlockedBy(order: OrderId): OrderId | undefined {
   return other !== order ? other : undefined
 }
 
+/**
+ * The Order's Delivery Offer as the Seller sees it at `at` (rules 6.10–6.11, 6.3, 6.8): sent after the Seller marked the
+ * Order Ready for Courier, with the Seller's terms when it was made, then awaiting the Courier's acceptance until
+ * DEMO_DATA's Courier Assigned time, which is that acceptance. While the Courier holds another accepted delivery, he
+ * can't accept it yet (busy). Undefined before the offer is made.
+ */
+export function deliveryOfferAt(order: OrderId, at: Moment = DEFAULT_SNAPSHOT): { courier: CourierId; offered: Timestamp; compensation?: Santim; accepted?: Timestamp; busy: boolean } | undefined {
+  const offer = ORDERS[order].offer
+  if (!offer || !happenedBefore(offer.offered, at)) return undefined
+  const assigned = stateTime(order, 'Courier Assigned')
+  const accepted = assigned && happenedBefore(assigned, at) ? assigned : undefined
+  const other = activeDeliveryAt(offer.courier, at)
+  return { courier: offer.courier, offered: offer.offered, compensation: courierCompensationAt(ORDERS[order].seller, { at: offer.offered }), accepted, busy: !accepted && other !== undefined && other !== order }
+}
+
 export function courierAvailabilityAt(courier: CourierId, at: Moment = DEFAULT_SNAPSHOT): CourierAvailability {
   return activeDeliveryAt(courier, at) ? 'Busy' : COURIERS[courier].availability
 }

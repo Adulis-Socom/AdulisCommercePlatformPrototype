@@ -16,7 +16,7 @@ import {
   GENERAL_CONTEXT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS,
   SELLER_SESSIONS, SELLER_SETTINGS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, VOLT_HOUSE_PREPUBLICATION,
   activeDiscount, awaitingSellerReplyAt, byMessageTime, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt, contextKey,
-  contextSubject, courierCardAt, courierCompensationAt, currentPrice, effectiveMessagesAt, formatAge, formatCalendarDate, formatClock, formatDate,
+  contextSubject, courierAvailabilityAt, courierCardAt, courierCompensationAt, currentPrice, deliveryOfferAt, effectiveMessagesAt, formatAge, formatCalendarDate, formatClock, formatDate,
   formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, hasAvailableProductAt, isForYouEligibleAt, lineOptions, messagesAt,
   moderationIssuesAt, onAdulisSince, orderStateAt, orderTotals, ordersAt, ordersRequiringPreparationAt, paidAt,
   paymentReference, postsNeedingAttentionAt, preparationAt, prepublicationCards, prepublicationSnapshotFor, productQualityAt, relationshipHistoryAt,
@@ -360,18 +360,32 @@ function OrdersTable({ rows, at, onOpenOrder }: { rows: OrderId[]; at: Moment; o
 }
 
 function OrderDetail({ orderId, at, onBack }: { orderId: OrderId; at: Moment; onBack: () => void }) {
-  // The Order's mode-specific timeline (rules 4.4–4.7) at the story moment; the prototype controls step through its
-  // first four states, each named as the Order's own fulfilment mode names it.
+  // The Order's mode-specific timeline (rules 4.4–4.7) at the story moment. The prototype controls step through the
+  // states the Seller reaches by its own actions, each named as the Order's own fulfilment mode names it: for a Courier
+  // Delivery Order Paid, Preparing and Ready for Courier, never Courier Assigned, which only the Courier's acceptance
+  // gives (rule 6.10); for the other modes, their first four states.
   const order = ORDERS[orderId]
   const timeline = ORDER_TIMELINES[order.fulfilment]
-  const controls = timeline.slice(0, 4)
+  const courierMode = order.fulfilment === 'Courier Delivery'
+  const controls = timeline.slice(0, courierMode ? 3 : 4)
   const canonical = Math.max(0, timeline.indexOf(orderStateAt(orderId, at) ?? 'Paid'))
   const [override, setOverride] = useState<number | null>(null)
   const current = override ?? canonical
   const state = timeline[current]
   const control = Math.min(current, controls.length - 1)
   const [chatOpen, setChatOpen] = useState(false)
-  const courierMode = order.fulfilment === 'Courier Delivery'
+  // The Delivery Offer (rules 6.10–6.11, 6.3, 6.8): at DEMO_DATA's moments the shared module's, awaiting the Courier's
+  // acceptance until it comes; one the Seller sends in this session at another moment is transient prototype state that
+  // stays awaiting. Nothing here accepts it on the Courier's behalf: only the Courier's acceptance makes the Order
+  // Courier Assigned, and an offer is sent only once the Order is Ready for Courier (rule 6.11).
+  const [offerTo, setOfferTo] = useState<CourierId | null>(null)
+  const [choice, setChoice] = useState<CourierId | null>(null)
+  const selectionRef = useRef<HTMLDivElement>(null)
+  const recorded = courierMode && override === null ? deliveryOfferAt(orderId, at) : undefined
+  const offer = recorded ?? (courierMode && current === 2 && offerTo ? { courier: offerTo, compensation: courierCompensationAt(order.seller, at), busy: courierAvailabilityAt(offerTo, at) === 'Busy' } : undefined)
+  const pool = courierMode ? COURIER_RELATIONSHIPS.filter(r => r.seller === order.seller && relationshipStatusAt(r, at) === 'Approved') : []
+  const step = (index: number) => { setOverride(index); if (index < 2) { setOfferTo(null); setChoice(null) } }
+  const toSelection = () => (selectionRef.current?.querySelector<HTMLElement>('[role="radio"]') ?? selectionRef.current)?.focus()
   const buyer = BUYERS[order.buyer]
   const totals = orderTotals(orderId)
   const paid = paidAt(orderId)
@@ -386,7 +400,7 @@ function OrderDetail({ orderId, at, onBack }: { orderId: OrderId; at: Moment; on
   return (
     <div className="mx-auto max-w-7xl p-8">
       <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand">← Back to Orders</button>
-      <div className="mb-6 flex items-start justify-between"><div><div className="flex items-center gap-3"><h1 className="font-display text-3xl font-semibold">{orderId}</h1><StatusBadge {...stateBadge(state)} /></div><p className="mt-1 text-sm text-text-muted">Seller Order · Created after provider-verified payment</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setChatOpen(!chatOpen)}>Chat with Buyer</Button>{current === 0 && <Button onClick={() => setOverride(1)}>Start Preparation</Button>}{current === 1 && <Button onClick={() => setOverride(2)}>Mark Ready</Button>}{current === 2 && courierMode && <Button onClick={() => setOverride(3)}>Assign Approved Courier</Button>}</div></div>
+      <div className="mb-6 flex items-start justify-between"><div><div className="flex items-center gap-3"><h1 className="font-display text-3xl font-semibold">{orderId}</h1><StatusBadge {...stateBadge(state)} /></div><p className="mt-1 text-sm text-text-muted">Seller Order · Created after provider-verified payment</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setChatOpen(!chatOpen)}>Chat with Buyer</Button>{current === 0 && <Button onClick={() => setOverride(1)}>Start Preparation</Button>}{current === 1 && <Button onClick={() => setOverride(2)}>Mark Ready</Button>}{current === 2 && courierMode && !offer && <Button onClick={toSelection}>Select Courier</Button>}</div></div>
 
       <div className="grid grid-cols-[1.45fr_1fr] gap-5">
         <div className="flex flex-col gap-5">
@@ -403,16 +417,35 @@ function OrderDetail({ orderId, at, onBack }: { orderId: OrderId; at: Moment; on
           </DetailCard>
           <DetailCard title="Fulfilment evidence">
             {/* Courier assignment, pickup and location checkpoints belong to Courier Delivery only (rules 4.7, 9.6). */}
-            {courierMode ? (
+            {courierMode ? (<>
+              {/* At Ready for Courier: the Seller selects one of its approved Couriers and sends the Delivery Offer, then
+                  waits for the Courier's acceptance (rules 6.10, 6.3, 6.8; WO-008's card: completed for this Seller first). */}
+              {current === 2 && (offer ? (
+                <div role="status" className="mb-4 rounded-xl border border-border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold">Delivery Offer sent to {COURIERS[offer.courier].name}</span><StatusBadge status="pending" customLabel="Awaiting Courier acceptance" size="sm" /></div>
+                  <div className="mt-1 text-xs text-text-muted">{offer.compensation === undefined ? 'Compensation —' : `${formatEtb(offer.compensation)} for this delivery`}{recorded ? ` · sent ${formatClock(recorded.offered)}` : ''}</div>
+                  <p className="mt-2 text-xs leading-relaxed text-text-secondary">{offer.busy ? `${COURIERS[offer.courier].name} is on an active delivery and can accept once it is complete.` : `${COURIERS[offer.courier].name} accepts or declines in the Courier app.`} The Order stays Ready for Courier until the Courier accepts.</p>
+                </div>
+              ) : (
+                <div ref={selectionRef} tabIndex={-1} className="mb-4 rounded-xl border border-border p-4">
+                  <div className="text-sm font-semibold">Send a Delivery Offer</div>
+                  <p className="mt-1 text-xs leading-relaxed text-text-muted">Choose one of {SELLERS[order.seller].name}'s approved Couriers. The Courier accepts or declines; the Order is Courier Assigned only when they accept.</p>
+                  {pool.length ? <div role="radiogroup" aria-label="Approved Couriers" className="mt-3 flex flex-col gap-2">{pool.map(r => {
+                    const card = courierCardAt(order.seller, r.courier, at)
+                    return <button key={r.courier} role="radio" aria-checked={choice === r.courier} onClick={() => setChoice(r.courier)} className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left ${choice === r.courier ? 'border-brand bg-brand-muted' : 'border-border'}`}><AvatarText name={card.name} /><span className="min-w-0 flex-1"><span className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold">{card.name}</span><AvailabilityStatus availability={card.availability} className="text-xs font-semibold" /></span><span className="mt-1 block text-xs font-semibold">{card.completedForSeller} completed for your store</span><span className="block text-xs text-text-muted">{card.totalCompleted} total completed deliveries</span>{card.compensation !== undefined && <span className="mt-1 block text-xs text-text-muted">{formatEtb(card.compensation)} for this delivery</span>}</span></button>
+                  })}</div> : <div className="mt-3 rounded-xl bg-surface-raised p-3 text-xs text-text-muted">No approved Couriers yet. Approve a Courier in Couriers to send a Delivery Offer.</div>}
+                  <div className="mt-3"><Button disabled={!choice} onClick={() => choice && setOfferTo(choice)}>Send Delivery Offer</Button></div>
+                </div>
+              ))}
               <div className="grid grid-cols-2 gap-3">
                 <Evidence title="Preparation" status={control === 0 ? 'Not started' : control === 1 ? 'In progress' : 'Ready'} detail="Seller preparation checklist" />
-                <Evidence title="Courier assignment" status={control === 3 && order.courier ? `${COURIERS[order.courier].name} assigned` : 'Awaiting assignment'} detail="Approved Seller Courier Pool" />
+                <Evidence title="Courier assignment" status={happened('Courier Assigned') && order.courier ? `${COURIERS[order.courier].name} accepted${stateTime(orderId, 'Courier Assigned') ? ` ${formatClock(stateTime(orderId, 'Courier Assigned')!)}` : ''}` : offer ? 'Awaiting Courier acceptance' : current === 2 ? 'Select an approved Courier' : 'After Mark Ready'} detail="Approved Seller Courier Pool" />
                 <Evidence title="Pickup evidence" status={happened('Pickup Verified') ? verified(order.pickup) : 'Not available'} detail="Seller Pickup QR scan appears here" />
                 <Evidence title="Delivery evidence" status={happened('Completed') ? verified(order.finalHandoff) : 'Not available'} detail="Recipient Delivery QR scan appears here" />
                 <Evidence title="Pickup checkpoint" status={happened('Pickup Verified') ? location(order.pickup) : 'Pending'} detail="Location recorded or unavailable" />
                 <Evidence title="Delivery checkpoint" status={happened('Completed') ? location(order.finalHandoff) : 'Pending'} detail="Location recorded or unavailable" />
               </div>
-            ) : (
+            </>) : (
               <div className="grid grid-cols-2 gap-3">
                 <Evidence title="Preparation" status={control === 0 ? 'Not started' : control === 1 ? 'In progress' : 'Ready'} detail="Seller preparation checklist" />
                 <Evidence title={collection ? 'Collection evidence' : 'Delivery evidence'} status={happened('Completed') ? verified(order.finalHandoff) : 'Not available'} detail={collection ? 'Buyer scans your Collection QR' : 'Buyer scans your Delivery QR'} />
@@ -429,7 +462,7 @@ function OrderDetail({ orderId, at, onBack }: { orderId: OrderId; at: Moment; on
               : <div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">No active claim</span><span className="text-xs text-text-muted">Claims linked to this Seller Order appear here.</span></span><StatusBadge status="resolved" size="sm" customLabel="None" /></div>}
           </DetailCard>
           {chatOpen && <DetailCard title="Buyer chat"><div className="rounded-xl bg-surface-raised p-3 text-sm">{lastBuyerMessage ? `${shortName(buyer.name)}: ${lastBuyerMessage.text}` : '—'}</div><div className="mt-3 rounded-xl bg-warning-bg p-3 text-xs text-text-secondary">Chat supports coordination but does not establish payment, pickup, delivery, or claim truth.</div></DetailCard>}
-          <DetailCard title="State controls"><div className="text-xs text-text-muted">Prototype fulfilment state</div><div className="mt-3 flex flex-wrap gap-2">{controls.map((value, index) => <button key={value} onClick={() => setOverride(index)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${control === index ? 'border-brand bg-brand-muted text-brand-dark' : 'border-border text-text-muted'}`}>{value}</button>)}</div></DetailCard>
+          <DetailCard title="State controls"><div className="text-xs text-text-muted">Prototype fulfilment state</div><div className="mt-3 flex flex-wrap gap-2">{controls.map((value, index) => <button key={value} onClick={() => step(index)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${control === index ? 'border-brand bg-brand-muted text-brand-dark' : 'border-border text-text-muted'}`}>{value}</button>)}</div></DetailCard>
         </div>
       </div>
     </div>
