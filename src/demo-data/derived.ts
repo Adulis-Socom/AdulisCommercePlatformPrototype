@@ -741,3 +741,54 @@ export function soloCoverageMaxEnd(activated: Timestamp): Timestamp {
 export function auditLogAt(at: Moment = DEFAULT_SNAPSHOT): typeof AUDIT_LOG {
   return AUDIT_LOG.filter(entry => happenedBefore(entry.at, at))
 }
+
+// ---------- Company Website Account Deletion (specification §12) ----------
+
+/**
+ * A short-lived capability for one Company Website Account Deletion flow. The Platform issues it when the deletion
+ * verification (phone number, then the 6-digit code) succeeds, and only that flow uses it: its preview, its explicit
+ * confirmation and its request. It is no Website login or session, Report Content doesn't accept it, it authorizes no
+ * Buyer or Seller commerce action, and it ends with its flow. It isn't a record.
+ */
+export interface AccountDeletionCapability {
+  readonly purpose: 'account-deletion'
+  readonly account: BuyerId
+}
+
+/**
+ * The deletion verification succeeded, so the Platform issues the capability. In the prototype it resolves
+ * deterministically to the demo Buyer, Maya Tesfaye, with no Website Account record: the visitor never names an Account.
+ */
+export function issueAccountDeletionCapability(): AccountDeletionCapability {
+  return { purpose: 'account-deletion', account: (Object.keys(BUYERS) as BuyerId[]).find(id => BUYERS[id].primary)! }
+}
+
+/** An active Order that blocks an Account's deletion, with its state. */
+export interface DeletionBlocker {
+  readonly order: OrderId
+  readonly state: OrderState
+}
+
+/**
+ * The Platform's preview of the capability's Account deletion at `at`: the Account's active Orders (paid, not yet
+ * Completed) block it for now. They are the one blocker the approved documents name (WO-012 owner decision): at the
+ * 10:25 snapshot Maya's are ADU-24091 and ADU-24093 (Paid) and ADU-24092 (Preparing). Null without a deletion
+ * capability. The Company Website renders it and calculates no blocker itself.
+ */
+export function accountDeletionPreviewAt(capability: AccountDeletionCapability | null | undefined, at: Moment = DEFAULT_SNAPSHOT): { readonly account: BuyerId; readonly blockedBy: readonly DeletionBlocker[] } | null {
+  if (capability?.purpose !== 'account-deletion') return null
+  const blockedBy = ordersAt({ buyer: capability.account }, at)
+    .map(order => ({ order, state: orderStateAt(order, at)! }))
+    .filter(({ state }) => state !== 'Completed')
+  return { account: capability.account, blockedBy }
+}
+
+/**
+ * The Platform's result of an explicitly confirmed deletion request at `at`: "deletion requested" or, while the Account
+ * has active Orders, "deletion requested, but currently blocked by active Orders". It deletes nothing and gives no
+ * deletion date. Null, with nothing requested, without a deletion capability.
+ */
+export function requestAccountDeletionAt(capability: AccountDeletionCapability | null | undefined, at: Moment = DEFAULT_SNAPSHOT): { readonly account: BuyerId; readonly result: 'requested' | 'blocked'; readonly blockedBy: readonly DeletionBlocker[] } | null {
+  const preview = accountDeletionPreviewAt(capability, at)
+  return preview && { ...preview, result: preview.blockedBy.length ? 'blocked' : 'requested' }
+}

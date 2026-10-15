@@ -1,7 +1,7 @@
-import { Fragment, useId, useState, FormEvent } from 'react'
+import { Fragment, useEffect, useId, useRef, useState, FormEvent } from 'react'
 import { AdulisLogo } from '../App'
 import { useStory } from '../StoryClock'
-import { PRODUCTS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS, formatClockShort, formatEtb, forYouAt, initials, sellerProductsAt, trustAt, trustLabel } from '../demo-data'
+import { BUYERS, PRODUCTS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS, accountDeletionPreviewAt, formatClockShort, formatEtb, forYouAt, initials, issueAccountDeletionCapability, requestAccountDeletionAt, sellerProductsAt, trustAt, trustLabel, type AccountDeletionCapability, type DeletionBlocker } from '../demo-data'
 
 /* ─── Page routing ─── */
 type PageKey =
@@ -1461,27 +1461,66 @@ function LegalPage({ title }: { title: string }) {
 /* ══════════════════════════════════
    ACCOUNT DELETION
 ══════════════════════════════════ */
+/* The deletion verification (specification §12): the phone number, then the 6-digit code. Only then does the Platform
+   issue a capability for this deletion flow, which its preview, its explicit confirmation and its request require. The
+   flow is this page's state alone, not a Website login or session: cancelling, leaving the page, reloading or resetting
+   the prototype ends it, as finishing it does, with nothing further requested. */
+type DeletionFlow =
+  | { step: 'explain' }
+  | { step: 'phone' }
+  | { step: 'code'; phone: string }
+  | { step: 'preview' | 'confirm'; capability: AccountDeletionCapability }
+  | { step: 'result'; request: NonNullable<ReturnType<typeof requestAccountDeletionAt>> }
+
+const DELETION_CONSEQUENCES = ['Any open orders will need to be resolved before deletion can proceed.', 'Your transaction history will be retained for 7 years as required by our data retention policy.', 'Your seller storefront, if active, will be unpublished immediately.', 'You will lose access to your order history, reviews, and saved content.']
+
 function AccountDeletionPage() {
-  const [step, setStep] = useState<'entry' | 'confirm' | 'done'>('entry')
+  const { moment } = useStory()
+  const [flow, setFlow] = useState<DeletionFlow>({ step: 'explain' })
   const [reason, setReason] = useState('')
+  // Each transition checks the step it leaves, so no control reaches a later step out of order. Only a complete code
+  // gets the capability, and the preview, the confirmation and the request each require it.
+  const restart = () => { setFlow({ step: 'explain' }); setReason('') }
+  const sendCode = (phone: string) => setFlow(f => (f.step === 'phone' && phoneComplete(phone) ? { step: 'code', phone } : f))
+  const verify = (code: string) => setFlow(f => (f.step === 'code' && codeComplete(code) ? { step: 'preview', capability: issueAccountDeletionCapability() } : f))
+  const review = () => setFlow(f => (f.step === 'preview' ? { step: 'confirm', capability: f.capability } : f))
+  const request = () => setFlow(f => {
+    if (f.step !== 'confirm') return f
+    const result = requestAccountDeletionAt(f.capability, moment)
+    return result ? { step: 'result', request: result } : { step: 'explain' }
+  })
+  // A new step moves keyboard focus to its heading (opening the page doesn't).
+  const page = useRef<HTMLDivElement>(null)
+  const shown = useRef(flow.step)
+  useEffect(() => {
+    if (shown.current !== flow.step) page.current?.querySelector<HTMLElement>('h1')?.focus()
+    shown.current = flow.step
+  }, [flow.step])
 
   return (
-    <div style={{ maxWidth: 520, margin: '0 auto', padding: '64px 48px' }}>
-      {step === 'entry' && (
+    <div ref={page} style={{ maxWidth: 520, margin: '0 auto', padding: '64px 48px' }}>
+      {flow.step === 'explain' && (
         <>
           <div style={{ width: 52, height: 52, background: 'var(--color-danger-bg)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, marginBottom: 24 }}>⚠️</div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 34, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 16px' }}>Delete your Adulis account</h1>
+          <h1 tabIndex={-1} style={{ fontFamily: 'var(--font-display)', fontSize: 34, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 16px' }}>Delete your Adulis account</h1>
           <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 20px' }}>
             Account deletion is permanent and cannot be undone. Before you delete:
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
-            {['Any open orders will need to be resolved before deletion can proceed.', 'Your transaction history will be retained for 7 years as required by our data retention policy.', 'Your seller storefront, if active, will be unpublished immediately.', 'You will lose access to your order history, reviews, and saved content.'].map(w => (
-              <div key={w} style={{ display: 'flex', gap: 10 }}>
-                <span style={{ color: 'var(--color-danger)', flexShrink: 0, marginTop: 2 }}>✕</span>
-                <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.6 }}>{w}</p>
-              </div>
-            ))}
-          </div>
+          <DeletionConsequences />
+          <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>
+            To request deletion, first verify your account with its phone number and a 6-digit code. The verification is for this deletion only.
+          </p>
+          <button onClick={() => setFlow({ step: 'phone' })} style={{ background: 'var(--color-danger)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer', width: '100%' }}>
+            Verify your account
+          </button>
+        </>
+      )}
+      {flow.step === 'phone' && <VerifyPhoneStep title="Verify your account" intro="Enter the phone number of the Adulis account you want to delete. We'll send a 6-digit code to it." onSendCode={sendCode} onCancel={restart} />}
+      {flow.step === 'code' && <VerifyCodeStep phone={flow.phone} onVerify={verify} onCancel={restart} />}
+      {flow.step === 'preview' && <DeletionPreview preview={accountDeletionPreviewAt(flow.capability, moment)} onContinue={review} onCancel={restart} />}
+      {flow.step === 'confirm' && (
+        <>
+          <h1 tabIndex={-1} style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 600, color: 'var(--color-danger)', margin: '0 0 16px' }}>Confirm deletion</h1>
           <div style={{ marginBottom: 24 }}>
             <label htmlFor="deletion-reason" style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', display: 'block', marginBottom: 8 }}>
               Why are you deleting your account? (optional)
@@ -1495,29 +1534,169 @@ function AccountDeletionPage() {
               <option>Prefer not to say</option>
             </select>
           </div>
-          <button onClick={() => setStep('confirm')} style={{ background: 'var(--color-danger)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer', width: '100%' }}>
-            Continue to Delete Account
-          </button>
-        </>
-      )}
-      {step === 'confirm' && (
-        <>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 600, color: 'var(--color-danger)', margin: '0 0 16px' }}>Confirm deletion</h1>
           <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 28px' }}>
             This action is permanent. Type <strong>DELETE</strong> to confirm.
           </p>
-          <ConfirmDeleteForm onConfirm={() => setStep('done')} onCancel={() => setStep('entry')} />
+          <ConfirmDeleteForm onConfirm={request} onCancel={restart} />
         </>
       )}
-      {step === 'done' && (
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>👋</div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 14px' }}>Account deletion requested.</h1>
-          <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--color-text-secondary)' }}>
-            Your account will be deleted within 30 days. You will receive a confirmation email. Transaction records are retained as required by our data retention policy.
-          </p>
+      {flow.step === 'result' && <DeletionResult request={flow.request} onDone={restart} />}
+    </div>
+  )
+}
+
+/* The Website verification's phone and code screens (specification §12). They grant nothing: the flow that uses them
+   gets its own capability after the code step, so Report Content (WO-013) can reuse them without sharing one. As in the
+   Buyer app's prototype sign-in, a phone number is 9 digits after +251, and no code is sent: any 6 digits verify. */
+const PHONE_DIGITS = 9
+const CODE_DIGITS = 6
+const phoneComplete = (phone: string) => phone.replace(/\D/g, '').length === PHONE_DIGITS
+const codeComplete = (code: string) => /^\d+$/.test(code) && code.length === CODE_DIGITS
+
+const stepHeading = { fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 14px' } as const
+const stepText = { fontSize: 15, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 24px' } as const
+const stepLabel = { display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 6 } as const
+const primaryButton = { background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer', width: '100%' } as const
+const quietButton = { background: 'transparent', color: 'var(--color-text-secondary)', border: 'none', fontSize: 14, cursor: 'pointer', padding: '12px', minHeight: 44 } as const
+
+function VerifyPhoneStep({ title, intro, onSendCode, onCancel }: { title: string; intro: string; onSendCode: (phone: string) => void; onCancel: () => void }) {
+  const [phone, setPhone] = useState('')
+  const [error, setError] = useState<string>()
+  const submit = () => (phoneComplete(phone) ? onSendCode(phone) : setError('Enter a complete phone number.'))
+  return (
+    <form onSubmit={e => { e.preventDefault(); submit() }} noValidate>
+      <h1 tabIndex={-1} style={stepHeading}>{title}</h1>
+      <p style={stepText}>{intro}</p>
+      <VerifyField label="Phone number" prefix="+251" value={phone} onChange={v => { setPhone(v.replace(/[^\d ]/g, '').slice(0, PHONE_DIGITS + 4)); setError(undefined) }} error={error} type="tel" placeholder="9 XX XX XX XX" autoComplete="tel-national" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 24 }}>
+        <button type="submit" style={primaryButton}>Send code</button>
+        <button type="button" onClick={onCancel} style={quietButton}>Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+function VerifyCodeStep({ phone, onVerify, onCancel }: { phone: string; onVerify: (code: string) => void; onCancel: () => void }) {
+  const [code, setCode] = useState('')
+  const [error, setError] = useState<string>()
+  const submit = () => (codeComplete(code) ? onVerify(code) : setError(`Enter all ${CODE_DIGITS} digits.`))
+  return (
+    <form onSubmit={e => { e.preventDefault(); submit() }} noValidate>
+      <h1 tabIndex={-1} style={stepHeading}>Enter the {CODE_DIGITS}-digit code</h1>
+      <p style={stepText}>We sent a verification code to +251 {phone.trim()}.</p>
+      <VerifyField label={`${CODE_DIGITS}-digit verification code`} value={code} onChange={v => { setCode(v.replace(/\D/g, '').slice(0, CODE_DIGITS)); setError(undefined) }} error={error} inputMode="numeric" placeholder={'0'.repeat(CODE_DIGITS)} autoComplete="one-time-code" />
+      <div style={{ marginTop: 16, padding: 14, background: 'var(--color-surface-raised)', borderRadius: 12, fontSize: 13, lineHeight: 1.6, color: 'var(--color-text-secondary)' }}>
+        <span style={stepLabel}>Prototype</span>
+        No code is sent. Any {CODE_DIGITS} digits verify the demo account.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 24 }}>
+        <button type="submit" style={primaryButton}>Verify</button>
+        <button type="button" onClick={onCancel} style={quietButton}>Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+/** A verification field: the Website's field style at the 44 px touch height (§57), with an optional prefix. */
+function VerifyField({ label, value, onChange, error, prefix, type = 'text', inputMode, placeholder, autoComplete }: {
+  label: string; value: string; onChange: (v: string) => void; error?: string; prefix?: string
+  type?: string; inputMode?: 'numeric'; placeholder?: string; autoComplete?: string
+}) {
+  const id = useId()
+  const errorId = `${id}-error`
+  const box = { minHeight: 44, borderRadius: 10, fontSize: 15, border: '1.5px solid var(--color-border)', boxSizing: 'border-box' } as const
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label htmlFor={id} style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{label}</label>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {prefix && <span style={{ ...box, display: 'flex', alignItems: 'center', padding: '0 12px', background: 'var(--color-surface-raised)', color: 'var(--color-text-secondary)', flexShrink: 0 }}>{prefix}</span>}
+        <input
+          id={id}
+          type={type}
+          inputMode={inputMode}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : undefined}
+          style={{ ...box, flex: 1, minWidth: 0, padding: '10px 14px', border: `1.5px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`, background: 'var(--color-surface)', color: 'var(--color-text-primary)' }}
+        />
+      </div>
+      {error && <p id={errorId} role="alert" style={{ fontSize: 12, color: 'var(--color-danger)', margin: 0 }}>Error: {error}</p>}
+    </div>
+  )
+}
+
+function DeletionConsequences() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
+      {DELETION_CONSEQUENCES.map(w => (
+        <div key={w} style={{ display: 'flex', gap: 10 }}>
+          <span style={{ color: 'var(--color-danger)', flexShrink: 0, marginTop: 2 }}>✕</span>
+          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.6 }}>{w}</p>
         </div>
-      )}
+      ))}
+    </div>
+  )
+}
+
+function BlockingOrders({ orders }: { orders: readonly DeletionBlocker[] }) {
+  return (
+    <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {orders.map(o => <li key={o.order} style={{ fontSize: 14, color: 'var(--color-text-primary)' }}><span style={{ fontFamily: 'var(--font-mono)' }}>{o.order}</span> · {o.state}</li>)}
+    </ul>
+  )
+}
+
+/**
+ * The preview of the consequences, after verification: the verified account, what deleting it means, and the Platform's
+ * current status. It renders the Platform's preview (its active Orders block deletion for now) and judges nothing.
+ */
+function DeletionPreview({ preview, onContinue, onCancel }: { preview: ReturnType<typeof accountDeletionPreviewAt>; onContinue: () => void; onCancel: () => void }) {
+  if (!preview) return null
+  const blocked = preview.blockedBy.length > 0
+  return (
+    <>
+      <h1 tabIndex={-1} style={stepHeading}>Review before you delete</h1>
+      <div style={{ padding: '14px 18px', background: 'var(--color-surface-raised)', borderRadius: 12, marginBottom: 24 }}>
+        <span style={stepLabel}>Verified account</span>
+        <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{BUYERS[preview.account].name}</p>
+      </div>
+      <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 14px' }}>If you delete this account:</p>
+      <DeletionConsequences />
+      <div style={{ padding: '14px 18px', background: blocked ? 'var(--color-warning-bg)' : 'var(--color-surface-raised)', borderRadius: 12, marginBottom: 28 }}>
+        <span style={stepLabel}>Current status from Adulis</span>
+        {blocked ? (
+          <>
+            <p style={{ fontSize: 14, color: 'var(--color-text-primary)', margin: '0 0 6px', fontWeight: 600 }}>Active Orders:</p>
+            <BlockingOrders orders={preview.blockedBy} />
+            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0 }}>Deletion can't complete while Orders are active.</p>
+          </>
+        ) : <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0 }}>No active Orders.</p>}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <button onClick={onContinue} style={{ ...primaryButton, background: 'var(--color-danger)' }}>Continue to confirmation</button>
+        <button onClick={onCancel} style={quietButton}>Cancel</button>
+      </div>
+    </>
+  )
+}
+
+/** The Platform's result, as it gives it: deletion requested, or requested but currently blocked. No deletion date. */
+function DeletionResult({ request, onDone }: { request: NonNullable<ReturnType<typeof requestAccountDeletionAt>>; onDone: () => void }) {
+  const blocked = request.result === 'blocked'
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div role="status">
+        <div style={{ width: 52, height: 52, background: blocked ? 'var(--color-warning-bg)' : 'var(--color-info-bg)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, margin: '0 auto 20px' }}>{blocked ? '⚠️' : 'ℹ️'}</div>
+        <h1 tabIndex={-1} style={{ ...stepHeading, fontSize: 28 }}>{blocked ? 'Deletion requested, but currently blocked by active Orders.' : 'Deletion requested.'}</h1>
+        <p style={{ ...stepText, margin: '0 0 12px' }}>
+          Adulis has received the deletion request for {BUYERS[request.account].name}'s account.{blocked && " It can't complete while these Orders are active:"}
+        </p>
+        {blocked && <div style={{ display: 'inline-block', textAlign: 'left' }}><BlockingOrders orders={request.blockedBy} /></div>}
+      </div>
+      <button onClick={onDone} style={{ ...primaryButton, marginTop: 20 }}>Done</button>
     </div>
   )
 }
