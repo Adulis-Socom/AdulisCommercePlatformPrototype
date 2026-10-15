@@ -761,7 +761,7 @@ function ForSellersPage({ navigate }: { navigate: (p: PageKey) => void }) {
     { icon: '📦', title: 'Orders', body: 'A clear order management workflow: Needs Action → Preparing → Ready → In Delivery → Completed. Mark orders ready when packed. Generate a Pickup QR for your courier.' },
     { icon: '📊', title: 'Inventory Management', body: 'Set stock levels per variant. Receive low-stock alerts before you run out. Orders are rejected automatically when stock hits zero — no overselling.' },
     { icon: '💬', title: 'Buyer Chat', body: 'Answer buyer questions before and after purchase. Chatbot handles your FAQs so you don\'t have to be online 24/7. Escalate to manual when needed.' },
-    { icon: '🚴', title: 'Courier Fulfilment', body: 'Build your own courier pool. Approve couriers, set compensation, and invite them to your orders. A Pickup QR verifies collection; the buyer\'s Delivery QR confirms receipt.' },
+    { icon: '🚴', title: 'Courier Fulfilment', body: 'Build your own courier pool. Approve couriers, set compensation, and invite them to your orders. A Pickup QR verifies collection. At final Courier delivery, the Courier displays the Delivery QR and the Buyer or authorized delegate scans it.' },
     { icon: '📈', title: 'Analytics', body: 'Track paid orders, GMV, product views, shoppable post impressions, product-tag click-through rate, storefront visits, claims rate, and fulfilment reliability. Content performance per post.' },
     { icon: '🛡', title: 'Trust', body: 'Your Trust level is built through your fulfilment record, review scores, and claims history. Visible on your storefront. Increases as you earn it. Cannot be purchased.' },
   ]
@@ -819,7 +819,7 @@ function ForBuyersPage({ navigate }: { navigate: (p: PageKey) => void }) {
     { icon: '📱', title: 'For You Feed', body: 'A curated feed of Shoppable Posts from sellers whose work you\'ve engaged with. Image-led. Scroll at your own pace. No aggressive video autoplay.' },
     { icon: '🔍', title: 'Product Truth', body: 'Product Posts show exactly what you\'re buying: full gallery, accurate variants, real inventory, and clearly stated fulfilment options. No phantom stock.' },
     { icon: '🔎', title: 'Search', body: 'Search across products, posts, and sellers. Filter by category. Browse top results, product listings, shoppable posts, and seller profiles from one query.' },
-    { icon: '❤️', title: 'Collections', body: 'Save Product Posts and Shoppable Posts into personal collections. Organise what you\'ve found. Share collections with friends.' },
+    { icon: '❤️', title: 'Collections', body: 'Save Product Posts and Shoppable Posts into private Collections and come back to them later.' },
     { icon: '🛡', title: 'Seller Trust', body: 'Every seller has a public Trust level built from their fulfilment record and review scores. Read it before you buy. It\'s earned, not purchased.' },
     { icon: '💬', title: 'Chat', body: 'Ask the seller a question before buying. A chatbot handles common queries instantly. Escalate to a real conversation when needed.' },
     { icon: '💳', title: 'Checkout', body: 'Separate carts per seller. Clear price breakdown: product subtotal + courier charge + 0.5% Adulis surcharge. Gateway payment — not cash on delivery.' },
@@ -884,7 +884,7 @@ function TrustPage({ navigate }: { navigate: (p: PageKey) => void }) {
               <li>Stated business intent and product category</li>
               <li>A completed store profile including physical location and fulfilment capability</li>
             </ul>
-            <p>We do not require government-issued ID as part of the standard admission process.</p>
+            <p>Adulis does not require government-issued ID for Seller admission. Payment-provider KYC, where required, is separate.</p>
           </TrustSection>
 
           <TrustSection title="The Trust Ladder" icon="🪜">
@@ -1791,7 +1791,7 @@ function MobileTrust({ navigate }: { navigate: (p: PageKey) => void }) {
       ))}
       <div style={{ marginTop: 24, padding: 16, background: 'var(--color-surface-raised)', borderRadius: 12 }}>
         <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.65, fontStyle: 'italic' }}>
-          Adulis does not require government-issued ID as part of the standard seller admission process.
+          Adulis does not require government-issued ID for Seller admission. Payment-provider KYC, where required, is separate.
         </p>
       </div>
     </div>
