@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button } from '../components/ui/Button'
 import { SystemStatePanel, type SystemStateKind } from '../components/ui/Overlay'
-import { ORDERS, ORDER_IDS, PRODUCTS, SELLERS, SURFACE_DEFAULTS, formatEtb, orderTotals, paymentAttempts, sellerProductsAt } from '../demo-data'
+import { ORDERS, ORDER_IDS, PRODUCTS, SELLERS, SURFACE_DEFAULTS, formatEtb, orderTotals, sellerProductsAt } from '../demo-data'
 
 type Surface = 'Buyer' | 'Courier' | 'Seller' | 'Operator' | 'Platform'
 
@@ -22,13 +22,13 @@ interface Scenario extends ScenarioState {
 const SURFACES: Array<'All' | Surface> = ['All', 'Buyer', 'Courier', 'Seller', 'Operator', 'Platform']
 
 // A scenario that happens to a canonical record names it, read from the canonical module (WO-001): the default checkout
-// Order's payment, the default Seller's out-of-stock Product, the Order whose first payment attempt failed and the Order
-// verified by OTP fallback. A state that never happens to a canonical record names an example instead.
+// Order's payment, the default Seller's out-of-stock Product and the Order verified by OTP fallback. A state that never
+// happens to a canonical record names an example instead. The failed payment attempt says only that the attempt failed
+// and the Seller Order remains for the retry (rule 5.9; WO-017's approved wording).
 const ORDER = SURFACE_DEFAULTS.order
 const SELLER = SELLERS[ORDERS[ORDER].seller].name
 const TOTAL = formatEtb(orderTotals(ORDER).total)
 const OUT_OF_STOCK = sellerProductsAt(SURFACE_DEFAULTS.seller).find(id => PRODUCTS[id].availability === 'Out of Stock')!
-const RETRIED_ORDER = ORDER_IDS.find(id => paymentAttempts(id).some(attempt => attempt.status === 'Failed'))!
 const OTP_ORDER = ORDER_IDS.find(id => ORDERS[id].finalHandoff?.method === 'OTP fallback')!
 
 const SCENARIOS: Scenario[] = [
@@ -114,8 +114,7 @@ const SCENARIOS: Scenario[] = [
     surface: 'Buyer',
     kind: 'failed',
     title: 'Payment failed',
-    description: 'No charge was confirmed and no Seller Order was created.',
-    detail: `The ${SELLERS[ORDERS[RETRIED_ORDER].seller].name} Cart remains saved.`,
+    description: 'Payment attempt failed. No payment was confirmed. The existing Seller Order remains in place for retry.',
     actionLabel: 'Try payment again',
     outcome: {
       kind: 'processing',
