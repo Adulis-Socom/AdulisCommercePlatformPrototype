@@ -792,3 +792,45 @@ export function requestAccountDeletionAt(capability: AccountDeletionCapability |
   const preview = accountDeletionPreviewAt(capability, at)
   return preview && { ...preview, result: preview.blockedBy.length ? 'blocked' : 'requested' }
 }
+
+// ---------- Company Website Content Report (specification §12) ----------
+
+/**
+ * A short-lived capability for submitting one Company Website content Report. The Platform issues it when the report
+ * verification (phone number, then the 6-digit code) succeeds, and only Report Content uses it, for that Report. It is
+ * separate from the deletion capability: Account Deletion doesn't accept it, and Report Content doesn't accept the
+ * deletion one. It is no Website login or session, it authorizes no Buyer or Seller commerce action, and it ends with
+ * its flow. It isn't a record.
+ */
+export interface ReportSubmissionCapability {
+  readonly purpose: 'report-submission'
+  readonly account: BuyerId
+}
+
+/**
+ * The report verification succeeded, so the Platform issues the capability. In the prototype it resolves
+ * deterministically to the demo Buyer, Maya Tesfaye, as the deletion verification does (WO-013 owner decision), with no
+ * Website Account record: the visitor never names an Account.
+ */
+export function issueReportSubmissionCapability(): ReportSubmissionCapability {
+  return { purpose: 'report-submission', account: (Object.keys(BUYERS) as BuyerId[]).find(id => BUYERS[id].primary)! }
+}
+
+/** A content Report as the Company Website's form collects it. */
+export interface ContentReport {
+  readonly contentType: string
+  readonly content: string
+  readonly reason: string
+  readonly detail: string
+  readonly contact: string
+}
+
+/**
+ * The Platform accepts a content Report submitted with a report-submission capability, for the capability's Account.
+ * The Report is transient prototype state: no moderation case, record or queue entry is created (DD *Moderation*
+ * unchanged). Null, with nothing submitted, without a report-submission capability.
+ */
+export function submitContentReport(capability: ReportSubmissionCapability | null | undefined, report: ContentReport): { readonly account: BuyerId; readonly report: ContentReport } | null {
+  if (capability?.purpose !== 'report-submission') return null
+  return { account: capability.account, report }
+}

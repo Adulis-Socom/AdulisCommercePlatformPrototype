@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useRef, useState, FormEvent } from 'react'
 import { AdulisLogo } from '../App'
 import { useStory } from '../StoryClock'
-import { BUYERS, PRODUCTS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS, accountDeletionPreviewAt, formatClockShort, formatEtb, forYouAt, initials, issueAccountDeletionCapability, requestAccountDeletionAt, sellerProductsAt, trustAt, trustLabel, type AccountDeletionCapability, type DeletionBlocker } from '../demo-data'
+import { BUYERS, PRODUCTS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS, accountDeletionPreviewAt, formatClockShort, formatEtb, forYouAt, initials, issueAccountDeletionCapability, issueReportSubmissionCapability, requestAccountDeletionAt, sellerProductsAt, submitContentReport, trustAt, trustLabel, type AccountDeletionCapability, type DeletionBlocker, type ReportSubmissionCapability } from '../demo-data'
 
 /* ─── Page routing ─── */
 type PageKey =
@@ -1729,16 +1729,56 @@ function ConfirmDeleteForm({ onConfirm, onCancel }: { onConfirm: () => void; onC
 /* ══════════════════════════════════
    REPORT CONTENT
 ══════════════════════════════════ */
-function ReportContentPage() {
-  const [submitted, setSubmitted] = useState(false)
-  const [form, setForm] = useState({ contentType: '', contentUrl: '', reason: '', detail: '', contact: '' })
+/* The report verification (specification §12): a guest can view and fill in the form, but Submit Report starts the
+   verification (the phone number, then the 6-digit code) instead of submitting. Only then does the Platform issue a
+   capability for submitting this Report, separate from Account Deletion's; the visitor is back at the form with the
+   entries kept, and submits it. The flow is this page's state alone, not a Website login or session: submitting,
+   cancelling, leaving the page, reloading or resetting the prototype ends it, so another Report is verified again. */
+type ReportFlow =
+  | { step: 'form' }
+  | { step: 'phone' }
+  | { step: 'code'; phone: string }
+  | { step: 'verified'; capability: ReportSubmissionCapability }
+  | { step: 'submitted' }
 
-  if (submitted) {
+function ReportContentPage() {
+  const [flow, setFlow] = useState<ReportFlow>({ step: 'form' })
+  const [form, setForm] = useState({ contentType: '', contentUrl: '', reason: '', detail: '', contact: '' })
+  // Each transition checks the step it leaves. Without a capability Submit Report starts the verification; only a
+  // complete code gets the capability, and only Submit Report with it submits the Report. The entries stay as they are.
+  const toForm = () => setFlow({ step: 'form' })
+  const sendCode = (phone: string) => setFlow(f => (f.step === 'phone' && phoneComplete(phone) ? { step: 'code', phone } : f))
+  const verify = (code: string) => setFlow(f => (f.step === 'code' && codeComplete(code) ? { step: 'verified', capability: issueReportSubmissionCapability() } : f))
+  const submit = () => setFlow(f => {
+    if (f.step === 'form') return { step: 'phone' }
+    if (f.step !== 'verified') return f
+    const result = submitContentReport(f.capability, { contentType: form.contentType, content: form.contentUrl, reason: form.reason, detail: form.detail, contact: form.contact })
+    return result ? { step: 'submitted' } : { step: 'form' }
+  })
+  // A new step moves keyboard focus to its heading, or, back at the form after verification, to the verified account.
+  const page = useRef<HTMLDivElement>(null)
+  const shown = useRef(flow.step)
+  useEffect(() => {
+    if (shown.current !== flow.step) page.current?.querySelector<HTMLElement>(flow.step === 'verified' ? '#report-verified' : 'h1, h2')?.focus()
+    shown.current = flow.step
+  }, [flow.step])
+
+  if (flow.step === 'phone' || flow.step === 'code') {
     return (
-      <div style={{ minHeight: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
-        <div style={{ textAlign: 'center', maxWidth: 420 }}>
+      <div ref={page} style={{ maxWidth: 560, margin: '0 auto', padding: '64px 48px' }}>
+        {flow.step === 'phone'
+          ? <VerifyPhoneStep title="Verify your account" intro="To submit your report, enter the phone number of your Adulis account. We'll send a 6-digit code to it. Your report is kept as you wrote it." onSendCode={sendCode} onCancel={toForm} />
+          : <VerifyCodeStep phone={flow.phone} onVerify={verify} onCancel={toForm} />}
+      </div>
+    )
+  }
+
+  if (flow.step === 'submitted') {
+    return (
+      <div ref={page} style={{ minHeight: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
+        <div role="status" style={{ textAlign: 'center', maxWidth: 420 }}>
           <div style={{ fontSize: 40, marginBottom: 14 }}>🚩</div>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>Report submitted.</h2>
+          <h2 tabIndex={-1} style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>Report submitted.</h2>
           <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)' }}>
             Our moderation team will review this report. If you provided contact details, we may follow up. Reports are reviewed in order of severity.
           </p>
@@ -1748,15 +1788,15 @@ function ReportContentPage() {
   }
 
   return (
-    <div style={{ maxWidth: 560, margin: '0 auto', padding: '64px 48px' }}>
+    <div ref={page} style={{ maxWidth: 560, margin: '0 auto', padding: '64px 48px' }}>
       <span style={{ display: 'inline-block', background: 'var(--color-warning-bg)', color: 'var(--color-warning)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 10px', borderRadius: 999, fontFamily: 'var(--font-mono)', marginBottom: 20 }}>
         Trust & Safety
       </span>
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>Report Content</h1>
+      <h1 tabIndex={-1} style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>Report Content</h1>
       <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 32px' }}>
         If you've seen content on Adulis that violates our policies, report it here. Reports are reviewed by our moderation team.
       </p>
-      <form onSubmit={e => { e.preventDefault(); setSubmitted(true) }} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <form onSubmit={e => { e.preventDefault(); submit() }} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         <SelectField
           label="Content Type"
           value={form.contentType}
@@ -1795,6 +1835,17 @@ function ReportContentPage() {
           onChange={v => setForm(f => ({ ...f, contact: v }))}
           type="email"
         />
+        {flow.step === 'verified' ? (
+          <div id="report-verified" tabIndex={-1} role="status" style={{ padding: '14px 18px', background: 'var(--color-surface-raised)', borderRadius: 12 }}>
+            <span style={stepLabel}>Verified account</span>
+            <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>{BUYERS[flow.capability.account].name}</p>
+            <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--color-text-secondary)', margin: 0 }}>Check your report, then submit it. The verification is for this report only.</p>
+          </div>
+        ) : (
+          <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--color-text-secondary)', margin: 0 }}>
+            To submit a report, you'll first verify your Adulis account with its phone number and a 6-digit code.
+          </p>
+        )}
         <button type="submit" style={{ background: 'var(--color-warning)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
           Submit Report
         </button>
