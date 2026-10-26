@@ -1530,7 +1530,6 @@ function AccountDeletionPage() {
     <div ref={page} style={{ maxWidth: 520, margin: '0 auto', padding: '64px 48px' }}>
       {flow.step === 'explain' && (
         <>
-          <div style={{ width: 52, height: 52, background: 'var(--color-danger-bg)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, marginBottom: 24 }}>⚠️</div>
           <h1 tabIndex={-1} style={{ fontFamily: 'var(--font-display)', fontSize: 34, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 16px' }}>Delete your Adulis account</h1>
           <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 20px' }}>
             Account deletion is permanent and cannot be undone. Before you delete:
@@ -1659,14 +1658,11 @@ function VerifyField({ label, value, onChange, error, prefix, type = 'text', inp
 
 function DeletionConsequences() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
+    <ul style={{ listStyle: 'none', margin: '0 0 28px', padding: '2px 0 2px 16px', borderLeft: '3px solid var(--color-danger)', display: 'flex', flexDirection: 'column', gap: 10 }}>
       {DELETION_CONSEQUENCES.map(w => (
-        <div key={w} style={{ display: 'flex', gap: 10 }}>
-          <span style={{ color: 'var(--color-danger)', flexShrink: 0, marginTop: 2 }}>✕</span>
-          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.6 }}>{w}</p>
-        </div>
+        <li key={w} style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.6 }}>{w}</li>
       ))}
-    </div>
+    </ul>
   )
 }
 
@@ -1718,7 +1714,6 @@ function DeletionResult({ request, onDone }: { request: NonNullable<ReturnType<t
   return (
     <div style={{ textAlign: 'center' }}>
       <div role="status">
-        <div style={{ width: 52, height: 52, background: blocked ? 'var(--color-warning-bg)' : 'var(--color-info-bg)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, margin: '0 auto 20px' }}>{blocked ? '⚠️' : 'ℹ️'}</div>
         <h1 tabIndex={-1} style={{ ...stepHeading, fontSize: 28 }}>{blocked ? 'Deletion requested, but currently blocked by active Orders.' : 'Deletion requested.'}</h1>
         <p style={{ ...stepText, margin: '0 0 12px' }}>
           Adulis has received the deletion request for {BUYERS[request.account].name}'s account.{blocked && " It can't complete while these Orders are active:"}
@@ -1806,7 +1801,6 @@ function ReportContentPage() {
     return (
       <div ref={page} style={{ minHeight: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
         <div role="status" style={{ textAlign: 'center', maxWidth: 420 }}>
-          <div style={{ fontSize: 40, marginBottom: 14 }}>🚩</div>
           <h2 tabIndex={-1} style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>Report submitted.</h2>
           <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)' }}>
             Our moderation team will review this report. If you provided contact details, we may follow up. Reports are reviewed in order of severity.
@@ -1831,7 +1825,7 @@ function ReportContentPage() {
           value={form.contentType}
           onChange={v => setForm(f => ({ ...f, contentType: v }))}
           required
-          options={['Product Listing', 'Shoppable Post', 'Seller Profile', 'Review', 'Other']}
+          options={['Product Listing', 'Scene', 'Seller Profile', 'Review', 'Other']}
         />
         <Field
           label="Link or description of the content"
