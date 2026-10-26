@@ -15,7 +15,8 @@ import {
   contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
   forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDayMonth, formatEtb, formatMonthShortYear, formatMonthYear, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
   isContextChoiceAt, isPubliclyEligibleAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, onAdulisSince, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
-  productQualityAt, productsSubtotal, reviewEligibilityAt, reviewsAt, sameContext, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, testPaymentRef, trustAt, trustLabel,
+  productQualityAt, productsSubtotal, reviewEligibilityAt, reviewsAt, sameContext, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, storyGroupsAt, testPaymentRef, trustAt, trustLabel,
+  type SellerStoryGroup, type StoryId,
   type CheckoutTest, type CheckoutTestId, type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FinalHandoff, type FulfilmentMode, type MessageContext,
   type MessageRecord, type ModerationId, type Moment, type NotificationRecord, type OrderId, type OrderLine, type OrderState, type OrderTotals, type ProductId,
   type SellerId, type ShoppablePostId, type Timestamp,
@@ -271,6 +272,9 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [query, setQuery] = useState('')
   const [addedToCart, setAddedToCart] = useState<{ product: ProductId; options: readonly string[]; quantity: number } | null>(null)
   const [reportOpen, setReportOpen] = useState(false)
+  // Seller Stories (PR-003): the Seller whose Stories are open, and the Stories seen in this session (transient).
+  const [storySeller, setStorySeller] = useState<SellerId | null>(null)
+  const [seenStories, setSeenStories] = useState<readonly StoryId[]>([])
   // The records the screens show: a guided-flow step starts on its DEMO_DATA records, and opening an item selects it.
   const story = useStory()
   const focus = story.focus
@@ -590,6 +594,9 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onSave={post => toggleSave(`post:${post}`, { screen: 'feed', tab: 'home', channel })}
             onShare={post => { setPostId(post); setDiscoverySheet({ kind: 'share' }) }}
             onMore={post => { setPostId(post); setDiscoverySheet({ kind: 'more', channel }) }}
+            stories={storyGroupsAt(at)}
+            seenStories={seenStories}
+            onStory={group => { setStorySeller(group.seller); setSeenStories(seen => [...new Set([...seen, ...group.stories.map(story => story.id)])]) }}
           />
         )}
         {shown === 'post' && (
@@ -728,6 +735,18 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
           />
         )}
         {reportOpen && <ReportPostSheet postId={postId} onClose={() => setReportOpen(false)} />}
+        {shown === 'feed' && storySeller && (() => {
+          const group = storyGroupsAt(at).find(g => g.seller === storySeller)
+          return group && (
+            <StoryViewer
+              group={group}
+              at={at}
+              onClose={() => setStorySeller(null)}
+              onProduct={id => { setStorySeller(null); openProduct(id) }}
+              onPost={id => { setStorySeller(null); openPost(id) }}
+            />
+          )
+        })()}
         {signInPrompt && <SignInSheet title={signInPrompt.title} onSignIn={() => startSignIn(signInPrompt.intent)} onClose={() => setSignInPrompt(null)} />}
       </div>
     </PhoneFrame>
@@ -990,7 +1009,7 @@ function GuestStrip({ onSignIn }: { onSignIn: () => void }) {
   )
 }
 
-function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden, follows, isSaved, scroll, onScrolled, onSignIn, onSignInFollowing, onNotifications, onSearch, onPost, onProduct, onHotspot, onProducts, onSeller, onFollow, onSave, onShare, onMore }: {
+function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden, follows, isSaved, scroll, onScrolled, onSignIn, onSignInFollowing, onNotifications, onSearch, onPost, onProduct, onHotspot, onProducts, onSeller, onFollow, onSave, onShare, onMore, stories, seenStories, onStory }: {
   at: Moment; guest: boolean; channel: Channel; onChannel: (channel: Channel) => void
   area: string | null; areaChosen: boolean; onArea: (area: string) => void
   hidden: readonly ShoppablePostId[]; follows: readonly SellerId[]; isSaved: (key: SaveKey) => boolean
@@ -1000,6 +1019,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
   onHotspot: (post: ShoppablePostId, product: ProductId) => void; onProducts: (post: ShoppablePostId) => void
   onSeller: (id: SellerId) => void; onFollow: () => void; onSave: (post: ShoppablePostId) => void
   onShare: (post: ShoppablePostId) => void; onMore: (post: ShoppablePostId) => void
+  stories: readonly SellerStoryGroup[]; seenStories: readonly StoryId[]; onStory: (group: SellerStoryGroup) => void
 }) {
   // Each channel shows its own canonical list (DEMO_DATA › Buyer Home channels); no screen computes its own. A guest sees
   // the Guest/default discovery ranking: the same records, in the same order, never described as Maya's personal feed.
@@ -1013,13 +1033,22 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
   useLayoutEffect(() => {
     if (panel.current) panel.current.scrollTop = scroll[channel] ?? 0
   }, [channel, scroll])
+  // The discovery layout (PR-003): a compact top area (the channels, Search and Notifications, then Seller Stories), the
+  // Scene as a structured card that leads the screen without filling it, and a short caption under it.
   return (
     <>
-      <Header title="Home" onSearch={onSearch} trailing={<IconButton label="Notifications" onClick={onNotifications}>○</IconButton>} />
+      <h1 className="sr-only">Home</h1>
+      <div className="flex-shrink-0 border-b border-border bg-surface">
+        <div className="flex items-center gap-1 pr-2">
+          <div className="min-w-0 flex-1"><ChannelBar channel={channel} onSelect={onChannel} /></div>
+          <IconButton label="Search" onClick={onSearch}><IconSearch size={17} /></IconButton>
+          <IconButton label="Notifications" onClick={onNotifications}><BellIcon /></IconButton>
+        </div>
+        {stories.length > 0 && <StoriesRow groups={stories} seen={seenStories} onOpen={onStory} />}
+      </div>
       {guest && <GuestStrip onSignIn={onSignIn} />}
-      <ChannelBar channel={channel} onSelect={onChannel} />
       <div id="home-channel-panel" role="tabpanel" aria-labelledby={`home-channel-${channel}`} className="flex min-h-0 flex-1 flex-col">
-        <div ref={panel} onScroll={event => onScrolled(channel, event.currentTarget.scrollTop)} className={`min-h-0 flex-1 overflow-y-auto ${posts ? 'snap-y snap-mandatory bg-text-primary' : 'bg-background'}`}>
+        <div ref={panel} onScroll={event => onScrolled(channel, event.currentTarget.scrollTop)} className={`min-h-0 flex-1 overflow-y-auto bg-background ${posts ? 'snap-y snap-mandatory' : ''}`}>
           {channel === 'nearby' && <div className="snap-start"><NearbyAreas area={area} chosen={areaChosen} onArea={onArea} /></div>}
           {posts?.map(id => (
             <ShoppablePostUnit
@@ -1039,8 +1068,8 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
             />
           ))}
           {channel === 'foryou' && (
-            <div className="h-48 bg-surface p-5">
-              <div className="mb-3 text-xs font-semibold text-text-muted">Finding more stories for you</div>
+            <div className="h-48 snap-start p-5">
+              <div className="mb-3 text-xs font-semibold text-text-muted">Finding more Scenes for you</div>
               <Skeleton height={112} radius="var(--radius-xl)" />
             </div>
           )}
@@ -1097,7 +1126,7 @@ function ChannelBar({ channel, onSelect }: { channel: Channel; onSelect: (channe
   }
   return (
     <div className="relative flex-shrink-0">
-      <div ref={list} role="tablist" aria-label="Home channels" onScroll={measure} className="flex overflow-x-auto border-b border-border bg-surface px-2">
+      <div ref={list} role="tablist" aria-label="Home channels" onScroll={measure} className="flex overflow-x-auto bg-surface px-2">
         {CHANNELS.map((c, i) => (
           <button
             key={c.key}
@@ -1156,9 +1185,81 @@ function ChannelMessage({ message, action, onAction }: { message: string; action
   )
 }
 
+/** Home's Seller Stories row (PR-003): one avatar per Seller with live Stories, ringed until its Stories are seen. */
+function StoriesRow({ groups, seen, onOpen }: { groups: readonly SellerStoryGroup[]; seen: readonly StoryId[]; onOpen: (group: SellerStoryGroup) => void }) {
+  return (
+    <div role="list" aria-label="Seller Stories" className="flex gap-1 overflow-x-auto px-3 pb-1.5">
+      {groups.map(group => {
+        const seller = SELLERS[group.seller]
+        const unseen = group.stories.some(story => !seen.includes(story.id))
+        return (
+          <div key={group.seller} role="listitem" className="flex-shrink-0">
+            <button onClick={() => onOpen(group)} aria-label={`${seller.name} story${unseen ? ', new' : ''}`} className="flex w-16 flex-col items-center gap-0.5">
+              <span className={`rounded-full p-[2px] ${unseen ? 'bg-gradient-to-tr from-brand to-[#E8874A]' : 'bg-border-strong'}`}>
+                <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-surface bg-brand-muted text-[11px] font-bold text-brand-dark">{initials(seller.name)}</span>
+              </span>
+              <span className="w-full truncate text-center text-[10px] text-text-secondary">{seller.name}</span>
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /**
- * A Shoppable Post as a Home unit (specification §7): photo, Seller and actual public Trust level (rule 14.6), caption,
- * hotspots, "In this post", Save, Share, Follow Seller and More. Prices, stock and variants stay with the Products.
+ * A Seller's Stories (PR-003): lightweight and view-only. The Seller, the Story's media, its text, the Product's active
+ * discount where it is a discount Story, and its linked Product or Scene. No replies, reactions or comments.
+ */
+function StoryViewer({ group, at, onClose, onProduct, onPost }: {
+  group: SellerStoryGroup; at: Moment; onClose: () => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void
+}) {
+  const [index, setIndex] = useState(0)
+  const story = group.stories[Math.min(index, group.stories.length - 1)]
+  const seller = SELLERS[group.seller]
+  const close = useRef<HTMLButtonElement>(null)
+  useEffect(() => { close.current?.focus() }, [])
+  const kind = { discount: 'Discount', update: 'Update', promotion: 'Promotion' }[story.kind]
+  return (
+    <div role="dialog" aria-modal="true" aria-label={`${seller.name} story`} onKeyDown={event => { if (event.key === 'Escape') onClose() }} className="absolute inset-0 z-40 flex flex-col bg-text-primary text-white">
+      {group.stories.length > 1 && (
+        <div aria-hidden="true" className="flex gap-1 px-4 pt-3">{group.stories.map((s, i) => <span key={s.id} className={`h-0.5 flex-1 rounded-full ${i <= index ? 'bg-white' : 'bg-white/30'}`} />)}</div>
+      )}
+      <div className="flex flex-shrink-0 items-center gap-3 px-4 py-3">
+        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-muted text-xs font-bold text-brand-dark">{initials(seller.name)}</span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold">{seller.name}</div>
+          <div className="text-xs text-white/70">{trustLabel(trustAt(group.seller, at))} seller · {formatAge(story.posted, at.at)}</div>
+        </div>
+        <button ref={close} onClick={onClose} aria-label="Close story" style={ON_PHOTO} className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white/15 text-lg">×</button>
+      </div>
+      <div className="relative mx-4 min-h-0 flex-1 overflow-hidden rounded-2xl" style={{ background: 'linear-gradient(160deg, #6B5444 0%, #2E2520 100%)' }}>
+        <Placeholder label={`${seller.name} story media`} initialsOf={seller.name} dark className="h-full w-full text-5xl" />
+        <span className="absolute left-3 top-3 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider">{kind}</span>
+      </div>
+      <div className="flex-shrink-0 px-4 pb-5 pt-4">
+        <p className="text-base leading-snug">{story.text}</p>
+        {story.product && (
+          <div className="mt-3 rounded-xl bg-surface p-3 text-text-primary">
+            <div className="text-sm font-semibold">{PRODUCTS[story.product].name}</div>
+            <PriceTag productId={story.product} ends={story.kind === 'discount'} className="mt-1" />
+          </div>
+        )}
+        <div className="mt-3 flex gap-2">
+          {story.product && <Button style={{ flex: 1 }} onClick={() => onProduct(story.product!)}>View Product</Button>}
+          {!story.product && story.post && <Button style={{ flex: 1 }} onClick={() => onPost(story.post!)}>View Scene</Button>}
+          {index < group.stories.length - 1 && <Button variant="secondary" onClick={() => setIndex(i => i + 1)}>Next</Button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A Scene as a For You unit (specification §7; PR-003): a structured card that leads the screen without filling it.
+ * The Seller and actual public Trust level (rule 14.6) with Follow and More above the photo; on the photo, only its
+ * product hotspots; under it, Save, Share and the Scene's products, then a short caption. Prices, stock and variants
+ * stay with the Products. PR-004 adds its engagement controls to the action row.
  */
 function ShoppablePostUnit({ postId, at, following, saved, onOpen, onHotspot, onProducts, onSeller, onFollow, onSave, onShare, onMore }: {
   postId: ShoppablePostId; at: Moment; following: boolean; saved: boolean
@@ -1170,40 +1271,46 @@ function ShoppablePostUnit({ postId, at, following, saved, onOpen, onHotspot, on
   // The canonical hotspot count, each marker tied to the tagged Product in the same position; never more markers than tags.
   const markers = post.tags.slice(0, post.hotspots)
   const count = post.tags.length
+  // A little shorter than the feed, so the next Scene's card shows below it: a feed of Scenes, not one full-screen video.
   return (
-    <article aria-label={`${post.title}, by ${seller.name}`} className="relative h-full min-h-[320px] snap-start overflow-hidden">
-      <div aria-hidden="true" className="absolute inset-0">
-        <Placeholder label={`${seller.name} shoppable post: ${post.title}`} initialsOf={post.title} dark className="h-full w-full text-6xl" />
-      </div>
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/80" />
-      {/* The photo opens the post. Its button lies over the photo and the shading, so the keyboard focus outline isn't
-          shaded; it is drawn inside the edge because the unit clips anything outside. */}
-      <button onClick={onOpen} aria-label={`${seller.name} shoppable post: ${post.title}`} style={{ ...ON_PHOTO, ...INSET_FOCUS }} className="absolute inset-0 h-full w-full" />
-      {markers.map((product, i) => (
-        <button key={product} onClick={() => onHotspot(product)} aria-label={`${PRODUCTS[product].name}. Open product.`} style={{ ...HOTSPOT_SPOTS[i], ...ON_PHOTO }} className="absolute flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-brand text-sm font-bold text-white shadow-lg">
-          +
-        </button>
-      ))}
-      <div className="absolute right-3 top-3 flex gap-2 text-white">
-        <button onClick={onSave} style={ON_PHOTO} className="rounded-full bg-black/35 px-3 py-2 text-xs font-semibold">{saved ? 'Saved' : 'Save'}</button>
-        <button onClick={onShare} style={ON_PHOTO} className="rounded-full bg-black/35 px-3 py-2 text-xs font-semibold">Share</button>
-        <button onClick={onMore} aria-label="More options" style={ON_PHOTO} className="rounded-full bg-black/35 px-3 py-2 text-xs font-semibold">•••</button>
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-        <div className="mb-2 flex items-center gap-2">
-          <button onClick={onSeller} style={ON_PHOTO} className="flex min-w-0 items-center gap-2 text-left">
-            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand-muted font-bold text-brand-dark">{initials(seller.name)}</span>
-            <span className="truncate text-sm font-semibold">{seller.name}</span>
-            <span className="flex-shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[10px]">{trustLabel(trustAt(post.seller, at))}</span>
+    <article aria-label={`${post.title}, by ${seller.name}`} className="h-[calc(100%-20px)] min-h-[360px] snap-start px-3 pt-2.5">
+      <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+        {/* Buttons take their text size from their row (index.css sets `font: inherit` on buttons). */}
+        <div className="flex flex-shrink-0 items-center gap-2 px-3 py-1 text-xs">
+          <button onClick={onSeller} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand-muted text-xs font-bold text-brand-dark">{initials(seller.name)}</span>
+            <span className="truncate text-sm font-semibold text-text-primary">{seller.name}</span>
+            <span className="flex-shrink-0 rounded-full bg-success-bg px-2 py-0.5 text-[10px] font-semibold text-success">{trustLabel(trustAt(post.seller, at))}</span>
           </button>
-          <button onClick={onFollow} style={ON_PHOTO} className="flex-shrink-0 rounded-full border border-white/50 px-2.5 py-1 text-[11px] font-semibold">{following ? 'Following' : 'Follow'}</button>
+          <button onClick={onFollow} className="flex-shrink-0 rounded-full border border-border-strong px-3 py-1 text-xs font-semibold text-text-primary">{following ? 'Following' : 'Follow'}</button>
+          <button onClick={onMore} aria-label="More options" className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold text-text-secondary">•••</button>
         </div>
-        <p className="text-sm leading-relaxed text-white/90">{post.caption}</p>
-        {count > 0 && (
-          <button onClick={onProducts} style={ON_PHOTO} className="mt-3 flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-text-primary shadow-md">
-            <TagIcon /> In this post · {count} product{count === 1 ? '' : 's'}
-          </button>
-        )}
+        <div className="relative min-h-0 flex-1" style={{ background: 'linear-gradient(160deg, #6B5444 0%, #2E2520 100%)' }}>
+          <div aria-hidden="true" className="absolute inset-0">
+            <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark className="h-full w-full text-6xl" />
+          </div>
+          {/* The photo opens the Scene. Its focus outline is drawn inside the edge, because the card clips anything outside. */}
+          <button onClick={onOpen} aria-label={`${seller.name} Scene: ${post.title}`} style={{ ...ON_PHOTO, ...INSET_FOCUS }} className="absolute inset-0 h-full w-full" />
+          {markers.map((product, i) => (
+            <button key={product} onClick={() => onHotspot(product)} aria-label={`${PRODUCTS[product].name}. Open product.`} style={{ ...HOTSPOT_SPOTS[i], ...ON_PHOTO }} className="absolute flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-brand text-sm font-bold text-white shadow-lg">
+              +
+            </button>
+          ))}
+        </div>
+        {/* The action row; PR-004 adds the Scene's engagement controls here. */}
+        <div className="flex flex-shrink-0 items-center gap-2 px-3 pt-1.5 text-xs font-semibold">
+          <button onClick={onSave} className="rounded-full bg-surface-raised px-3 py-1.5 text-text-primary">{saved ? 'Saved' : 'Save'}</button>
+          <button onClick={onShare} className="rounded-full bg-surface-raised px-3 py-1.5 text-text-primary">Share</button>
+          <span className="flex-1" />
+          {count > 0 && (
+            <button onClick={onProducts} className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-brand-muted px-3 py-1.5 text-brand-dark">
+              <TagIcon /> In this Scene · {count} product{count === 1 ? '' : 's'}
+            </button>
+          )}
+        </div>
+        {/* One line of caption: the whole caption is on the Scene itself. Margins, not padding, around it: a clamped line
+            would show through padding. */}
+        <p className="mx-3 mb-2.5 mt-1 line-clamp-1 flex-shrink-0 text-[13px] leading-snug text-text-secondary">{post.caption}</p>
       </div>
     </article>
   )

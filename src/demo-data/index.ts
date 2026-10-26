@@ -2,6 +2,7 @@
 //   records/   canonical business entities, exactly as DEMO_DATA defines them
 //   derived.ts values computed from the records at a point on the story timeline
 //   scenario/  prototype orchestration: guided-flow steps, surface defaults and Checkout test runs (not business data)
+//   stories.ts Seller Stories: their structure and a few prototype fixtures (PR-003), until the full dataset (PR-009)
 export * from './types.ts'
 export * from './time.ts'
 export * from './money.ts'
@@ -24,3 +25,4 @@ export * from './derived.ts'
 export * from './scenario/flows.ts'
 export * from './scenario/defaults.ts'
 export * from './scenario/checkout-tests.ts'
+export * from './stories.ts'
