@@ -317,7 +317,7 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
                 Discover products through the way people actually like to see them used.
               </h1>
               <p style={{ fontSize: 18, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: '0 0 36px', maxWidth: 460 }}>
-                Adulis is a commerce platform built around Product Posts and Shoppable Posts — content where the product is the subject, not an afterthought. Browse, trust, buy, receive.
+                Adulis is a commerce platform built around Products and Scenes — content where the product is the subject, not an afterthought. Browse, trust, buy, receive.
               </p>
               <div style={{ display: 'flex', gap: 14 }}>
                 <button
@@ -335,11 +335,8 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
               </div>
             </div>
 
-            {/* Product Post + Shoppable Post illustration */}
-            <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
-              <ProductPostCard />
-              <ShoppablePostCard />
-            </div>
+            {/* The hero photograph, shown as a Scene: its tagged product */}
+            <HeroScene />
           </div>
         </div>
       </section>
@@ -372,28 +369,23 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24, marginTop: 48 }}>
           {[
             {
-              icon: '🖼',
-              title: 'Product Posts',
-              desc: 'A dedicated post type for a single product — gallery, specs, variants, price, availability, seller identity. The product is the subject.',
+              title: 'Products',
+              desc: 'A dedicated page for a single product — gallery, specs, variants, price, availability, seller identity. The product is the subject.',
             },
             {
-              icon: '✨',
-              title: 'Shoppable Posts',
+              title: 'Scenes',
               desc: 'Creative scenes where products appear in context. Viewers can tap a tag, see the product, and move directly to purchase without leaving the content.',
             },
             {
-              icon: '🏪',
               title: 'Verified Storefronts',
               desc: 'Every seller has a public storefront showing their full catalogue, Trust level, and review history. Accessible without an account.',
             },
             {
-              icon: '🔐',
               title: 'Gateway Payments',
-              desc: 'Adulis never holds funds. All transactions flow through established payment infrastructure. Surcharge is 0.5% applied transparently at checkout.',
+              desc: 'Adulis never holds funds. All transactions flow through established payment infrastructure, and payment is confirmed before the seller prepares the order.',
             },
           ].map(c => (
             <div key={c.title} style={{ padding: 28, background: 'var(--color-surface)', borderRadius: 16, border: '1px solid var(--color-border)' }}>
-              <span style={{ fontSize: 28, display: 'block', marginBottom: 12 }}>{c.icon}</span>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 10px' }}>{c.title}</h3>
               <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: 0 }}>{c.desc}</p>
             </div>
@@ -410,10 +402,10 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
               Products discovered in context, not in a grid.
             </h2>
             <p style={{ fontSize: 15, lineHeight: 1.75, color: 'var(--color-text-secondary)', margin: '0 0 20px' }}>
-              The For You feed surfaces Shoppable Posts from sellers you've engaged with and sellers whose work matches your interests. Image-led. Not video-dependent.
+              The For You feed surfaces Scenes from sellers you've engaged with and sellers whose work matches your interests. Image-led. Not video-dependent.
             </p>
             <p style={{ fontSize: 15, lineHeight: 1.75, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>
-              Tap a tagged product to see the full Product Post — price, variants, availability, seller. Add to cart directly from within the post.
+              Tap a tagged product to see the full Product — price, variants, availability, seller. Add to cart directly from within the Scene.
             </p>
             <button onClick={() => navigate('for-buyers')} style={{ background: 'transparent', color: 'var(--color-brand)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0 }}>
               Learn more about the buyer experience →
@@ -446,19 +438,15 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
       <Section bg="var(--color-surface)">
         <SectionLabel>Trust & Safety</SectionLabel>
         <SectionTitle>Accountability at every step, not just at checkout.</SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginTop: 48 }}>
+        <PhotoSlot brief="A courier handing a delivery to a buyer" tone="stone" style={{ marginTop: 48, aspectRatio: '12 / 5', minHeight: 220 }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginTop: 24 }}>
           {[
             { label: 'Seller Admission', desc: 'Sellers are admitted, not self-served. Social presence, business intent, and seller history are reviewed.' },
             { label: 'Trust Ladder', desc: 'Every seller has a verified Trust level based on their fulfilment record, reviews, and claims history.' },
-            { label: 'Gateway Payment', desc: 'No cash on delivery. Payments flow through established providers. Adulis takes a transparent 0.5% surcharge.' },
+            { label: 'Gateway Payment', desc: 'No cash on delivery. Payments flow through established providers and are confirmed before the seller prepares the order.' },
             { label: 'Handoff Evidence', desc: 'Pickup QR and Delivery QR create verifiable evidence at both ends of every delivery.' },
           ].map(c => (
             <div key={c.label} style={{ padding: 22, background: 'var(--color-surface-raised)', borderRadius: 14 }}>
-              <div style={{ width: 32, height: 32, background: 'var(--color-brand-muted)', borderRadius: 8, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M7 1L1.5 3.5v4C1.5 10.5 4 12.5 7 13.5c3-1 5.5-3 5.5-6v-4L7 1z" fill="var(--color-brand)" />
-                </svg>
-              </div>
               <h4 style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)', margin: '0 0 8px' }}>{c.label}</h4>
               <p style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>{c.desc}</p>
             </div>
@@ -493,69 +481,97 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
       </Section>
 
       {/* Seller CTA */}
-      <section style={{ background: 'var(--color-brand)', padding: '80px 48px', textAlign: 'center' }}>
-        <div style={{ maxWidth: 560, margin: '0 auto' }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 600, color: '#fff', margin: '0 0 16px', lineHeight: 1.2 }}>
-            Ready to sell the right way?
-          </h2>
-          <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.82)', lineHeight: 1.65, margin: '0 0 36px' }}>
-            Join the seller waitlist and be among the first to launch on Adulis. We'll notify you when applications open.
-          </p>
+      <CtaBand
+        title="Ready to sell the right way?"
+        body="Join the seller waitlist and be among the first to launch on Adulis. We'll notify you when applications open."
+        brief="An independent seller preparing orders"
+        onAction={() => navigate('waitlist')}
+      />
+    </div>
+  )
+}
+
+/* ── Photography slots (PR-001) ──
+   The Website is laid out for professional photography to come. Until it arrives, each slot is a quiet tonal panel
+   carrying its shot's brief, sized by its place in the layout. No stock or external images. A slot inside a product
+   illustration is decorative and has no brief. */
+const PHOTO_TONES = {
+  sand:  ['#F1E8DE', '#E3D5C6'],
+  clay:  ['#EFE0D4', '#DCC3AF'],
+  sage:  ['#E6ECE3', '#D0DCCD'],
+  stone: ['#EDEBE7', '#DAD6CF'],
+} as const
+
+function PhotoSlot({ brief, tone = 'sand', radius = 24, framed = true, style }: {
+  brief?: string; tone?: keyof typeof PHOTO_TONES; radius?: number; framed?: boolean; style?: React.CSSProperties
+}) {
+  const [from, to] = PHOTO_TONES[tone]
+  return (
+    <div
+      role={brief ? 'img' : undefined}
+      aria-label={brief ? `Photograph to come: ${brief}` : undefined}
+      aria-hidden={brief ? undefined : true}
+      style={{
+        position: 'relative', width: '100%', borderRadius: radius, overflow: 'hidden',
+        background: `linear-gradient(160deg, ${from} 0%, ${to} 100%)`,
+        border: framed ? '1px solid var(--color-border)' : 'none',
+        ...style,
+      }}
+    >
+      {brief && (
+        <span style={{ position: 'absolute', top: 16, left: 18, right: 18, fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+          Photography · {brief}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/* A closing call to action, with its photograph beside it. */
+function CtaBand({ title, body, brief, onAction }: { title: string; body: string; brief: string; onAction: () => void }) {
+  return (
+    <section style={{ background: 'var(--color-brand)', padding: '72px 48px' }}>
+      <div style={{ maxWidth: 1120, margin: '0 auto', display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 56, alignItems: 'center' }}>
+        <div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 600, color: '#fff', margin: '0 0 16px', lineHeight: 1.2 }}>{title}</h2>
+          <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.82)', lineHeight: 1.65, margin: '0 0 32px', maxWidth: 480 }}>{body}</p>
           <button
-            onClick={() => navigate('waitlist')}
+            onClick={onAction}
             style={{ background: '#fff', color: 'var(--color-brand)', border: 'none', borderRadius: 999, padding: '16px 36px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}
           >
             Join Seller Waitlist
           </button>
         </div>
-      </section>
-    </div>
+        <PhotoSlot brief={brief} framed={false} style={{ height: 320 }} />
+      </div>
+    </section>
   )
 }
 
-/* ── Illustrations — canonical demo records (src/demo-data) with neutral placeholders in place of pictures ── */
-function ProductPostCard() {
+/* ── Illustrations — canonical demo records (src/demo-data), with photography slots in place of pictures ── */
+/* The hero photograph is itself a Scene: one tagged product, as a buyer would see it. */
+function HeroScene() {
   const { moment } = useStory()
-  const product = PRODUCTS[SURFACE_DEFAULTS.product]
-  return (
-    <div style={{ width: 180, background: 'var(--color-surface)', borderRadius: 20, boxShadow: 'var(--shadow-lg)', border: '1px solid var(--color-border)', overflow: 'hidden', flexShrink: 0 }}>
-      <div style={{ height: 200, background: 'linear-gradient(135deg, #F0DDD1 0%, #D97B45 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'rgba(255,255,255,0.8)', letterSpacing: '0.1em' }}>PRODUCT POST</span>
-      </div>
-      <div style={{ padding: 14 }}>
-        <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>{product.name}</p>
-        <p style={{ fontSize: 11, color: 'var(--color-brand)', fontFamily: 'var(--font-mono)', margin: '0 0 8px' }}>{formatEtb(product.price)}</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
-          <span style={{ fontSize: 9, background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>{product.availability}</span>
-          <span style={{ fontSize: 9, background: 'var(--color-brand-muted)', color: 'var(--color-brand)', padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>{trustLabel(trustAt(product.seller, moment))}</span>
-        </div>
-        <div style={{ height: 28, background: 'var(--color-brand)', borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: 11, color: '#fff', fontWeight: 600 }}>Add to Cart</span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ShoppablePostCard() {
   const post = SHOPPABLE_POSTS[SURFACE_DEFAULTS.post]
   const tagged = PRODUCTS[post.tags[0]]
   return (
-    <div style={{ width: 180, background: 'var(--color-surface)', borderRadius: 20, boxShadow: 'var(--shadow-lg)', border: '1px solid var(--color-border)', overflow: 'hidden', flexShrink: 0, marginTop: 32 }}>
-      <div style={{ height: 200, background: 'linear-gradient(135deg, #C2622D 0%, #943F1A 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, position: 'relative' }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'rgba(255,255,255,0.8)', letterSpacing: '0.1em' }}>SHOPPABLE POST</span>
-        {/* hotspot dot */}
-        <div style={{ position: 'absolute', top: 70, right: 40, width: 20, height: 20, background: 'rgba(255,255,255,0.95)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
-          <div style={{ width: 7, height: 7, background: 'var(--color-brand)', borderRadius: '50%' }} />
-        </div>
+    <div style={{ position: 'relative' }}>
+      <PhotoSlot brief="A Scene: products styled in a real home" tone="clay" radius={28} style={{ height: 500 }} />
+      {/* the tag's hotspot */}
+      <div aria-hidden="true" style={{ position: 'absolute', top: '40%', left: '58%', width: 24, height: 24, background: 'rgba(255,255,255,0.95)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(0,0,0,0.18)' }}>
+        <div style={{ width: 8, height: 8, background: 'var(--color-brand)', borderRadius: '50%' }} />
       </div>
-      <div style={{ padding: 14 }}>
-        <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 8px' }}>{SELLERS[post.seller].name} · {post.title}</p>
-        <div style={{ background: 'var(--color-surface-raised)', borderRadius: 10, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 28, height: 28, background: 'var(--color-brand-muted)', borderRadius: 6 }} />
-          <div>
-            <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{tagged.name}</p>
-            <p style={{ fontSize: 10, color: 'var(--color-brand)', fontFamily: 'var(--font-mono)', margin: 0 }}>{formatEtb(tagged.price)}</p>
+      <div style={{ position: 'absolute', left: 20, right: 20, bottom: 20, maxWidth: 320, background: 'var(--color-surface)', borderRadius: 16, border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-lg)', padding: 14 }}>
+        <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 10px' }}>{SELLERS[post.seller].name} · {post.title}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <PhotoSlot tone="sand" radius={10} framed={false} style={{ width: 52, height: 52, flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px' }}>{tagged.name}</p>
+            <p style={{ fontSize: 12, color: 'var(--color-brand)', fontFamily: 'var(--font-mono)', margin: '0 0 6px' }}>{formatEtb(tagged.price)}</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              <span style={{ fontSize: 10, background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{tagged.availability}</span>
+              <span style={{ fontSize: 10, background: 'var(--color-brand-muted)', color: 'var(--color-brand)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{trustLabel(trustAt(tagged.seller, moment))}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -564,18 +580,18 @@ function ShoppablePostCard() {
 }
 
 function FeedIllustration() {
-  // The first two posts of For You at the story moment.
+  // The first two Scenes of For You at the story moment.
   const { moment } = useStory()
-  const backgrounds = ['#F0DDD1', '#D5E8D8']
+  const tones = ['clay', 'sage'] as const
   const posts = forYouAt(moment).slice(0, 2).map((id, i) => {
     const post = SHOPPABLE_POSTS[id]
-    return { bg: backgrounds[i], label: post.title, seller: SELLERS[post.seller].name, tags: post.tags.length }
+    return { tone: tones[i], label: post.title, seller: SELLERS[post.seller].name, tags: post.tags.length }
   })
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
       {posts.map((p, i) => (
-        <div key={i} style={{ width: 280, background: 'var(--color-surface)', borderRadius: 20, border: '1px solid var(--color-border)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-          <div style={{ height: 180, background: p.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }} />
+        <div key={i} style={{ width: 280, maxWidth: '100%', background: 'var(--color-surface)', borderRadius: 20, border: '1px solid var(--color-border)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+          <PhotoSlot tone={p.tone} radius={0} framed={false} style={{ height: 180 }} />
           <div style={{ padding: '12px 14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <div style={{ width: 22, height: 22, background: 'var(--color-brand-muted)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'var(--color-brand)' }}>
@@ -608,7 +624,7 @@ function StorefrontIllustration() {
           <div style={{ width: 44, height: 44, background: 'var(--color-brand)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#fff' }}>{initials(seller.name)}</div>
           <div>
             <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{seller.name}</p>
-            <span style={{ fontSize: 10, background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>✓ {trustLabel(trustAt(SURFACE_DEFAULTS.seller, moment))}</span>
+            <span style={{ fontSize: 10, background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{trustLabel(trustAt(SURFACE_DEFAULTS.seller, moment))}</span>
           </div>
         </div>
       </div>
@@ -630,15 +646,15 @@ function StorefrontIllustration() {
 
 function HowCommerceWorksMini({ navigate }: { navigate: (p: PageKey) => void }) {
   const steps = [
-    { n: 1, label: 'Discover',         icon: '🔍' },
-    { n: 2, label: 'Product Post',     icon: '🖼' },
-    { n: 3, label: 'Cart',             icon: '🛒' },
-    { n: 4, label: 'Checkout',         icon: '💳' },
-    { n: 5, label: 'Gateway',          icon: '🔐' },
-    { n: 6, label: 'Seller Preps',     icon: '📦' },
-    { n: 7, label: 'Courier Picks Up', icon: '🚴' },
-    { n: 8, label: 'Handoff + QR',     icon: '✅' },
-    { n: 9, label: 'Review',           icon: '⭐' },
+    { n: 1, label: 'Discover' },
+    { n: 2, label: 'Product' },
+    { n: 3, label: 'Cart' },
+    { n: 4, label: 'Checkout' },
+    { n: 5, label: 'Gateway' },
+    { n: 6, label: 'Seller Preps' },
+    { n: 7, label: 'Courier Picks Up' },
+    { n: 8, label: 'Handoff + QR' },
+    { n: 9, label: 'Review' },
   ]
   return (
     <>
@@ -646,8 +662,8 @@ function HowCommerceWorksMini({ navigate }: { navigate: (p: PageKey) => void }) 
         {steps.map((s, i) => (
           <Fragment key={s.n}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <div style={{ width: 52, height: 52, background: 'var(--color-surface)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, boxShadow: 'var(--shadow-sm)' }}>
-                {s.icon}
+              <div style={{ width: 52, height: 52, background: 'var(--color-surface)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 700, color: 'var(--color-brand)', boxShadow: 'var(--shadow-sm)' }}>
+                {String(s.n).padStart(2, '0')}
               </div>
               <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-primary)', textAlign: 'center', maxWidth: 60 }}>{s.label}</span>
             </div>
@@ -671,31 +687,31 @@ function HowCommerceWorksMini({ navigate }: { navigate: (p: PageKey) => void }) 
 ══════════════════════════════════ */
 function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
   const steps = [
-    { n: '01', icon: '🔍', title: 'Discover', color: '#F0DDD1',
-      body: 'Open Adulis and scroll your For You feed — a curated stream of Shoppable Posts from sellers and categories you\'ve engaged with. Image-led content, not endless video.',
+    { n: '01', title: 'Discover', color: '#F0DDD1',
+      body: 'Open Adulis and scroll your For You feed — a curated stream of Scenes from sellers and categories you\'ve engaged with. Image-led content, not endless video.',
       detail: null },
-    { n: '02', icon: '🖼', title: 'Product Post', color: '#EAF0E8',
-      body: 'Tap a tagged product in a Shoppable Post, or visit a seller\'s storefront directly. The Product Post shows a full gallery, accurate variants, live inventory, and the seller\'s Trust level.',
+    { n: '02', title: 'Product', color: '#EAF0E8',
+      body: 'Tap a tagged product in a Scene, or visit a seller\'s storefront directly. The Product page shows a full gallery, accurate variants, live inventory, and the seller\'s Trust level.',
       detail: null },
-    { n: '03', icon: '🛒', title: 'Cart', color: '#E8EFF0',
+    { n: '03', title: 'Cart', color: '#E8EFF0',
       body: 'Add to your cart. Each seller has a separate cart — your carts are clearly separated so you know exactly what you\'re ordering from whom.',
       detail: null },
-    { n: '04', icon: '💳', title: 'Checkout', color: '#EDE8F0',
-      body: 'Review: product subtotal, courier delivery charge, and the Adulis 0.5% surcharge. Select your fulfilment preference. Proceed to payment.',
+    { n: '04', title: 'Checkout', color: '#EDE8F0',
+      body: 'Review your order before you pay: every charge is itemised, including the delivery charge for your fulfilment choice. Select your fulfilment preference. Proceed to payment.',
       detail: null },
-    { n: '05', icon: '🔐', title: 'Gateway Payment', color: '#F0EAE8',
+    { n: '05', title: 'Gateway Payment', color: '#F0EAE8',
       body: 'Adulis routes your payment through an established gateway. Adulis never holds your funds. Payment is confirmed before the seller is notified.',
       detail: 'No cash on delivery. No "pay when it arrives." Gateway confirmation happens before the seller begins preparation.' },
-    { n: '06', icon: '📦', title: 'Seller Preparation', color: '#EAF0E8',
+    { n: '06', title: 'Seller Preparation', color: '#EAF0E8',
       body: 'The seller is notified of your paid order. They prepare it and mark it ready. A Pickup QR is generated for the courier.',
       detail: null },
-    { n: '07', icon: '🚴', title: 'Courier Fulfilment', color: '#E8EAF0',
+    { n: '07', title: 'Courier Fulfilment', color: '#E8EAF0',
       body: 'A seller-approved courier accepts the delivery. They scan the Pickup QR at the seller to verify collection — this creates verifiable pickup evidence.',
       detail: 'No continuous GPS tracking. Location checkpoints are attempted at pickup and delivery but a failure doesn\'t reverse verification.' },
-    { n: '08', icon: '✅', title: 'Handoff', color: '#EAEAF0',
+    { n: '08', title: 'Handoff', color: '#EAEAF0',
       body: 'The courier arrives and displays a Delivery QR. You scan it with your Adulis app to confirm receipt. If someone else is receiving, you can pre-authorise a delegated recipient.',
       detail: 'This QR exchange is the core of Adulis\'s handoff evidence system. It replaces the "I never received it" and "they said it wasn\'t delivered" disputes.' },
-    { n: '09', icon: '⭐', title: 'Review', color: '#F0EDE8',
+    { n: '09', title: 'Review', color: '#F0EDE8',
       body: 'Leave a review for Product Quality and Seller Service separately. Both scores are public and contribute to the seller\'s Trust level over time.',
       detail: 'You can also raise a Claim if the order didn\'t match what was described. Claims are reviewed by Adulis Operators against documented evidence.' },
   ]
@@ -717,6 +733,9 @@ function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
             <button onClick={() => navigate('for-sellers')} style={{ background: 'transparent', color: 'var(--color-brand)', border: '1.5px solid var(--color-brand)', borderRadius: 999, padding: '12px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>For Sellers</button>
           </div>
         </div>
+        <div style={{ maxWidth: 1024, margin: '48px auto 0' }}>
+          <PhotoSlot brief="A buyer discovering products on their phone" tone="sand" style={{ aspectRatio: '12 / 5', minHeight: 220 }} />
+        </div>
       </section>
 
       {/* Steps */}
@@ -724,22 +743,19 @@ function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
         {steps.map((step, i) => (
           <div key={step.n} style={{ display: 'flex', gap: 32, marginBottom: 48, alignItems: 'flex-start' }}>
             <div style={{ flexShrink: 0 }}>
-              <div style={{ width: 64, height: 64, background: step.color, borderRadius: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-                <span style={{ fontSize: 24 }}>{step.icon}</span>
+              <div style={{ width: 64, height: 64, background: step.color, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                {step.n}
               </div>
               {i < steps.length - 1 && (
                 <div style={{ width: 2, height: 32, background: 'var(--color-border)', margin: '8px auto 0' }} />
               )}
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 600 }}>{step.n}</span>
-                <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{step.title}</h2>
-              </div>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 8px' }}>{step.title}</h2>
               <p style={{ fontSize: 15, lineHeight: 1.75, color: 'var(--color-text-secondary)', margin: '0 0 10px' }}>{step.body}</p>
               {step.detail && (
-                <div style={{ background: 'var(--color-surface-raised)', borderRadius: 10, padding: '10px 14px' }}>
-                  <p style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--color-text-muted)', margin: 0 }}>ℹ️ {step.detail}</p>
+                <div style={{ background: 'var(--color-surface-raised)', borderLeft: '3px solid var(--color-border-strong)', borderRadius: 4, padding: '10px 14px' }}>
+                  <p style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--color-text-muted)', margin: 0 }}>{step.detail}</p>
                 </div>
               )}
             </div>
@@ -755,15 +771,15 @@ function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
 ══════════════════════════════════ */
 function ForSellersPage({ navigate }: { navigate: (p: PageKey) => void }) {
   const features = [
-    { icon: '🖼', title: 'Product Posts', body: 'Create a dedicated post for each product: multi-image gallery, name, category, description, attributes, variants, price, and live inventory. Your product is always shown in full context.' },
-    { icon: '✨', title: 'Shoppable Posts', body: 'Publish creative content — room scenes, outfit photos, lifestyle images — and tag products within them. Viewers tap a hotspot and go directly to the product. Zero-product posts are allowed and still published to your storefront.' },
-    { icon: '🏪', title: 'Public Storefront', body: 'Every seller gets a public web page showing their full catalogue, Trust level, and reviews. Share your link on social media. Buyers can browse without installing the app.' },
-    { icon: '📦', title: 'Orders', body: 'A clear order management workflow: Needs Action → Preparing → Ready → In Delivery → Completed. Mark orders ready when packed. Generate a Pickup QR for your courier.' },
-    { icon: '📊', title: 'Inventory Management', body: 'Set stock levels per variant. Receive low-stock alerts before you run out. Orders are rejected automatically when stock hits zero — no overselling.' },
-    { icon: '💬', title: 'Buyer Chat', body: 'Answer buyer questions before and after purchase. Chatbot handles your FAQs so you don\'t have to be online 24/7. Escalate to manual when needed.' },
-    { icon: '🚴', title: 'Courier Fulfilment', body: 'Build your own courier pool. Approve couriers, set compensation, and invite them to your orders. A Pickup QR verifies collection. At final Courier delivery, the Courier displays the Delivery QR and the Buyer or authorized delegate scans it.' },
-    { icon: '📈', title: 'Analytics', body: 'Track paid orders, GMV, product views, shoppable post impressions, product-tag click-through rate, storefront visits, claims rate, and fulfilment reliability. Content performance per post.' },
-    { icon: '🛡', title: 'Trust', body: 'Your Trust level is built through your fulfilment record, review scores, and claims history. Visible on your storefront. Increases as you earn it. Cannot be purchased.' },
+    { title: 'Products', body: 'Publish each product on its own page: multi-image gallery, name, category, description, attributes, variants, price, and live inventory. Your product is always shown in full context.' },
+    { title: 'Scenes', body: 'Publish creative content — room scenes, outfit photos, lifestyle images — and tag products within them. Viewers tap a hotspot and go directly to the product. Scenes without tagged products are allowed and still published to your storefront.' },
+    { title: 'Public Storefront', body: 'Every seller gets a public web page showing their full catalogue, Trust level, and reviews. Share your link on social media. Buyers can browse without installing the app.' },
+    { title: 'Orders', body: 'A clear order management workflow: Needs Action → Preparing → Ready → In Delivery → Completed. Mark orders ready when packed. Generate a Pickup QR for your courier.' },
+    { title: 'Inventory Management', body: 'Set stock levels per variant. Receive low-stock alerts before you run out. Orders are rejected automatically when stock hits zero — no overselling.' },
+    { title: 'Buyer Chat', body: 'Answer buyer questions before and after purchase. Chatbot handles your FAQs so you don\'t have to be online 24/7. Escalate to manual when needed.' },
+    { title: 'Courier Fulfilment', body: 'Build your own courier pool. Approve couriers, set compensation, and invite them to your orders. A Pickup QR verifies collection. At final Courier delivery, the Courier displays the Delivery QR and the Buyer or authorized delegate scans it.' },
+    { title: 'Analytics', body: 'Track paid orders, GMV, product views, Scene impressions, product-tag click-through rate, storefront visits, claims rate, and fulfilment reliability. Content performance per Scene.' },
+    { title: 'Trust', body: 'Your Trust level is built through your fulfilment record, review scores, and claims history. Visible on your storefront. Increases as you earn it. Cannot be purchased.' },
   ]
 
   return (
@@ -784,13 +800,15 @@ function ForSellersPage({ navigate }: { navigate: (p: PageKey) => void }) {
             Join Seller Waitlist
           </button>
         </div>
+        <div style={{ maxWidth: 1024, margin: '48px auto 0' }}>
+          <PhotoSlot brief="A seller photographing a product for a Scene" tone="clay" style={{ aspectRatio: '12 / 5', minHeight: 220 }} />
+        </div>
       </section>
 
       <Section bg="var(--color-surface)">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
           {features.map(f => (
             <div key={f.title} style={{ padding: 26, background: 'var(--color-surface-raised)', borderRadius: 16 }}>
-              <span style={{ fontSize: 30, display: 'block', marginBottom: 14 }}>{f.icon}</span>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 10px' }}>{f.title}</h3>
               <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: 0 }}>{f.body}</p>
             </div>
@@ -798,15 +816,12 @@ function ForSellersPage({ navigate }: { navigate: (p: PageKey) => void }) {
         </div>
       </Section>
 
-      <section style={{ background: 'var(--color-brand)', padding: '64px 48px', textAlign: 'center' }}>
-        <div style={{ maxWidth: 500, margin: '0 auto' }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 600, color: '#fff', margin: '0 0 16px' }}>Seller Console is waiting for you.</h2>
-          <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.8)', margin: '0 0 28px' }}>Apply for early access. We review every application.</p>
-          <button onClick={() => navigate('waitlist')} style={{ background: '#fff', color: 'var(--color-brand)', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
-            Join Seller Waitlist
-          </button>
-        </div>
-      </section>
+      <CtaBand
+        title="Seller Console is waiting for you."
+        body="Apply for early access. We review every application."
+        brief="A seller packing an order for courier collection"
+        onAction={() => navigate('waitlist')}
+      />
     </div>
   )
 }
@@ -816,15 +831,15 @@ function ForSellersPage({ navigate }: { navigate: (p: PageKey) => void }) {
 ══════════════════════════════════ */
 function ForBuyersPage({ navigate }: { navigate: (p: PageKey) => void }) {
   const features = [
-    { icon: '📱', title: 'For You Feed', body: 'A curated feed of Shoppable Posts from sellers whose work you\'ve engaged with. Image-led. Scroll at your own pace. No aggressive video autoplay.' },
-    { icon: '🔍', title: 'Product Truth', body: 'Product Posts show exactly what you\'re buying: full gallery, accurate variants, real inventory, and clearly stated fulfilment options. No phantom stock.' },
-    { icon: '🔎', title: 'Search', body: 'Search across products, posts, and sellers. Filter by category. Browse top results, product listings, shoppable posts, and seller profiles from one query.' },
-    { icon: '❤️', title: 'Collections', body: 'Save Product Posts and Shoppable Posts into private Collections and come back to them later.' },
-    { icon: '🛡', title: 'Seller Trust', body: 'Every seller has a public Trust level built from their fulfilment record and review scores. Read it before you buy. It\'s earned, not purchased.' },
-    { icon: '💬', title: 'Chat', body: 'Ask the seller a question before buying. A chatbot handles common queries instantly. Escalate to a real conversation when needed.' },
-    { icon: '💳', title: 'Checkout', body: 'Separate carts per seller. Clear price breakdown: product subtotal + courier charge + 0.5% Adulis surcharge. Gateway payment — not cash on delivery.' },
-    { icon: '✅', title: 'Verified Handoff', body: 'Your courier arrives and shows you a Delivery QR. You scan it to confirm receipt. This creates verifiable evidence that you received your order.' },
-    { icon: '⭐', title: 'Reviews', body: 'Rate Product Quality and Seller Service separately. Your review contributes to the seller\'s public Trust level. You can also raise a Claim if something isn\'t right.' },
+    { title: 'For You Feed', body: 'A curated feed of Scenes from sellers whose work you\'ve engaged with. Image-led. Scroll at your own pace. No aggressive video autoplay.' },
+    { title: 'Product Truth', body: 'Every Product shows exactly what you\'re buying: full gallery, accurate variants, real inventory, and clearly stated fulfilment options. No phantom stock.' },
+    { title: 'Search', body: 'Search across Products, Scenes, and sellers. Filter by category. Browse top results, Products, Scenes, and seller profiles from one query.' },
+    { title: 'Collections', body: 'Save Products and Scenes into private Collections and come back to them later.' },
+    { title: 'Seller Trust', body: 'Every seller has a public Trust level built from their fulfilment record and review scores. Read it before you buy. It\'s earned, not purchased.' },
+    { title: 'Chat', body: 'Ask the seller a question before buying. A chatbot handles common queries instantly. Escalate to a real conversation when needed.' },
+    { title: 'Checkout', body: 'Separate carts per seller. Every charge is itemised before you pay, including the delivery charge. Gateway payment — not cash on delivery.' },
+    { title: 'Verified Handoff', body: 'Your courier arrives and shows you a Delivery QR. You scan it to confirm receipt. This creates verifiable evidence that you received your order.' },
+    { title: 'Reviews', body: 'Rate Product Quality and Seller Service separately. Your review contributes to the seller\'s public Trust level. You can also raise a Claim if something isn\'t right.' },
   ]
 
   return (
@@ -839,13 +854,15 @@ function ForBuyersPage({ navigate }: { navigate: (p: PageKey) => void }) {
             Adulis is designed for buyers who want to know what they\'re actually buying — from a real seller with a real record — before they pay.
           </p>
         </div>
+        <div style={{ maxWidth: 1024, margin: '48px auto 0' }}>
+          <PhotoSlot brief="A buyer browsing Scenes at home" tone="sage" style={{ aspectRatio: '12 / 5', minHeight: 220 }} />
+        </div>
       </section>
 
       <Section bg="var(--color-surface)">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
           {features.map(f => (
             <div key={f.title} style={{ padding: 26, background: 'var(--color-surface-raised)', borderRadius: 16 }}>
-              <span style={{ fontSize: 30, display: 'block', marginBottom: 14 }}>{f.icon}</span>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 10px' }}>{f.title}</h3>
               <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: 0 }}>{f.body}</p>
             </div>
@@ -872,22 +889,26 @@ function TrustPage({ navigate }: { navigate: (p: PageKey) => void }) {
             Trust on Adulis is earned through behaviour, not declared through documents. Every seller's record is visible. Every delivery generates evidence.
           </p>
         </div>
+        <div style={{ maxWidth: 1024, margin: '48px auto 0' }}>
+          <PhotoSlot brief="A seller and a buyer: social commerce built on trust" tone="stone" style={{ aspectRatio: '12 / 5', minHeight: 220 }} />
+        </div>
       </section>
 
       <Section bg="var(--color-surface)">
         <div style={{ maxWidth: 780, margin: '0 auto' }}>
 
-          <TrustSection title="Seller Admission" icon="🚪">
+          <TrustSection title="Seller Admission">
             <p>Adulis does not allow anyone to sign up and immediately start selling. Sellers are admitted based on a review of:</p>
             <ul>
               <li>A verified social media presence demonstrating a legitimate business identity</li>
               <li>Stated business intent and product category</li>
-              <li>A completed store profile including physical location and fulfilment capability</li>
+              <li>A completed store profile describing the business and its fulfilment capability</li>
             </ul>
+            <p>A physical shop is not required. A Seller may add a verifiable business or store location where one applies, and no Seller is asked to publish a home or residential address.</p>
             <p>Adulis does not require government-issued ID for Seller admission. Payment-provider KYC, where required, is separate.</p>
           </TrustSection>
 
-          <TrustSection title="The Trust Ladder" icon="🪜">
+          <TrustSection title="The Trust Ladder">
             <p>Every seller on Adulis has a publicly visible Trust level. It is built over time through:</p>
             <ul>
               <li>Fulfilment reliability — orders prepared on time and couriered correctly</li>
@@ -898,17 +919,17 @@ function TrustPage({ navigate }: { navigate: (p: PageKey) => void }) {
             <p>Trust levels are read-only for sellers. Operators cannot manually assign a Trust level — it is the product of the seller's record.</p>
           </TrustSection>
 
-          <TrustSection title="Gateway Payments" icon="🔐">
+          <TrustSection title="Gateway Payments">
             <p>Adulis uses established payment gateway infrastructure for all transactions. This means:</p>
             <ul>
               <li>Buyers pay before the seller is notified — no cash on delivery</li>
               <li>Adulis never holds funds — money flows through the gateway</li>
-              <li>A transparent 0.5% Adulis surcharge is shown at checkout before payment</li>
+              <li>Every charge is itemised at checkout before payment</li>
               <li>Failed payments are handled by the gateway; Adulis cannot manually mark an unpaid order as paid</li>
             </ul>
           </TrustSection>
 
-          <TrustSection title="Handoff Evidence" icon="✅">
+          <TrustSection title="Handoff Evidence">
             <p>Every Adulis delivery uses a two-QR evidence system:</p>
             <ul>
               <li><strong>Pickup QR:</strong> Displayed by the seller. Scanned by the courier at collection. Creates a verifiable pickup record.</li>
@@ -917,12 +938,12 @@ function TrustPage({ navigate }: { navigate: (p: PageKey) => void }) {
             <p>Location checkpoints are attempted at both events. A checkpoint failure does not reverse a verified handoff — but the pattern is visible to Operators.</p>
           </TrustSection>
 
-          <TrustSection title="Verified Reviews" icon="⭐">
+          <TrustSection title="Verified Reviews">
             <p>Reviews on Adulis can only be submitted by buyers who have completed a transaction with that seller. There are no anonymous or unverified reviews.</p>
             <p>Ratings cover two dimensions separately: <strong>Product Quality</strong> (did the product match what was described?) and <strong>Seller Service</strong> (was the fulfilment and communication professional?).</p>
           </TrustSection>
 
-          <TrustSection title="Claims" icon="⚖️">
+          <TrustSection title="Claims">
             <p>If something goes wrong, buyers can raise a Claim through the app. Claims are reviewed by Adulis Operators against:</p>
             <ul>
               <li>The original product listing at time of sale</li>
@@ -940,13 +961,10 @@ function TrustPage({ navigate }: { navigate: (p: PageKey) => void }) {
   )
 }
 
-function TrustSection({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+function TrustSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 48, paddingBottom: 48, borderBottom: '1px solid var(--color-border)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <span style={{ fontSize: 28 }}>{icon}</span>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{title}</h2>
-      </div>
+      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 16px' }}>{title}</h2>
       <div style={{ fontSize: 15, lineHeight: 1.75, color: 'var(--color-text-secondary)' }}>
         {children}
       </div>
@@ -976,7 +994,7 @@ function AvailabilityPage({ navigate }: { navigate: (p: PageKey) => void }) {
         <div style={{ maxWidth: 780, margin: '0 auto' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginBottom: 48 }}>
             <div style={{ padding: 28, background: 'var(--color-success-bg)', borderRadius: 18, border: '1px solid #c8e6d4' }}>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, color: 'var(--color-success)', margin: '0 0 12px' }}>🟢 In Development</h3>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, color: 'var(--color-success)', margin: '0 0 12px' }}>In Development</h3>
               <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text-primary)', margin: '0 0 8px' }}>Ethiopia — Addis Ababa</p>
               <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>
                 Our primary focus market. Sellers, buyers, and couriers operating in Addis Ababa. Local fulfilment, local payment integration.
@@ -986,7 +1004,7 @@ function AvailabilityPage({ navigate }: { navigate: (p: PageKey) => void }) {
               </button>
             </div>
             <div style={{ padding: 28, background: 'var(--color-surface-raised)', borderRadius: 18, border: '1px solid var(--color-border)' }}>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-muted)', margin: '0 0 12px' }}>⚪ Architecture Ready</h3>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-muted)', margin: '0 0 12px' }}>Architecture Ready</h3>
               <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text-primary)', margin: '0 0 8px' }}>International Expansion</p>
               <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>
                 Adulis is built with multi-market architecture: market-level configuration, localised payment provider support, and policy governance per market. No timeline is committed.
@@ -995,7 +1013,7 @@ function AvailabilityPage({ navigate }: { navigate: (p: PageKey) => void }) {
           </div>
           <div style={{ padding: 24, background: 'var(--color-warning-bg)', borderRadius: 14, border: '1px solid #f0d898' }}>
             <p style={{ fontSize: 14, color: 'var(--color-warning)', margin: 0, lineHeight: 1.65 }}>
-              ⚠️ <strong>Important:</strong> We will not claim availability in markets we haven't built for. If Adulis isn't available in your country, that means it isn't yet — not that it won't eventually be. We'll update this page as our coverage expands.
+              <strong>Important:</strong> We will not claim availability in markets we haven't built for. If Adulis isn't available in your country, that means it isn't yet — not that it won't eventually be. We'll update this page as our coverage expands.
             </p>
           </div>
         </div>
@@ -1011,17 +1029,20 @@ function EthiopiaPage({ navigate }: { navigate: (p: PageKey) => void }) {
         <div style={{ maxWidth: 640, margin: '0 auto' }}>
           <SectionLabel>Ethiopia Market</SectionLabel>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 48, fontWeight: 600, lineHeight: 1.15, color: 'var(--color-text-primary)', margin: '16px 0 20px' }}>
-            🇪🇹 Adulis in Ethiopia
+            Adulis in Ethiopia
           </h1>
           <p style={{ fontSize: 17, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>
             Adulis is being built with Ethiopia as its founding market — the commerce infrastructure, payment integration, and courier network are designed for this context.
           </p>
         </div>
+        <div style={{ maxWidth: 1024, margin: '48px auto 0' }}>
+          <PhotoSlot brief="Addis Ababa: sellers and couriers in the city" tone="sand" style={{ aspectRatio: '12 / 5', minHeight: 220 }} />
+        </div>
       </section>
       <Section bg="var(--color-surface)">
         <div style={{ maxWidth: 780, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 32 }}>
           {[
-            { title: 'Focus City: Addis Ababa', body: 'Our initial seller and courier network is concentrated in Addis Ababa. Sellers must have a verifiable physical location and the ability to prepare orders for courier collection.' },
+            { title: 'Focus City: Addis Ababa', body: 'Our initial seller and courier network is concentrated in Addis Ababa. Sellers need the ability to prepare orders for courier collection. A physical storefront is not required: a Seller may add a verifiable business or store location where one applies, and no Seller is asked to publish a home or residential address.' },
             { title: 'Payment Infrastructure', body: 'Adulis integrates with locally available payment gateway infrastructure appropriate for the Ethiopian market. No specific provider is announced here.' },
             { title: 'Courier Network', body: 'Sellers build their own approved courier relationships. Couriers are onboarded through seller invitation, not a central marketplace. Compensation is set by the seller.' },
             { title: 'Language', body: 'Adulis supports Amharic and English in the buyer and seller experiences. Additional language support will follow market need.' },
@@ -1043,7 +1064,16 @@ function EthiopiaPage({ navigate }: { navigate: (p: PageKey) => void }) {
 /* ══════════════════════════════════
    PRICING
 ══════════════════════════════════ */
+/* No pricing, fee or surcharge figure is presented: Adulis's commercial terms are not decided (PR-001). */
 function PricingPage({ navigate }: { navigate: (p: PageKey) => void }) {
+  const tools = [
+    { title: 'Products and Scenes', body: 'Publish each product on its own page, and tag your products in Scenes that show them in use.' },
+    { title: 'Public Storefront', body: 'A public web page with your full catalogue, Trust level, and reviews, ready to share anywhere.' },
+    { title: 'Orders and Inventory', body: 'A clear order workflow and stock levels per variant, so you never oversell.' },
+    { title: 'Courier Fulfilment', body: 'Your own approved couriers, with QR-verified pickup and delivery.' },
+    { title: 'Buyer Chat', body: 'Answer buyer questions before and after purchase.' },
+    { title: 'Analytics', body: 'Paid orders, product views, Scene performance, and fulfilment reliability in one place.' },
+  ]
   return (
     <div>
       <section style={{ background: 'linear-gradient(170deg, var(--color-brand-muted) 0%, var(--color-surface) 100%)', padding: '72px 48px 64px', textAlign: 'center' }}>
@@ -1052,28 +1082,32 @@ function PricingPage({ navigate }: { navigate: (p: PageKey) => void }) {
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 48, fontWeight: 600, lineHeight: 1.15, color: 'var(--color-text-primary)', margin: '16px 0 24px' }}>
             Pricing is coming soon.
           </h1>
-          <p style={{ fontSize: 17, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: '0 0 16px' }}>
+          <p style={{ fontSize: 17, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>
             We're not ready to publish seller plan pricing yet. When we do, it will be published here — with no hidden fees, no invented tiers, and no asterisks.
           </p>
-          <div style={{ padding: 24, background: 'var(--color-surface)', borderRadius: 18, border: '1px solid var(--color-border)', marginTop: 32, textAlign: 'left' }}>
-            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 14px' }}>What we can tell you today:</h3>
-            {[
-              'Buyers pay a 0.5% Adulis surcharge on each transaction, shown transparently at checkout.',
-              'Courier delivery charges are set by sellers and shown separately at checkout.',
-              'Adulis never holds buyer funds — all transactions flow through a payment gateway.',
-              'Seller plan pricing will be published before any seller is asked to commit.',
-            ].map(line => (
-              <div key={line} style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                <span style={{ color: 'var(--color-success)', flexShrink: 0 }}>✓</span>
-                <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.65 }}>{line}</p>
-              </div>
-            ))}
-          </div>
           <button onClick={() => navigate('waitlist')} style={{ marginTop: 32, background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}>
             Join Waitlist to be notified
           </button>
         </div>
       </section>
+
+      <Section bg="var(--color-surface)">
+        <SectionLabel>For Sellers</SectionLabel>
+        <SectionTitle>The tools Adulis is building for Sellers.</SectionTitle>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24, marginTop: 48 }}>
+          {tools.map(t => (
+            <div key={t.title} style={{ padding: 26, background: 'var(--color-surface-raised)', borderRadius: 16 }}>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 10px' }}>{t.title}</h3>
+              <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: 0 }}>{t.body}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'center', marginTop: 36 }}>
+          <button onClick={() => navigate('for-sellers')} style={{ background: 'transparent', color: 'var(--color-brand)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+            Explore the Seller tools →
+          </button>
+        </div>
+      </Section>
     </div>
   )
 }
@@ -1169,7 +1203,6 @@ function WaitlistPage({ navigate }: { navigate: (p: PageKey) => void }) {
     return (
       <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
         <div style={{ maxWidth: 520, textAlign: 'center' }}>
-          <div style={{ width: 72, height: 72, background: 'var(--color-success-bg)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, margin: '0 auto 24px' }}>✅</div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 38, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 16px' }}>You're on the list.</h1>
           <p style={{ fontSize: 16, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 12px' }}>
             Thank you, <strong>{form.firstName}</strong>. We've received your application for <strong>{form.businessName}</strong>.
@@ -1306,10 +1339,10 @@ function SelectField({ label, value, onChange, error, required, options }: {
 ══════════════════════════════════ */
 function HelpPage({ navigate }: { navigate: (p: PageKey) => void }) {
   const topics = [
-    { icon: '🛒', label: 'Orders & Checkout', questions: ['How do I pay for an order?', 'Can I cancel an order after paying?', 'What is the 0.5% Adulis surcharge?', 'Why are carts separate per seller?'] },
-    { icon: '🚴', label: 'Delivery & Handoff', questions: ['How does QR handoff work?', 'What if my courier can\'t reach me?', 'Can someone else receive my order?', 'What if the Delivery QR scan fails?'] },
-    { icon: '⭐', label: 'Reviews & Claims', questions: ['How do I leave a review?', 'What is a Claim?', 'How long does a Claim take?', 'Can I appeal a Claim decision?'] },
-    { icon: '🏪', label: 'For Sellers', questions: ['How do I apply to sell on Adulis?', 'What is the Trust Ladder?', 'How do I add couriers to my pool?', 'What is a Shoppable Post?'] },
+    { label: 'Orders & Checkout', questions: ['How do I pay for an order?', 'Can I cancel an order after paying?', 'What charges will I see at checkout?', 'Why are carts separate per seller?'] },
+    { label: 'Delivery & Handoff', questions: ['How does QR handoff work?', 'What if my courier can\'t reach me?', 'Can someone else receive my order?', 'What if the Delivery QR scan fails?'] },
+    { label: 'Reviews & Claims', questions: ['How do I leave a review?', 'What is a Claim?', 'How long does a Claim take?', 'Can I appeal a Claim decision?'] },
+    { label: 'For Sellers', questions: ['How do I apply to sell on Adulis?', 'What is the Trust Ladder?', 'How do I add couriers to my pool?', 'What is a Scene?'] },
   ]
 
   return (
@@ -1330,10 +1363,7 @@ function HelpPage({ navigate }: { navigate: (p: PageKey) => void }) {
         <div style={{ maxWidth: 900, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
           {topics.map(t => (
             <div key={t.label} style={{ padding: 26, background: 'var(--color-surface-raised)', borderRadius: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                <span style={{ fontSize: 22 }}>{t.icon}</span>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{t.label}</h3>
-              </div>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 16px' }}>{t.label}</h3>
               {t.questions.map(q => (
                 <div key={q} style={{ padding: '8px 0', fontSize: 14, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)' }}>
                   {q}
@@ -1366,7 +1396,6 @@ function ContactPage() {
     return (
       <div style={{ minHeight: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
         <div style={{ textAlign: 'center', maxWidth: 400 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📬</div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>Message received.</h2>
           <p style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>We'll reply to <strong>{msg.email}</strong> within 2 business days.</p>
         </div>
@@ -1869,27 +1898,28 @@ function MobileHomePage({ navigate }: { navigate: (p: PageKey) => void }) {
           Discover products through the way people actually like to see them used.
         </h1>
         <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>
-          Browse Product Posts and Shoppable Posts from verified sellers. Trust is built in.
+          Browse Products and Scenes from verified sellers. Trust is built in.
         </p>
         <button onClick={() => navigate('waitlist')} style={{ background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '13px 22px', fontWeight: 700, fontSize: 14, cursor: 'pointer', width: '100%' }}>
           Join Seller Waitlist
         </button>
       </section>
 
+      <div style={{ padding: '0 20px' }}>
+        <PhotoSlot brief="A Scene: products styled in a real home" tone="clay" radius={20} style={{ height: 240 }} />
+      </div>
+
       {/* mini cards */}
       <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {[
-          { icon: '🖼', title: 'Product Posts', desc: 'Every product posted in full context — gallery, specs, price, stock, seller.' },
-          { icon: '✨', title: 'Shoppable Posts', desc: 'Tap a product tag in a scene and go straight to the product. No hunting.' },
-          { icon: '🛡', title: 'Trust Built In', desc: 'Sellers earn Trust through their record. Buyers see it before they pay.' },
-          { icon: '✅', title: 'Verified Handoff', desc: 'QR at pickup and delivery. No "I never got it" disputes.' },
+          { title: 'Products', desc: 'Every product shown in full context — gallery, specs, price, stock, seller.' },
+          { title: 'Scenes', desc: 'Tap a product tag in a Scene and go straight to the product. No hunting.' },
+          { title: 'Trust Built In', desc: 'Sellers earn Trust through their record. Buyers see it before they pay.' },
+          { title: 'Verified Handoff', desc: 'QR at pickup and delivery. No "I never got it" disputes.' },
         ].map(c => (
-          <div key={c.title} style={{ padding: '16px 18px', background: 'var(--color-surface-raised)', borderRadius: 14, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 24, flexShrink: 0 }}>{c.icon}</span>
-            <div>
-              <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>{c.title}</p>
-              <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.55 }}>{c.desc}</p>
-            </div>
+          <div key={c.title} style={{ padding: '16px 18px', background: 'var(--color-surface-raised)', borderRadius: 14 }}>
+            <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>{c.title}</p>
+            <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.55 }}>{c.desc}</p>
           </div>
         ))}
       </div>
@@ -1906,7 +1936,7 @@ function MobileHomePage({ navigate }: { navigate: (p: PageKey) => void }) {
 
 function MobileHowItWorks({ navigate }: { navigate: (p: PageKey) => void }) {
   const steps = [
-    ['01', 'Discover in context', 'Browse Product Posts and Shoppable Posts that show what is sold, who sells it, and how it is used.'],
+    ['01', 'Discover in context', 'Browse Products and Scenes that show what is sold, who sells it, and how it is used.'],
     ['02', 'Review before buying', 'See price, availability, fulfilment, seller Trust, and verified reviews before you continue.'],
     ['03', 'Pay per Seller Order', 'Each seller has a distinct checkout and Seller Order, with provider-verified payment status.'],
     ['04', 'Track accountable fulfilment', 'Follow preparation and delivery, then use QR or the documented OTP fallback at handoff.'],
@@ -1915,6 +1945,7 @@ function MobileHowItWorks({ navigate }: { navigate: (p: PageKey) => void }) {
     <div style={{ padding: '32px 20px' }}>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>How Adulis works</h1>
       <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>From discovery to verified handoff, every step keeps the product, seller, payment, and fulfilment record connected.</p>
+      <PhotoSlot brief="A buyer discovering products on their phone" tone="sand" radius={20} style={{ height: 200, marginBottom: 8 }} />
       <ol aria-label="How Adulis works" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {steps.map(([number, title, description]) => (
           <li key={number} style={{ display: 'flex', gap: 14, padding: '16px 0', borderBottom: '1px solid var(--color-border)' }}>
@@ -1943,18 +1974,10 @@ function MobileForSellers({ navigate }: { navigate: (p: PageKey) => void }) {
       <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>
         Adulis gives independent sellers the tools, structure, and trust infrastructure that used to only be available to large retailers.
       </p>
-      {[
-        { icon: '🖼', title: 'Product Posts' },
-        { icon: '✨', title: 'Shoppable Posts' },
-        { icon: '🏪', title: 'Public Storefront' },
-        { icon: '📦', title: 'Order Management' },
-        { icon: '🚴', title: 'Courier Pool' },
-        { icon: '📈', title: 'Analytics' },
-        { icon: '🛡', title: 'Trust Ladder' },
-      ].map(f => (
-        <div key={f.title} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 0', borderBottom: '1px solid var(--color-border)' }}>
-          <span style={{ fontSize: 22 }}>{f.icon}</span>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>{f.title}</span>
+      <PhotoSlot brief="A seller photographing a product for a Scene" tone="clay" radius={20} style={{ height: 200, marginBottom: 8 }} />
+      {['Products', 'Scenes', 'Public Storefront', 'Order Management', 'Courier Pool', 'Analytics', 'Trust Ladder'].map(title => (
+        <div key={title} style={{ padding: '14px 0', borderBottom: '1px solid var(--color-border)' }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>{title}</span>
         </div>
       ))}
       <button onClick={() => navigate('waitlist')} style={{ marginTop: 28, background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer', width: '100%' }}>
@@ -1973,7 +1996,6 @@ function MobileWaitlist() {
   if (submitted) {
     return (
       <div style={{ padding: '48px 24px', textAlign: 'center' }}>
-        <div style={{ fontSize: 40, marginBottom: 16 }}>✅</div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>You're on the list.</h2>
         <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.65 }}>We'll be in touch at <strong>{email}</strong> when your application progresses.</p>
       </div>
@@ -2003,19 +2025,17 @@ function MobileTrust({ navigate }: { navigate: (p: PageKey) => void }) {
       <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>
         Accountability built in, not bolted on.
       </p>
+      <PhotoSlot brief="A courier handing a delivery to a buyer" tone="stone" radius={20} style={{ height: 200, marginBottom: 8 }} />
       {[
-        { icon: '🚪', title: 'Seller Admission',   desc: 'Sellers are admitted following review of their social presence and business intent. Not open self-registration.' },
-        { icon: '🪜', title: 'Trust Ladder',        desc: 'Every seller has a public Trust level built from fulfilment record, reviews, and claims history.' },
-        { icon: '🔐', title: 'Gateway Payment',     desc: 'No cash on delivery. All payments flow through an established gateway. 0.5% surcharge shown at checkout.' },
-        { icon: '✅', title: 'Handoff Evidence',    desc: 'Pickup QR and Delivery QR create verifiable evidence at both ends of every delivery.' },
-        { icon: '⭐', title: 'Verified Reviews',    desc: 'Only buyers who completed a transaction can leave a review. Product Quality and Seller Service rated separately.' },
-        { icon: '⚖️', title: 'Claims',              desc: 'Raise a Claim if an order doesn\'t match what was described. Reviewed by Operators against documented evidence.' },
+        { title: 'Seller Admission',   desc: 'Sellers are admitted following review of their social presence and business intent. Not open self-registration. A physical shop is not required.' },
+        { title: 'Trust Ladder',        desc: 'Every seller has a public Trust level built from fulfilment record, reviews, and claims history.' },
+        { title: 'Gateway Payment',     desc: 'No cash on delivery. All payments flow through an established gateway, and every charge is itemised at checkout.' },
+        { title: 'Handoff Evidence',    desc: 'Pickup QR and Delivery QR create verifiable evidence at both ends of every delivery.' },
+        { title: 'Verified Reviews',    desc: 'Only buyers who completed a transaction can leave a review. Product Quality and Seller Service rated separately.' },
+        { title: 'Claims',              desc: 'Raise a Claim if an order doesn\'t match what was described. Reviewed by Operators against documented evidence.' },
       ].map(s => (
         <div key={s.title} style={{ padding: '16px 0', borderBottom: '1px solid var(--color-border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <span style={{ fontSize: 18 }}>{s.icon}</span>
-            <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-text-primary)', margin: 0 }}>{s.title}</p>
-          </div>
+          <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-text-primary)', margin: '0 0 6px' }}>{s.title}</p>
           <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.6 }}>{s.desc}</p>
         </div>
       ))}
