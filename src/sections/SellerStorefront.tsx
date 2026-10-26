@@ -48,6 +48,7 @@ interface Product {
 interface ShoppablePost {
   id: ShoppablePostId
   imgBg: string
+  title: string
   caption: string
   taggedProducts: ProductId[]
   hasHotspot: boolean
@@ -83,7 +84,7 @@ function useStorefront() {
   })
   const posts: ShoppablePost[] = sellerPostsAt(sellerId, at).filter(id => isPubliclyEligibleAt(id, at)).map((id, index) => {
     const post = SHOPPABLE_POSTS[id]
-    return { id, imgBg: POST_BACKGROUNDS[index % POST_BACKGROUNDS.length], caption: post.caption, taggedProducts: [...post.tags], hasHotspot: post.hotspots > 0, zeroProduct: post.tags.length === 0 }
+    return { id, imgBg: POST_BACKGROUNDS[index % POST_BACKGROUNDS.length], title: post.title, caption: post.caption, taggedProducts: [...post.tags], hasHotspot: post.hotspots > 0, zeroProduct: post.tags.length === 0 }
   })
   const reviews: Review[] = reviewsAt({ seller: sellerId }, at).map(id => {
     const review = REVIEWS[id]
@@ -103,6 +104,8 @@ function useStorefront() {
     completed: sellerCompletedOrdersAt(sellerId, at),
     fulfilment: describeFulfilment(fulfilmentOptionsAt(sellerId, at)),
     location: `${seller.area}, ${MARKET.city}`,
+    // A physical place only where the Seller gives Buyers one (Buyer Collection); a physical storefront isn't required.
+    collectionPoint: seller.buyerCollection && `${seller.buyerCollection.place} · ${seller.buyerCollection.hours}`,
     since: formatMonthYear(onAdulisSince(sellerId)),
   }
 }
@@ -110,7 +113,14 @@ function useStorefront() {
 /* ─────────────────────────────────────
    ROUTING TYPES
 ───────────────────────────────────── */
-type TabKey = 'shop' | 'posts' | 'reviews' | 'about'
+// The Seller profile's tabs, Scenes first and by default (PR-002); the Buyer app's Seller profile uses the same ones.
+type TabKey = 'scenes' | 'products' | 'reviews' | 'about'
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'scenes', label: 'Scenes' },
+  { key: 'products', label: 'Products' },
+  { key: 'reviews', label: 'Reviews' },
+  { key: 'about', label: 'About' },
+]
 type EntryMode = 'bio-link' | 'product-link' | 'shoppable-link'
 type Screen =
   | { type: 'storefront'; tab: TabKey }
@@ -190,15 +200,17 @@ function StorefrontStage({ entryMode }: { entryMode: EntryMode }) {
   // else the Seller's first Product and first published post.
   const linkedProduct = [story.focus?.product, SURFACE_DEFAULTS.product].find(id => products.some(p => p.id === id)) ?? products[0]?.id
   const linkedPost = [story.focus?.post, SURFACE_DEFAULTS.post].find(id => posts.some(p => p.id === id)) ?? posts[0]?.id
-  const initialScreen: Screen = entryMode === 'product-link' && linkedProduct ? { type: 'product-detail', productId: linkedProduct } : entryMode === 'shoppable-link' && linkedPost ? { type: 'post-detail', postId: linkedPost } : { type: 'storefront', tab: 'shop' }
+  const initialScreen: Screen = entryMode === 'product-link' && linkedProduct ? { type: 'product-detail', productId: linkedProduct } : entryMode === 'shoppable-link' && linkedPost ? { type: 'post-detail', postId: linkedPost } : { type: 'storefront', tab: 'scenes' }
   const [screen, setScreen] = useState<Screen>(initialScreen)
-  const [openInAdulisOverlay, setOpenInAdulisOverlay] = useState(false)
+  // The Open in Adulis sheet, with its line for what's being opened; null while it's closed.
+  const [openInAdulisNote, setOpenInAdulisNote] = useState<string | null>(null)
+  const openInAdulis = (note = 'Browse, order, and track in the app.') => setOpenInAdulisNote(note)
 
   const navigate = (s: Screen) => setScreen(s)
   const goBack = () => {
     const cur = screen.type
     if (cur === 'product-detail' || cur === 'post-detail' || cur === 'search') {
-      setScreen({ type: 'storefront', tab: cur === 'search' ? 'shop' : (cur === 'post-detail' ? 'posts' : 'shop') })
+      setScreen({ type: 'storefront', tab: cur === 'post-detail' ? 'scenes' : 'products' })
     }
   }
 
@@ -221,14 +233,14 @@ function StorefrontStage({ entryMode }: { entryMode: EntryMode }) {
                   tab={screen.tab}
                   setTab={t => setScreen({ type: 'storefront', tab: t })}
                   navigate={navigate}
-                  onOpenAdulisApp={() => setOpenInAdulisOverlay(true)}
+                  onOpenAdulisApp={openInAdulis}
                 />
               )}
               {screen.type === 'product-detail' && (
                 <ProductDetailView
                   product={products.find(p => p.id === screen.productId) ?? products[0]}
                   onBack={goBack}
-                  onOpenAdulisApp={() => setOpenInAdulisOverlay(true)}
+                  onOpenAdulisApp={() => openInAdulis()}
                 />
               )}
               {screen.type === 'post-detail' && (
@@ -236,7 +248,7 @@ function StorefrontStage({ entryMode }: { entryMode: EntryMode }) {
                   post={posts.find(p => p.id === screen.postId) ?? posts[0]}
                   onBack={goBack}
                   navigate={navigate}
-                  onOpenAdulisApp={() => setOpenInAdulisOverlay(true)}
+                  onOpenAdulisApp={() => openInAdulis()}
                 />
               )}
               {screen.type === 'search' && (
@@ -245,8 +257,8 @@ function StorefrontStage({ entryMode }: { entryMode: EntryMode }) {
             </div>
 
             {/* Open in Adulis overlay */}
-            {openInAdulisOverlay && (
-              <OpenInAdulisSheet onClose={() => setOpenInAdulisOverlay(false)} />
+            {openInAdulisNote !== null && (
+              <OpenInAdulisSheet note={openInAdulisNote} onClose={() => setOpenInAdulisNote(null)} />
             )}
           </div>
         </div>
@@ -278,38 +290,41 @@ function StorefrontView({ tab, setTab, navigate, onOpenAdulisApp }: {
   tab: TabKey
   setTab: (t: TabKey) => void
   navigate: (s: Screen) => void
-  onOpenAdulisApp: () => void
+  onOpenAdulisApp: (note?: string) => void
 }) {
+  const { seller } = useStorefront()
   return (
     <>
       <StorefrontHeader onSearch={() => navigate({ type: 'search' })} onOpenAdulisApp={onOpenAdulisApp} />
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)', flexShrink: 0 }}>
-        {(['shop', 'posts', 'reviews', 'about'] as TabKey[]).map(t => (
+      <div role="tablist" aria-label={`${seller.name} Storefront`} style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)', flexShrink: 0 }}>
+        {TABS.map(t => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
+            onClick={() => setTab(t.key)}
             style={{
-              flex: 1, padding: '12px 0', fontSize: 12, fontWeight: tab === t ? 700 : 500,
-              color: tab === t ? 'var(--color-brand)' : 'var(--color-text-muted)',
-              background: 'transparent', border: 'none', cursor: 'pointer', position: 'relative', textTransform: 'capitalize',
+              flex: 1, padding: '12px 0', fontSize: 12, fontWeight: tab === t.key ? 700 : 500,
+              color: tab === t.key ? 'var(--color-brand)' : 'var(--color-text-muted)',
+              background: 'transparent', border: 'none', cursor: 'pointer', position: 'relative',
             }}
           >
-            {t === 'shop' ? 'Shop' : t === 'posts' ? 'Posts' : t === 'reviews' ? 'Reviews' : 'About'}
-            {tab === t && <span style={{ position: 'absolute', bottom: 0, left: '20%', right: '20%', height: 2, background: 'var(--color-brand)', borderRadius: 999 }} />}
+            {t.label}
+            {tab === t.key && <span style={{ position: 'absolute', bottom: 0, left: '20%', right: '20%', height: 2, background: 'var(--color-brand)', borderRadius: 999 }} />}
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        {tab === 'shop'    && <ShopTab navigate={navigate} />}
-        {tab === 'posts'   && <PostsTab navigate={navigate} />}
-        {tab === 'reviews' && <ReviewsTab />}
-        {tab === 'about'   && <AboutTab onOpenAdulisApp={onOpenAdulisApp} />}
+      <div role="tabpanel" aria-label={TABS.find(t => t.key === tab)?.label} style={{ flex: 1, overflowY: 'auto' }}>
+        {tab === 'scenes'   && <ScenesTab navigate={navigate} />}
+        {tab === 'products' && <ProductsTab navigate={navigate} />}
+        {tab === 'reviews'  && <ReviewsTab />}
+        {tab === 'about'    && <AboutTab onOpenAdulisApp={() => onOpenAdulisApp()} />}
       </div>
     </>
   )
 }
 
-function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void; onOpenAdulisApp: () => void }) {
+function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void; onOpenAdulisApp: (note?: string) => void }) {
   const [shareShown, setShareShown] = useState(false)
   const { seller, trust, products, posts, service } = useStorefront()
   return (
@@ -340,7 +355,7 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
           </CircleBtn>
           {/* Open Adulis */}
           <button
-            onClick={onOpenAdulisApp}
+            onClick={() => onOpenAdulisApp()}
             className="storefront-open-adulis"
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 13px', borderRadius: 999, background: 'var(--color-brand)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
           >
@@ -361,12 +376,22 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
         {seller.bio ?? '—'}
       </p>
 
+      {/* Follow and Message happen in the Adulis app: on this public page they open it. */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button onClick={() => onOpenAdulisApp(`Follow ${seller.name} in the Adulis app.`)} style={{ flex: 1, padding: '8px 0', borderRadius: 999, background: 'var(--color-brand)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+          Follow
+        </button>
+        <button onClick={() => onOpenAdulisApp(`Message ${seller.name} in the Adulis app.`)} style={{ flex: 1, padding: '8px 0', borderRadius: 999, background: 'var(--color-surface)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-strong)', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+          Message
+        </button>
+      </div>
+
       {/* stats */}
-      <div style={{ display: 'flex', gap: 20, marginTop: 10 }}>
+      <div style={{ display: 'flex', gap: 20, marginTop: 12 }}>
         {[
+          { value: String(posts.length), label: 'Scenes' },
           { value: String(products.length), label: 'Products' },
-          { value: String(posts.length), label: 'Posts' },
-          { value: service ? `${service.average} ★` : '—', label: service ? `${service.ratings} review${service.ratings === 1 ? '' : 's'}` : '— reviews' },
+          { value: service ? `${service.average} ★` : '—', label: 'Seller Service' },
           { value: seller.followers === undefined ? '—' : formatCompactCount(seller.followers), label: 'Followers' },
         ].map(s => (
           <div key={s.label} style={{ textAlign: 'center' }}>
@@ -380,13 +405,59 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
 }
 
 /* ─────────────────────────────────────
-   SHOP TAB
+   SCENES TAB — the Seller's public Scenes, first and by default (PR-002)
 ───────────────────────────────────── */
-function ShopTab({ navigate }: { navigate: (s: Screen) => void }) {
+function ScenesTab({ navigate }: { navigate: (s: Screen) => void }) {
+  const { posts } = useStorefront()
+  if (posts.length === 0) {
+    return <p style={{ padding: '40px 24px', textAlign: 'center', fontSize: 13, color: 'var(--color-text-muted)', margin: 0 }}>No Scenes published yet.</p>
+  }
+  const [featured, ...rest] = posts
+  return (
+    <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <SceneCard post={featured} height={280} withCaption onOpen={() => navigate({ type: 'post-detail', postId: featured.id })} />
+      {rest.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {rest.map(post => <SceneCard key={post.id} post={post} height={230} onOpen={() => navigate({ type: 'post-detail', postId: post.id })} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SceneCard({ post, height, withCaption, onOpen }: { post: ShoppablePost; height: number; withCaption?: boolean; onOpen: () => void }) {
+  const tagged = post.taggedProducts.length
+  return (
+    <button
+      onClick={onOpen}
+      aria-label={`Scene: ${post.title}`}
+      style={{ display: 'block', width: '100%', height, background: post.imgBg, borderRadius: 16, border: 'none', overflow: 'hidden', textAlign: 'left', cursor: 'pointer', padding: 0, position: 'relative' }}
+    >
+      <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', background: post.zeroProduct ? 'rgba(0,0,0,0.45)' : 'var(--color-brand)', color: '#fff', padding: '3px 8px', borderRadius: 999, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+        {post.zeroProduct ? 'Scene' : `${tagged} product${tagged === 1 ? '' : 's'} tagged`}
+      </span>
+      {post.hasHotspot && (
+        <span aria-hidden="true" style={{ position: 'absolute', top: '38%', right: '25%', width: 22, height: 22, background: 'rgba(255,255,255,0.9)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
+          <span style={{ width: 8, height: 8, background: 'var(--color-brand)', borderRadius: '50%' }} />
+        </span>
+      )}
+      <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '28px 12px 10px', background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%)' }}>
+        <span style={{ display: 'block', fontSize: withCaption ? 15 : 12, fontWeight: 700, color: '#fff', lineHeight: 1.3 }}>{post.title}</span>
+        {withCaption && <span style={{ display: '-webkit-box', marginTop: 4, fontSize: 12, color: 'rgba(255,255,255,0.88)', lineHeight: 1.45, WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{post.caption}</span>}
+      </span>
+    </button>
+  )
+}
+
+/* ─────────────────────────────────────
+   PRODUCTS TAB — the Seller's catalogue, available first
+───────────────────────────────────── */
+function ProductsTab({ navigate }: { navigate: (s: Screen) => void }) {
   const { products } = useStorefront()
+  const sorted = [...products.filter(p => p.availability !== 'Out of Stock'), ...products.filter(p => p.availability === 'Out of Stock')]
   return (
     <div style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      {products.map(p => (
+      {sorted.map(p => (
         <button
           key={p.id}
           onClick={() => navigate({ type: 'product-detail', productId: p.id })}
@@ -420,76 +491,28 @@ function ShopTab({ navigate }: { navigate: (s: Screen) => void }) {
 }
 
 /* ─────────────────────────────────────
-   POSTS TAB
-───────────────────────────────────── */
-function PostsTab({ navigate }: { navigate: (s: Screen) => void }) {
-  const { posts } = useStorefront()
-  return (
-    <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {posts.map(post => (
-        <button
-          key={post.id}
-          onClick={() => navigate({ type: 'post-detail', postId: post.id })}
-          style={{ background: 'var(--color-surface)', borderRadius: 16, border: '1px solid var(--color-border)', overflow: 'hidden', textAlign: 'left', cursor: 'pointer', padding: 0 }}
-        >
-          <div style={{ height: 200, background: post.imgBg, position: 'relative', display: 'flex', alignItems: 'flex-end' }}>
-            {/* Post type badge */}
-            <div style={{ position: 'absolute', top: 10, left: 10 }}>
-              {post.zeroProduct ? (
-                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', background: 'rgba(0,0,0,0.45)', color: '#fff', padding: '3px 8px', borderRadius: 999, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
-                  Shoppable Post
-                </span>
-              ) : (
-                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', background: 'var(--color-brand)', color: '#fff', padding: '3px 8px', borderRadius: 999, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
-                  {post.taggedProducts.length} product{post.taggedProducts.length === 1 ? '' : 's'} tagged
-                </span>
-              )}
-            </div>
-            {/* hotspot dot */}
-            {post.hasHotspot && (
-              <div style={{ position: 'absolute', top: '38%', right: '25%', width: 22, height: 22, background: 'rgba(255,255,255,0.9)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
-                <div style={{ width: 8, height: 8, background: 'var(--color-brand)', borderRadius: '50%' }} />
-              </div>
-            )}
-            {/* caption preview */}
-            <div style={{ padding: '8px 12px 10px', background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 100%)', width: '100%' }}>
-              <p style={{ fontSize: 12, color: '#fff', margin: 0, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{post.caption}</p>
-            </div>
-          </div>
-        </button>
-      ))}
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────
    REVIEWS TAB
 ───────────────────────────────────── */
 function ReviewsTab() {
-  // The summary shows the approved aggregates, never an average of the visible reviews. DEMO_DATA defines Seller
-  // Service for each Seller and Product Quality for each Product only, so the Seller-level Product Quality is undefined.
+  // The Seller profile's Reviews are Seller Reviews: the Seller Service aggregate (the approved figure, never an average
+  // of the visible reviews) and the reviews of this Seller's Orders. Product Quality belongs to each Product (PR-002).
   const { reviews, service } = useStorefront()
 
   return (
     <div style={{ padding: '16px 16px 24px' }}>
+      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>Seller Reviews</h2>
       {/* Summary */}
-      <div style={{ background: 'var(--color-surface-raised)', borderRadius: 14, padding: 14, marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid var(--color-border)' }}>
-        <div style={{ textAlign: 'center', padding: '8px 0', borderRight: '1px solid var(--color-border)' }}>
-          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 4px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)' }}>Product Quality</p>
-          <p style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px', fontFamily: 'var(--font-display)' }}>—</p>
-        </div>
-        <div style={{ textAlign: 'center', padding: '8px 0' }}>
-          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 4px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)' }}>Seller Service</p>
-          <p style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px', fontFamily: 'var(--font-display)' }}>{service ? service.average : '—'}</p>
-          {service && <StarRow rating={service.average} />}
-        </div>
+      <div style={{ background: 'var(--color-surface-raised)', borderRadius: 14, padding: 14, marginBottom: 16, textAlign: 'center' }}>
+        <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 4px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)' }}>Seller Service</p>
+        <p style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px', fontFamily: 'var(--font-display)' }}>{service ? service.average : '—'}</p>
+        {service && <StarRow rating={service.average} />}
+        <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '6px 0 0', fontFamily: 'var(--font-mono)' }}>
+          {service ? service.ratings : '—'} verified buyer ratings
+        </p>
       </div>
-      <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 14px', fontFamily: 'var(--font-mono)' }}>
-        {service ? service.ratings : '—'} verified buyer reviews
-      </p>
 
       {reviews.map((r, i) => (
-        <div key={i} style={{ paddingBottom: 16, marginBottom: 16, borderBottom: i < reviews.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
+        <div key={i} style={{ paddingBottom: 16, marginBottom: 16, borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--color-brand)' }}>
@@ -497,25 +520,19 @@ function ReviewsTab() {
               </div>
               <div>
                 <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{r.buyer}</p>
-                <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>{r.products.map(p => p.name).join(' · ')}</p>
+                <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>Bought {r.products.map(p => p.name).join(' · ')}</p>
               </div>
             </div>
             <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>{r.date}</span>
           </div>
-          {/* separate PQ / SS */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
-            <div style={{ background: 'var(--color-surface-raised)', borderRadius: 8, padding: '5px 8px' }}>
-              <p style={{ fontSize: 9, color: 'var(--color-text-muted)', margin: '0 0 2px', fontWeight: 600, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Product Quality</p>
-              <div style={{ display: 'flex', gap: 2 }}>{Array.from({ length: 5 }).map((_, j) => <span key={j} style={{ fontSize: 10, color: j < r.products[0].rating ? '#E8874A' : 'var(--color-border-strong)' }}>★</span>)}</div>
-            </div>
-            <div style={{ background: 'var(--color-surface-raised)', borderRadius: 8, padding: '5px 8px' }}>
-              <p style={{ fontSize: 9, color: 'var(--color-text-muted)', margin: '0 0 2px', fontWeight: 600, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Seller Service</p>
-              <div style={{ display: 'flex', gap: 2 }}>{Array.from({ length: 5 }).map((_, j) => <span key={j} style={{ fontSize: 10, color: j < r.ss ? '#E8874A' : 'var(--color-border-strong)' }}>★</span>)}</div>
-            </div>
+          <div aria-label={`Seller Service ${r.ss} out of 5`} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <span style={{ fontSize: 9, color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Seller Service</span>
+            <span aria-hidden="true" style={{ display: 'flex', gap: 2 }}>{Array.from({ length: 5 }).map((_, j) => <span key={j} style={{ fontSize: 11, color: j < r.ss ? '#E8874A' : 'var(--color-border-strong)' }}>★</span>)}</span>
           </div>
           <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.6 }}>{r.text}</p>
         </div>
       ))}
+      <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.5 }}>Product Quality ratings are shown on each Product.</p>
     </div>
   )
 }
@@ -524,9 +541,12 @@ function ReviewsTab() {
    ABOUT TAB
 ───────────────────────────────────── */
 function AboutTab({ onOpenAdulisApp }: { onOpenAdulisApp: () => void }) {
-  const { seller, trust, service, completed, fulfilment, location, since } = useStorefront()
+  const { seller, trust, service, completed, fulfilment, location, collectionPoint, since } = useStorefront()
   return (
     <div style={{ padding: '16px 16px 32px' }}>
+      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 6px' }}>About {seller.name}</h2>
+      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: '0 0 16px', lineHeight: 1.6 }}>{seller.bio ?? '—'}</p>
+
       {/* Trust card */}
       <div style={{ background: 'var(--color-success-bg)', borderRadius: 14, padding: 14, marginBottom: 14, border: '1px solid #c8e6d4' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -556,7 +576,8 @@ function AboutTab({ onOpenAdulisApp }: { onOpenAdulisApp: () => void }) {
       {/* Info rows */}
       {[
         { label: 'Category', value: seller.category },
-        { label: 'Location', value: location },
+        { label: 'Based in', value: location },
+        ...(collectionPoint ? [{ label: 'Collection point', value: collectionPoint }] : []),
         { label: 'Fulfilment', value: fulfilment },
         { label: 'Member since', value: since },
       ].map(row => (
@@ -789,7 +810,7 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
       {/* top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)', flexShrink: 0 }}>
         <button onClick={onBack} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary)', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600 }}>
-          <IcoBack /> Posts
+          <IcoBack /> Scenes
         </button>
         <div style={{ flex: 1 }} />
         <CircleBtn label="Share" onClick={() => setShareShown(true)}>
@@ -803,7 +824,7 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
           {/* zero-product notice */}
           {post.zeroProduct && (
             <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.5)', borderRadius: 999, padding: '4px 10px' }}>
-              <span style={{ fontSize: 10, color: '#fff', fontFamily: 'var(--font-mono)', fontWeight: 600, letterSpacing: '0.06em' }}>SHOPPABLE POST</span>
+              <span style={{ fontSize: 10, color: '#fff', fontFamily: 'var(--font-mono)', fontWeight: 600, letterSpacing: '0.06em' }}>SCENE</span>
             </div>
           )}
           {!post.zeroProduct && (
@@ -862,14 +883,14 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
         {post.zeroProduct && (
           <div style={{ margin: '14px 16px 0', padding: '12px 14px', background: 'var(--color-surface-raised)', borderRadius: 12 }}>
             <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.55, fontStyle: 'italic' }}>
-              This post has no tagged products. It is published on the seller's storefront but is not eligible for the For You feed.
+              This Scene has no tagged products. It is published on the seller's storefront but is not eligible for the For You feed.
             </p>
           </div>
         )}
 
         {/* tagged products */}
         {!post.zeroProduct && taggedProducts.length > 0 && (
-          <div aria-label="Shoppable products in this post" style={{ padding: '14px 16px 0' }}>
+          <div aria-label="Products tagged in this Scene" style={{ padding: '14px 16px 0' }}>
             <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', margin: '0 0 10px' }}>
               {taggedProducts.length} tagged product{taggedProducts.length !== 1 ? 's' : ''}
             </p>
@@ -994,7 +1015,7 @@ function SearchView({ onBack, navigate }: { onBack: () => void; navigate: (s: Sc
 /* ─────────────────────────────────────
    OPEN IN ADULIS SHEET
 ───────────────────────────────────── */
-function OpenInAdulisSheet({ onClose }: { onClose: () => void }) {
+function OpenInAdulisSheet({ note, onClose }: { note: string; onClose: () => void }) {
   const [installed, setInstalled] = useState<'unknown' | 'open' | 'install'>('unknown')
 
   return (
@@ -1005,7 +1026,7 @@ function OpenInAdulisSheet({ onClose }: { onClose: () => void }) {
           <AdulisLogo size={44} />
           <div>
             <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 3px' }}>Open in Adulis</h3>
-            <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0 }}>Browse, order, and track in the app.</p>
+            <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0 }}>{note}</p>
           </div>
         </div>
 

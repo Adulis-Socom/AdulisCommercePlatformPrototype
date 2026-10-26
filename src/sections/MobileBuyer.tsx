@@ -13,9 +13,9 @@ import {
   MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, claimStateAt, claimSubmitted, claimsForOrder,
   contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
-  forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDayMonth, formatEtb, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
-  isContextChoiceAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
-  productQualityAt, productsSubtotal, reviewEligibilityAt, reviewsAt, sameContext, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, testPaymentRef, trustAt, trustLabel,
+  forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDayMonth, formatEtb, formatMonthShortYear, formatMonthYear, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
+  isContextChoiceAt, isPubliclyEligibleAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, onAdulisSince, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
+  productQualityAt, productsSubtotal, reviewEligibilityAt, reviewsAt, sameContext, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, testPaymentRef, trustAt, trustLabel,
   type CheckoutTest, type CheckoutTestId, type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FinalHandoff, type FulfilmentMode, type MessageContext,
   type MessageRecord, type ModerationId, type Moment, type NotificationRecord, type OrderId, type OrderLine, type OrderState, type OrderTotals, type ProductId,
   type SellerId, type ShoppablePostId, type Timestamp,
@@ -279,6 +279,8 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [postId, setPostId] = useState<ShoppablePostId>(focus?.post ?? SURFACE_DEFAULTS.post)
   const [productId, setProductId] = useState<ProductId>(focus?.product ?? SURFACE_DEFAULTS.product)
   const [sellerId, setSellerId] = useState<SellerId>(SHOPPABLE_POSTS[focus?.post ?? SURFACE_DEFAULTS.post].seller)
+  // The Seller profile's tab: Scenes when a Seller is opened (PR-002); kept while its Scenes, Products or chat are open.
+  const [sellerTab, setSellerTab] = useState<SellerTab>(initialScreen === 'seller-shop' ? 'products' : 'scenes')
   const [orderId, setOrderId] = useState<OrderId>(focus?.order ?? SURFACE_DEFAULTS.order)
   const [collectionId, setCollectionId] = useState<CollectionId>(COLLECTION_IDS.find(id => COLLECTIONS[id].owner === BUYER)!)
   const [chat, setChat] = useState<ChatEntry>({ seller: CONVERSATIONS[focus?.conversation ?? SURFACE_DEFAULTS.conversation].seller, context: GENERAL_CONTEXT, from: 'chats' })
@@ -318,7 +320,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [codeFrom, setCodeFrom] = useState<Screen>('qr-scanner')
   const openPost = (id: ShoppablePostId) => { setDiscoverySheet(null); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
   const openProduct = (id: ProductId) => { setDiscoverySheet(null); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
-  const openSeller = (id: SellerId) => { setSellerId(id); setScreen('seller') }
+  const openSeller = (id: SellerId) => { setSellerId(id); setSellerTab('scenes'); setScreen('seller') }
   const openOrder = (id: OrderId) => { setOrderId(id); setOrderStage(orderStateAt(id, at) ?? 'Paid'); setScreen('order-detail') }
   const openConversation = (entry: ChatEntry) => { setChat(entry); setScreen('conversation') }
   const openClaim = () => { setClaimId(upcomingClaim(orderId, at)); setScreen('claim-start') }
@@ -622,8 +624,26 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             }}
           />
         )}
-        {shown === 'seller' && <SellerProfile sellerId={sellerId} at={at} signedIn={signedIn} onFollow={() => follow({ screen: 'seller' })} onBack={() => setScreen('feed')} onShop={() => setScreen('seller-shop')} onPost={openPost} />}
-        {shown === 'seller-shop' && <SellerShop sellerId={sellerId} at={at} onBack={() => setScreen('seller')} onProduct={openProduct} onSearch={() => setScreen('search')} />}
+        {/* The Seller profile; 'seller-shop' is the same profile opened on its Products (PR-002). Message opens the general
+            conversation with the Seller; a guest signs in first and then arrives there. */}
+        {(shown === 'seller' || shown === 'seller-shop') && (
+          <SellerProfile
+            sellerId={sellerId}
+            at={at}
+            signedIn={signedIn}
+            tab={sellerTab}
+            onTab={setSellerTab}
+            onFollow={() => follow({ screen: shown })}
+            onMessage={() => {
+              setChat({ seller: sellerId, context: GENERAL_CONTEXT, from: shown })
+              requireSignIn('Sign in to chat with sellers', { screen: 'conversation' }, () => setScreen('conversation'))
+            }}
+            onBack={() => setScreen('feed')}
+            onSearch={() => setScreen('search')}
+            onPost={openPost}
+            onProduct={openProduct}
+          />
+        )}
         {shown === 'search' && (
           <Search
             at={at}
@@ -1470,59 +1490,188 @@ function ProductDetail({ productId, at, withdrawn, onBack, onSeller, saved, onSa
   )
 }
 
-function SellerProfile({ sellerId, at, signedIn, onFollow, onBack, onShop, onPost }: { sellerId: SellerId; at: Moment; signedIn: boolean; onFollow: () => void; onBack: () => void; onShop: () => void; onPost: (id: ShoppablePostId) => void }) {
+// The Seller profile's tabs, Scenes first and by default (PR-002): the same tabs, in the same order, as the public Storefront.
+type SellerTab = 'scenes' | 'products' | 'reviews' | 'about'
+const SELLER_TABS: { key: SellerTab; label: string }[] = [
+  { key: 'scenes', label: 'Scenes' }, { key: 'products', label: 'Products' }, { key: 'reviews', label: 'Reviews' }, { key: 'about', label: 'About' },
+]
+
+/** The Seller profile (PR-002): the same Seller identity as its public Storefront, from the same records: its public
+ * Scenes, its Products, its Seller Reviews and its About facts. */
+function SellerProfile({ sellerId, at, signedIn, tab, onTab, onFollow, onMessage, onBack, onSearch, onPost, onProduct }: {
+  sellerId: SellerId; at: Moment; signedIn: boolean; tab: SellerTab; onTab: (tab: SellerTab) => void
+  onFollow: () => void; onMessage: () => void; onBack: () => void; onSearch: () => void
+  onPost: (id: ShoppablePostId) => void; onProduct: (id: ProductId) => void
+}) {
   const seller = SELLERS[sellerId]
   const service = sellerServiceAt(sellerId, at)
   // Follows are Maya's relationships: a guest has none (DEMO_DATA › Buyer).
   const following = signedIn && (BUYERS[BUYER].follows ?? []).includes(sellerId)
-  // The two-post preview keeps its cap; it shows the Seller's first two published posts.
-  const recent = sellerPostsAt(sellerId, at).filter(id => SHOPPABLE_POSTS[id].publication === 'Published').slice(0, 2)
+  // The Seller's Scenes that are public now: published and not restricted, as on the Storefront.
+  const scenes = sellerPostsAt(sellerId, at).filter(id => isPubliclyEligibleAt(id, at))
+  const products = sellerProductsAt(sellerId, at)
   return (
     <>
-      <Header title="Seller" onBack={onBack} trailing={<IconButton label="Share">↗</IconButton>} />
+      <Header title="Seller" onBack={onBack} onSearch={onSearch} trailing={<IconButton label="Share">↗</IconButton>} />
       <div className="flex-1 overflow-y-auto">
-        <div className="h-28 bg-gradient-to-br from-brand-muted to-warning-bg" />
-        <div className="-mt-10 px-5">
-          <div className="flex items-end justify-between">
-            <div className="flex h-20 w-20 items-center justify-center rounded-2xl border-4 border-surface bg-brand-muted font-display text-2xl font-bold text-brand-dark">{initials(seller.name)}</div>
-            <Button size="sm" variant="secondary" onClick={onFollow}>{following ? 'Following' : 'Follow'}</Button>
+        <div className="px-5 pt-5">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-muted font-display text-xl font-bold text-brand-dark">{initials(seller.name)}</div>
+            <div className="min-w-0">
+              <div className="font-display text-2xl font-semibold leading-tight">{seller.name}</div>
+              <div className="text-sm text-text-muted">{seller.handle} · {seller.category}</div>
+              <div className="mt-1.5 inline-flex rounded-full bg-success-bg px-2.5 py-1 text-xs font-semibold text-success">{trustLabel(trustAt(sellerId, at))} seller</div>
+            </div>
           </div>
-          <div className="mt-3 font-display text-2xl font-semibold">{seller.name}</div>
-          <div className="text-sm text-text-muted">{seller.handle} · {seller.area}, {MARKET.city}</div>
-          <div className="mt-2 inline-flex rounded-full bg-success-bg px-2.5 py-1 text-xs font-semibold text-success">{trustLabel(trustAt(sellerId, at))} seller</div>
-          <p className="mt-4 text-sm leading-relaxed text-text-secondary">{seller.bio ?? '—'}</p>
-          <div className="my-5 grid grid-cols-3 divide-x divide-border rounded-xl bg-surface-raised p-3 text-center">
-            <Stat value={service ? String(service.average) : '—'} label="Rating" /><Stat value={String(sellerProductsAt(sellerId, at).length)} label="Products" /><Stat value={seller.followers === undefined ? '—' : formatCompactCount(seller.followers)} label="Followers" />
+          <p className="mt-3 text-sm leading-relaxed text-text-secondary">{seller.bio ?? '—'}</p>
+          <div className="mt-4 flex gap-2">
+            <Button size="sm" variant={following ? 'secondary' : undefined} style={{ flex: 1 }} onClick={onFollow}>{following ? 'Following' : 'Follow'}</Button>
+            <Button size="sm" variant="secondary" style={{ flex: 1 }} onClick={onMessage}>Message</Button>
           </div>
-          <Button onClick={onShop} style={{ width: '100%' }}>Shop {seller.name}</Button>
-          <SectionLabel>Recent shoppable posts</SectionLabel>
-          <div className="grid grid-cols-2 gap-2">
-            {recent.map(id => <button key={id} onClick={() => onPost(id)} className="text-left"><Placeholder label={SHOPPABLE_POSTS[id].title} className="h-44 w-full rounded-xl text-3xl" /></button>)}
+          <div className="my-4 grid grid-cols-4 divide-x divide-border rounded-xl bg-surface-raised p-3 text-center">
+            <Stat value={String(scenes.length)} label="Scenes" />
+            <Stat value={String(products.length)} label="Products" />
+            <Stat value={service ? `${service.average} ★` : '—'} label="Seller Service" />
+            <Stat value={seller.followers === undefined ? '—' : formatCompactCount(seller.followers)} label="Followers" />
           </div>
+        </div>
+        <div role="tablist" aria-label={`${seller.name} profile`} className="sticky top-0 z-10 flex border-b border-border bg-surface">
+          {SELLER_TABS.map(t => (
+            <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => onTab(t.key)} className={`flex-1 py-3 text-xs font-semibold ${tab === t.key ? 'border-b-2 border-brand text-brand' : 'text-text-muted'}`}>{t.label}</button>
+          ))}
+        </div>
+        <div role="tabpanel" aria-label={SELLER_TABS.find(t => t.key === tab)?.label} className="p-4">
+          {tab === 'scenes' && <SellerScenes scenes={scenes} onPost={onPost} />}
+          {tab === 'products' && <SellerProducts products={products} onProduct={onProduct} />}
+          {tab === 'reviews' && <SellerReviews sellerId={sellerId} at={at} />}
+          {tab === 'about' && <SellerAbout sellerId={sellerId} at={at} />}
         </div>
       </div>
     </>
   )
 }
 
-function SellerShop({ sellerId, at, onBack, onProduct, onSearch }: { sellerId: SellerId; at: Moment; onBack: () => void; onProduct: (id: ProductId) => void; onSearch: () => void }) {
-  // Available first, as labelled; DEMO_DATA gives Products no category, so only the All filter remains.
-  const products = sellerProductsAt(sellerId, at)
+// Scenes lead the profile: the first one featured, the rest in a grid. Only the Seller's own public Scenes, never repeated.
+function SellerScenes({ scenes, onPost }: { scenes: readonly ShoppablePostId[]; onPost: (id: ShoppablePostId) => void }) {
+  if (scenes.length === 0) return <p className="py-10 text-center text-sm text-text-muted">No Scenes published yet.</p>
+  const [featured, ...rest] = scenes
+  return (
+    <div className="flex flex-col gap-2">
+      <SceneTile postId={featured} featured onClick={() => onPost(featured)} />
+      {rest.length > 0 && <div className="grid grid-cols-2 gap-2">{rest.map(id => <SceneTile key={id} postId={id} onClick={() => onPost(id)} />)}</div>}
+    </div>
+  )
+}
+
+function SceneTile({ postId, featured, onClick }: { postId: ShoppablePostId; featured?: boolean; onClick: () => void }) {
+  const post = SHOPPABLE_POSTS[postId]
+  const tagged = post.tags.length
+  return (
+    <button onClick={onClick} aria-label={`Scene: ${post.title}`} className="relative block w-full overflow-hidden rounded-xl text-left">
+      <Placeholder label={`Scene: ${post.title}`} initialsOf={post.title} className={`${featured ? 'h-72 text-4xl' : 'h-56 text-2xl'} w-full`} />
+      <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white">{tagged === 0 ? 'Scene' : `${tagged} product${tagged === 1 ? '' : 's'} tagged`}</span>
+      <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-3 pb-2.5 pt-8">
+        <span className="block text-sm font-semibold text-white">{post.title}</span>
+        {featured && <span className="mt-1 line-clamp-2 block text-xs text-white/85">{post.caption}</span>}
+      </span>
+    </button>
+  )
+}
+
+function SellerProducts({ products, onProduct }: { products: readonly ProductId[]; onProduct: (id: ProductId) => void }) {
+  // Available first, as on the Storefront; DEMO_DATA gives Products no category, so there's no category filter.
   const sorted = [...products.filter(id => PRODUCTS[id].availability !== 'Out of Stock'), ...products.filter(id => PRODUCTS[id].availability === 'Out of Stock')]
   return (
     <>
-      <Header title={SELLERS[sellerId].name} onBack={onBack} onSearch={onSearch} />
-      <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-4 py-3">
-        <Choice active>All</Choice>
+      <div className="mb-3 flex items-end justify-between"><span className="text-xs text-text-muted">{products.length} product{products.length === 1 ? '' : 's'}</span><span className="text-xs font-semibold text-text-muted">Available first</span></div>
+      <div className="grid grid-cols-2 gap-3">
+        {sorted.map(id => PRODUCTS[id].availability === 'Out of Stock'
+          ? <div key={id} className="opacity-60"><ProductCard name={PRODUCTS[id].name} price={availabilityText(id)} onClick={() => onProduct(id)} /></div>
+          : <ProductCard key={id} name={PRODUCTS[id].name} price={<InlinePrice productId={id} />} onClick={() => onProduct(id)} />)}
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="mb-4 flex items-end justify-between"><div><div className="font-display text-xl font-semibold">Shop</div><div className="text-xs text-text-muted">{products.length} product{products.length === 1 ? '' : 's'}</div></div><span className="text-xs font-semibold text-text-muted">Available first</span></div>
-        <div className="grid grid-cols-2 gap-3">
-          {sorted.map(id => PRODUCTS[id].availability === 'Out of Stock'
-            ? <div key={id} className="opacity-60"><ProductCard name={PRODUCTS[id].name} price={availabilityText(id)} onClick={() => onProduct(id)} /></div>
-            : <ProductCard key={id} name={PRODUCTS[id].name} price={<InlinePrice productId={id} />} onClick={() => onProduct(id)} />)}
+    </>
+  )
+}
+
+// The Seller profile's Reviews are Seller Reviews: the Seller Service aggregate and the reviews of this Seller's Orders.
+// Product Quality belongs to each Product (PR-002).
+function SellerReviews({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+  const service = sellerServiceAt(sellerId, at)
+  return (
+    <>
+      <div className="font-display text-lg font-semibold">Seller Reviews</div>
+      <div className="mt-3 rounded-xl bg-surface-raised p-4 text-center">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Seller Service</div>
+        <div className="mt-1 font-display text-3xl font-semibold">{service ? service.average : '—'}</div>
+        {service && <Stars rating={Math.round(service.average)} label={`Seller Service ${service.average} out of 5`} />}
+        <div className="mt-1 text-xs text-text-muted">{service ? service.ratings : '—'} verified buyer ratings</div>
+      </div>
+      {reviewsAt({ seller: sellerId }, at).map(id => {
+        const review = REVIEWS[id]
+        const written = typeof review.written === 'string' ? review.written : review.written.at
+        return (
+          <div key={id} className="border-b border-border py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">{shortName(BUYERS[ORDERS[review.order].buyer].name)}</div>
+                <div className="text-xs text-text-muted">Bought {review.productQuality.map(q => PRODUCTS[q.product].name).join(' · ')}</div>
+              </div>
+              <span className="flex-shrink-0 text-xs text-text-muted">{formatMonthShortYear(written)}</span>
+            </div>
+            <div className="mt-2 flex items-center gap-2"><span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Seller Service</span><Stars rating={review.sellerService} label={`Seller Service ${review.sellerService} out of 5`} /></div>
+            <p className="mt-2 text-sm leading-relaxed text-text-secondary">{review.text}</p>
+          </div>
+        )
+      })}
+      <p className="mt-4 text-xs text-text-muted">Product Quality ratings are shown on each Product.</p>
+    </>
+  )
+}
+
+function Stars({ rating, label }: { rating: number; label: string }) {
+  return <span role="img" aria-label={label} className="text-sm tracking-wide"><span className="text-[#E8874A]">{'★'.repeat(rating)}</span><span className="text-border-strong">{'★'.repeat(5 - rating)}</span></span>
+}
+
+// The Seller's public facts, as on the Storefront's About. A physical place shows only where the Seller gives Buyers one
+// (Buyer Collection); a physical storefront isn't required, and no home address is ever shown.
+function SellerAbout({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+  const seller = SELLERS[sellerId]
+  const service = sellerServiceAt(sellerId, at)
+  const completed = sellerCompletedOrdersAt(sellerId, at)
+  const rows: [string, string][] = [
+    ['Category', seller.category],
+    ['Based in', `${seller.area}, ${MARKET.city}`],
+    ...(seller.buyerCollection ? [['Collection point', `${seller.buyerCollection.place} · ${seller.buyerCollection.hours}`] as [string, string]] : []),
+    ['Fulfilment', describeFulfilment(fulfilmentOptionsAt(sellerId, at))],
+    ['Member since', formatMonthYear(onAdulisSince(sellerId))],
+  ]
+  // DEMO_DATA defines no Seller-level Product Quality and no claim rate.
+  const facts: [string, string][] = [
+    ['Avg Product Quality', '—'],
+    ['Avg Seller Service', service ? `${service.average} ★` : '—'],
+    ['Orders Fulfilled', completed === undefined ? '—' : String(completed)],
+    ['Claim Rate', '—'],
+  ]
+  return (
+    <>
+      <div className="font-display text-lg font-semibold">About {seller.name}</div>
+      <p className="mt-1 text-sm leading-relaxed text-text-secondary">{seller.bio ?? '—'}</p>
+      <div className="mt-4 rounded-xl bg-success-bg p-4">
+        <div className="text-sm font-semibold text-success">{trustLabel(trustAt(sellerId, at))} Seller</div>
+        <p className="mt-1 text-xs leading-relaxed text-text-secondary">Trust level based on fulfilment, verified buyer reviews and claims outcomes. Updated by Adulis based on seller performance.</p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {facts.map(([label, value]) => <div key={label} className="rounded-lg bg-white/65 px-2.5 py-2"><div className="text-[9px] font-semibold uppercase text-text-muted">{label}</div><div className="text-sm font-bold text-success">{value}</div></div>)}
         </div>
       </div>
+      <dl className="mt-4">
+        {rows.map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-border py-2.5 text-sm"><dt className="flex-shrink-0 text-text-muted">{label}</dt><dd className="text-right text-text-secondary">{value}</dd></div>)}
+      </dl>
+      {(seller.socialAccounts ?? []).length > 0 && (
+        <>
+          <SectionLabel>Social</SectionLabel>
+          {(seller.socialAccounts ?? []).map(label => <div key={label} className="border-b border-border py-2.5 text-sm"><div className="font-semibold">{label}</div><div className="text-brand">{seller.handle}</div></div>)}
+        </>
+      )}
     </>
   )
 }
