@@ -45,10 +45,10 @@ type SaveKey = `product:${ProductId}` | `post:${ShoppablePostId}`
  */
 type Intent = { screen: Screen; tab?: TabKey; channel?: Channel; then?: 'checkout' | 'report' | 'save' | 'hide'; save?: SaveKey; hide?: ShoppablePostId }
 /**
- * A sheet over Home, a Shoppable Post or a Product Post. "In this post" lists the selected post's Products, a hotspot's
- * own Product first. Share is about the selected post, or a Product Post when one is given.
+ * A sheet over Home, a Scene or a Product Post: the selected Scene's Reviews (PR-004) or More, or Share, about the
+ * selected Scene or a Product Post when one is given. A Scene's Products are explored in Explore the Scene.
  */
-type DiscoverySheet = { kind: 'products'; featured?: ProductId } | { kind: 'more'; channel?: Channel } | { kind: 'share'; product?: ProductId }
+type DiscoverySheet = { kind: 'reviews' } | { kind: 'more'; channel?: Channel } | { kind: 'share'; product?: ProductId }
 /** A line of the temporary prototype Cart: transient session state, never a canonical record (rule 3.12). */
 type CartLine = OrderLine
 /**
@@ -275,6 +275,13 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   // Seller Stories (PR-003): the Seller whose Stories are open, and the Stories seen in this session (transient).
   const [storySeller, setStorySeller] = useState<SellerId | null>(null)
   const [seenStories, setSeenStories] = useState<readonly StoryId[]>([])
+  // Scene engagement (PR-004), this session's own state on top of DEMO_DATA, which never changes: the Scenes Maya likes
+  // (no counts are shown), Follow and Unfollow over her canonical follows, the Scenes she hides from Home, and the
+  // Product selected in Explore the Scene.
+  const [liked, setLiked] = useState<readonly ShoppablePostId[]>([])
+  const [followChanges, setFollowChanges] = useState<Partial<Record<SellerId, boolean>>>({})
+  const [hiddenScenes, setHiddenScenes] = useState<readonly ShoppablePostId[]>([])
+  const [sceneProduct, setSceneProduct] = useState<ProductId | null>(null)
   // The records the screens show: a guided-flow step starts on its DEMO_DATA records, and opening an item selects it.
   const story = useStory()
   const focus = story.focus
@@ -322,7 +329,8 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [handoffMethod, setHandoffMethod] = useState<HandoffMethod>()
   const [repeatScan, setRepeatScan] = useState(false)
   const [codeFrom, setCodeFrom] = useState<Screen>('qr-scanner')
-  const openPost = (id: ShoppablePostId) => { setDiscoverySheet(null); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
+  // Opening a Scene opens Explore the Scene (PR-004), with a Product already selected when its hotspot was tapped.
+  const openPost = (id: ShoppablePostId, product?: ProductId) => { setDiscoverySheet(null); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); setSceneProduct(product ?? null); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
   const openProduct = (id: ProductId) => { setDiscoverySheet(null); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
   const openSeller = (id: SellerId) => { setSellerId(id); setSellerTab('scenes'); setScreen('seller') }
   const openOrder = (id: OrderId) => { setOrderId(id); setOrderStage(orderStateAt(id, at) ?? 'Paid'); setScreen('order-detail') }
@@ -507,10 +515,23 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   // Not Interested hides the post from this session's For You only: no recommendation model, Seller or other channel changes.
   const hidePost = (post: ShoppablePostId) => { setHidden(posts => (posts.includes(post) ? posts : [...posts, post])); setToast('Hidden from For You for this session') }
   const notInterested = (post: ShoppablePostId) => requireSignIn("Sign in to hide content you're not interested in", { screen: 'feed', tab: 'home', channel: 'foryou', then: 'hide', hide: post }, () => hidePost(post))
-  // Follows come from DEMO_DATA (WO-004 requirement 11), so the prototype doesn't change them; a guest is asked to sign in.
-  const follow = (from: Intent) => requireSignIn('Sign in to follow sellers', from, () => setToast('Prototype: follows stay as in the demo data'))
+  // Maya's follows: her canonical ones (DEMO_DATA › Buyer), with this session's Follow and Unfollow on top (PR-004). One
+  // Seller-level state for every surface: Scene cards, the Seller profile, the Following channel and You. A guest has none.
+  const canonicalFollows: readonly SellerId[] = BUYERS[BUYER].follows ?? []
+  const follows: readonly SellerId[] = signedIn
+    ? [...canonicalFollows.filter(id => followChanges[id] !== false), ...(Object.keys(followChanges) as SellerId[]).filter(id => followChanges[id] && !canonicalFollows.includes(id))]
+    : []
+  // Follow is account-level: a guest is asked to sign in.
+  const follow = (seller: SellerId, from: Intent) => requireSignIn('Sign in to follow sellers', from, () => {
+    const now = !follows.includes(seller)
+    setFollowChanges(changes => ({ ...changes, [seller]: now }))
+    setToast(now ? `Following ${SELLERS[seller].name}` : `Unfollowed ${SELLERS[seller].name}`)
+  })
+  // Like applies to the Scene, never to its tagged Products; it toggles, and no Like totals are shown (PR-004).
+  const like = (post: ShoppablePostId, from: Intent) => requireSignIn('Sign in to like Scenes', from, () => setLiked(posts => (posts.includes(post) ? posts.filter(id => id !== post) : [...posts, post])))
+  // Hide takes the Scene out of every Home channel for this session; Not Interested is For You only.
+  const hideScene = (post: ShoppablePostId, from: Intent) => requireSignIn("Sign in to hide content you're not interested in", from, () => { setHiddenScenes(posts => (posts.includes(post) ? posts : [...posts, post])); setToast('Scene hidden for this session') })
   const report = (post: ShoppablePostId, from: Intent) => { setPostId(post); requireSignIn('Sign in to report this post', { ...from, then: 'report' }, () => setReportOpen(true)) }
-  const follows: readonly SellerId[] = signedIn ? BUYERS[BUYER].follows ?? [] : []
   const area = chosenArea ?? (signedIn ? BUYERS[BUYER].discoveryArea ?? null : null)
   useEffect(() => {
     if (!toast) return
@@ -577,8 +598,11 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             areaChosen={chosenArea !== null}
             onArea={setChosenArea}
             hidden={signedIn ? hidden : []}
+            hiddenScenes={signedIn ? hiddenScenes : []}
             follows={follows}
+            canonicalFollows={canonicalFollows}
             isSaved={isSaved}
+            isLiked={post => signedIn && liked.includes(post)}
             scroll={feedScroll.current}
             onScrolled={(scrolled, top) => { feedScroll.current[scrolled] = top }}
             onSignIn={() => startSignIn({ screen: 'feed', tab: 'home', channel })}
@@ -587,12 +611,12 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onSearch={() => { setScreen('search'); setActiveTab('shop') }}
             onPost={openPost}
             onProduct={openProduct}
-            onHotspot={(post, product) => { setPostId(post); setDiscoverySheet({ kind: 'products', featured: product }) }}
-            onProducts={post => { setPostId(post); setDiscoverySheet({ kind: 'products' }) }}
             onSeller={openSeller}
-            onFollow={() => follow({ screen: 'feed', tab: 'home', channel })}
+            onFollow={seller => follow(seller, { screen: 'feed', tab: 'home', channel })}
+            onLike={post => like(post, { screen: 'feed', tab: 'home', channel })}
             onSave={post => toggleSave(`post:${post}`, { screen: 'feed', tab: 'home', channel })}
             onShare={post => { setPostId(post); setDiscoverySheet({ kind: 'share' }) }}
+            onReviews={post => { setPostId(post); setDiscoverySheet({ kind: 'reviews' }) }}
             onMore={post => { setPostId(post); setDiscoverySheet({ kind: 'more', channel }) }}
             stories={storyGroupsAt(at)}
             seenStories={seenStories}
@@ -600,14 +624,15 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
           />
         )}
         {shown === 'post' && (
-          <ExpandedPost
+          <SceneExplorer
             postId={postId}
             at={at}
+            selected={sceneProduct}
+            onSelect={setSceneProduct}
             onBack={() => setScreen(postFrom)}
-            onHotspot={product => setDiscoverySheet({ kind: 'products', featured: product })}
-            onProducts={() => setDiscoverySheet({ kind: 'products' })}
             onSeller={() => openSeller(SHOPPABLE_POSTS[postId].seller)}
-            onReport={() => requireSignIn('Sign in to report this post', { screen: 'post', then: 'report' }, () => setReportOpen(true))}
+            onMore={() => setDiscoverySheet({ kind: 'more' })}
+            onView={openProduct}
           />
         )}
         {shown === 'product' && (
@@ -637,10 +662,10 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
           <SellerProfile
             sellerId={sellerId}
             at={at}
-            signedIn={signedIn}
             tab={sellerTab}
             onTab={setSellerTab}
-            onFollow={() => follow({ screen: shown })}
+            following={follows.includes(sellerId)}
+            onFollow={() => follow(sellerId, { screen: shown })}
             onMessage={() => {
               setChat({ seller: sellerId, context: GENERAL_CONTEXT, from: shown })
               requireSignIn('Sign in to chat with sellers', { screen: 'conversation' }, () => setScreen('conversation'))
@@ -707,19 +732,20 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'conversation' && <Conversation sellerId={chat.seller} startContext={chat.context} at={at} sent={sentMessages} onSend={(conversation, message) => setSentMessages(all => ({ ...all, [conversation]: [...(all[conversation] ?? []), { ...message, sequence: Object.values(all).reduce((n, list) => n + (list?.length ?? 0), 0) + 1 }] }))} onBack={() => setScreen(chat.from)} />}
         {shown === 'chatbot' && <Chatbot productId={productId} onBack={() => setScreen('product')} onEscalate={advanceTo} />}
         {shown === 'notifications' && <Notifications at={at} onBack={() => setScreen(notificationsFrom)} onOrder={openOrder} />}
-        {shown === 'you' && <YouProfile at={at} onSeller={openSeller} />}
+        {shown === 'you' && <YouProfile at={at} follows={follows} onSeller={openSeller} />}
 
         {showNav && (
           <BottomNav items={TABS} active={activeTab} onSelect={k => goTab(k as TabKey)} />
         )}
 
-        {discoverySheet?.kind === 'products' && <ProductSheet postId={postId} featured={discoverySheet.featured} at={at} onClose={() => setDiscoverySheet(null)} onDetail={openProduct} />}
+        {discoverySheet?.kind === 'reviews' && <SceneReviewsSheet postId={postId} at={at} onClose={() => setDiscoverySheet(null)} onProduct={id => { setDiscoverySheet(null); openProduct(id) }} />}
         {discoverySheet?.kind === 'more' && (
           <MoreSheet
             postId={postId}
             notInterested={discoverySheet.channel === 'foryou'}
             onClose={() => setDiscoverySheet(null)}
             onNotInterested={() => { setDiscoverySheet(null); notInterested(postId) }}
+            onHide={() => { setDiscoverySheet(null); hideScene(postId, { screen, tab: activeTab, channel: discoverySheet.channel }) }}
             onReport={() => { setDiscoverySheet(null); report(postId, { screen, tab: activeTab, channel: discoverySheet.channel }) }}
           />
         )}
@@ -965,7 +991,7 @@ function CartCheck({ unavailable, availabilityOf, afterSignIn, seller, sellerRea
 }
 
 /** The signed-in Buyer's profile: DEMO_DATA's facts only. Account Settings and deletion aren't defined, so they aren't shown. */
-function YouProfile({ at, onSeller }: { at: Moment; onSeller: (id: SellerId) => void }) {
+function YouProfile({ at, follows, onSeller }: { at: Moment; follows: readonly SellerId[]; onSeller: (id: SellerId) => void }) {
   const buyer = BUYERS[BUYER]
   return (
     <>
@@ -981,7 +1007,7 @@ function YouProfile({ at, onSeller }: { at: Moment; onSeller: (id: SellerId) => 
           <PriceRow label="Saved discovery area" value={buyer.discoveryArea ?? '—'} />
         </div>
         <SectionLabel>Following</SectionLabel>
-        <div className="flex flex-col gap-2">{(buyer.follows ?? []).map(id => <SellerRow key={id} sellerId={id} at={at} onClick={() => onSeller(id)} />)}</div>
+        <div className="flex flex-col gap-2">{follows.map(id => <SellerRow key={id} sellerId={id} at={at} onClick={() => onSeller(id)} />)}</div>
       </div>
     </>
   )
@@ -1009,24 +1035,32 @@ function GuestStrip({ onSignIn }: { onSignIn: () => void }) {
   )
 }
 
-function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden, follows, isSaved, scroll, onScrolled, onSignIn, onSignInFollowing, onNotifications, onSearch, onPost, onProduct, onHotspot, onProducts, onSeller, onFollow, onSave, onShare, onMore, stories, seenStories, onStory }: {
+function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden, hiddenScenes, follows, canonicalFollows, isSaved, isLiked, scroll, onScrolled, onSignIn, onSignInFollowing, onNotifications, onSearch, onPost, onProduct, onSeller, onFollow, onLike, onSave, onShare, onReviews, onMore, stories, seenStories, onStory }: {
   at: Moment; guest: boolean; channel: Channel; onChannel: (channel: Channel) => void
   area: string | null; areaChosen: boolean; onArea: (area: string) => void
-  hidden: readonly ShoppablePostId[]; follows: readonly SellerId[]; isSaved: (key: SaveKey) => boolean
+  hidden: readonly ShoppablePostId[]; hiddenScenes: readonly ShoppablePostId[]
+  follows: readonly SellerId[]; canonicalFollows: readonly SellerId[]
+  isSaved: (key: SaveKey) => boolean; isLiked: (post: ShoppablePostId) => boolean
   scroll: Partial<Record<Channel, number>>; onScrolled: (channel: Channel, top: number) => void
   onSignIn: () => void; onSignInFollowing: () => void; onNotifications: () => void; onSearch: () => void
-  onPost: (id: ShoppablePostId) => void; onProduct: (id: ProductId) => void
-  onHotspot: (post: ShoppablePostId, product: ProductId) => void; onProducts: (post: ShoppablePostId) => void
-  onSeller: (id: SellerId) => void; onFollow: () => void; onSave: (post: ShoppablePostId) => void
-  onShare: (post: ShoppablePostId) => void; onMore: (post: ShoppablePostId) => void
+  onPost: (id: ShoppablePostId, product?: ProductId) => void; onProduct: (id: ProductId) => void
+  onSeller: (id: SellerId) => void; onFollow: (seller: SellerId) => void; onLike: (post: ShoppablePostId) => void
+  onSave: (post: ShoppablePostId) => void; onShare: (post: ShoppablePostId) => void
+  onReviews: (post: ShoppablePostId) => void; onMore: (post: ShoppablePostId) => void
   stories: readonly SellerStoryGroup[]; seenStories: readonly StoryId[]; onStory: (group: SellerStoryGroup) => void
 }) {
   // Each channel shows its own canonical list (DEMO_DATA › Buyer Home channels); no screen computes its own. A guest sees
   // the Guest/default discovery ranking: the same records, in the same order, never described as Maya's personal feed.
-  const posts = channel === 'foryou' ? forYouAt(at).filter(id => !hidden.includes(id))
-    : channel === 'following' ? (guest ? null : followingAt(BUYER, at))
+  // Following is the canonical list for the Sellers Maya still follows, then the public Scenes of any Seller she
+  // followed in this session (PR-004). A Scene hidden with More › Hide leaves every channel.
+  const following = () => [
+    ...followingAt(BUYER, at).filter(id => follows.includes(SHOPPABLE_POSTS[id].seller)),
+    ...follows.filter(id => !canonicalFollows.includes(id)).flatMap(id => sellerPostsAt(id, at).filter(post => isPubliclyEligibleAt(post, at))),
+  ]
+  const posts = (channel === 'foryou' ? forYouAt(at).filter(id => !hidden.includes(id))
+    : channel === 'following' ? (guest ? null : following())
     : channel === 'nearby' ? (area ? nearbyAt(area, at) : null)
-    : null
+    : null)?.filter(id => !hiddenScenes.includes(id)) ?? null
   const products = channel === 'discounts' ? discountsAt(at) : channel === 'locally-made' ? locallyMadeAt(at) : null
   // Coming back to Home, or to a channel, picks up where the Buyer left it.
   const panel = useRef<HTMLDivElement>(null)
@@ -1056,14 +1090,15 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
               postId={id}
               at={at}
               following={follows.includes(SHOPPABLE_POSTS[id].seller)}
+              liked={isLiked(id)}
               saved={isSaved(`post:${id}`)}
-              onOpen={() => onPost(id)}
-              onHotspot={product => onHotspot(id, product)}
-              onProducts={() => onProducts(id)}
+              onExplore={product => onPost(id, product)}
               onSeller={() => onSeller(SHOPPABLE_POSTS[id].seller)}
-              onFollow={onFollow}
+              onFollow={() => onFollow(SHOPPABLE_POSTS[id].seller)}
+              onLike={() => onLike(id)}
               onSave={() => onSave(id)}
               onShare={() => onShare(id)}
+              onReviews={() => onReviews(id)}
               onMore={() => onMore(id)}
             />
           ))}
@@ -1258,19 +1293,19 @@ function StoryViewer({ group, at, onClose, onProduct, onPost }: {
 /**
  * A Scene as a For You unit (specification §7; PR-003): a structured card that leads the screen without filling it.
  * The Seller and actual public Trust level (rule 14.6) with Follow and More above the photo; on the photo, only its
- * product hotspots; under it, Save, Share and the Scene's products, then a short caption. Prices, stock and variants
- * stay with the Products. PR-004 adds its engagement controls to the action row.
+ * product hotspots; under it the Scene's actions, then a short caption. Prices, stock and variants stay with the Products.
+ * Its actions (PR-004): Like, Save, Share and Reviews, and Explore the Scene, the primary one; Follow (Seller-level) and
+ * More above. No comments, reposts or public Like counts.
  */
-function ShoppablePostUnit({ postId, at, following, saved, onOpen, onHotspot, onProducts, onSeller, onFollow, onSave, onShare, onMore }: {
-  postId: ShoppablePostId; at: Moment; following: boolean; saved: boolean
-  onOpen: () => void; onHotspot: (product: ProductId) => void; onProducts: () => void; onSeller: () => void
-  onFollow: () => void; onSave: () => void; onShare: () => void; onMore: () => void
+function ShoppablePostUnit({ postId, at, following, liked, saved, onExplore, onSeller, onFollow, onLike, onSave, onShare, onReviews, onMore }: {
+  postId: ShoppablePostId; at: Moment; following: boolean; liked: boolean; saved: boolean
+  onExplore: (product?: ProductId) => void; onSeller: () => void; onFollow: () => void
+  onLike: () => void; onSave: () => void; onShare: () => void; onReviews: () => void; onMore: () => void
 }) {
   const post = SHOPPABLE_POSTS[postId]
   const seller = SELLERS[post.seller]
   // The canonical hotspot count, each marker tied to the tagged Product in the same position; never more markers than tags.
   const markers = post.tags.slice(0, post.hotspots)
-  const count = post.tags.length
   // A little shorter than the feed, so the next Scene's card shows below it: a feed of Scenes, not one full-screen video.
   return (
     <article aria-label={`${post.title}, by ${seller.name}`} className="h-[calc(100%-20px)] min-h-[360px] snap-start px-3 pt-2.5">
@@ -1289,24 +1324,24 @@ function ShoppablePostUnit({ postId, at, following, saved, onOpen, onHotspot, on
           <div aria-hidden="true" className="absolute inset-0">
             <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark className="h-full w-full text-6xl" />
           </div>
-          {/* The photo opens the Scene. Its focus outline is drawn inside the edge, because the card clips anything outside. */}
-          <button onClick={onOpen} aria-label={`${seller.name} Scene: ${post.title}`} style={{ ...ON_PHOTO, ...INSET_FOCUS }} className="absolute inset-0 h-full w-full" />
+          {/* The photo opens Explore the Scene; a hotspot opens it with its Product selected. The photo's focus outline is
+              drawn inside the edge, because the card clips anything outside. */}
+          <button onClick={() => onExplore()} aria-label={`Explore the Scene: ${post.title}, by ${seller.name}`} style={{ ...ON_PHOTO, ...INSET_FOCUS }} className="absolute inset-0 h-full w-full" />
           {markers.map((product, i) => (
-            <button key={product} onClick={() => onHotspot(product)} aria-label={`${PRODUCTS[product].name}. Open product.`} style={{ ...HOTSPOT_SPOTS[i], ...ON_PHOTO }} className="absolute flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-brand text-sm font-bold text-white shadow-lg">
+            <button key={product} onClick={() => onExplore(product)} aria-label={`${PRODUCTS[product].name}. Explore the Scene from this product.`} style={{ ...HOTSPOT_SPOTS[i], ...ON_PHOTO }} className="absolute flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-brand text-sm font-bold text-white shadow-lg">
               +
             </button>
           ))}
         </div>
-        {/* The action row; PR-004 adds the Scene's engagement controls here. */}
-        <div className="flex flex-shrink-0 items-center gap-2 px-3 pt-1.5 text-xs font-semibold">
-          <button onClick={onSave} className="rounded-full bg-surface-raised px-3 py-1.5 text-text-primary">{saved ? 'Saved' : 'Save'}</button>
-          <button onClick={onShare} className="rounded-full bg-surface-raised px-3 py-1.5 text-text-primary">Share</button>
+        {/* The Scene's actions. Like and Save are toggles (Like is the Scene's, never its Products'; Save keeps the Scene
+            itself); no counts are shown. Explore the Scene is the primary action. */}
+        <div className="flex flex-shrink-0 items-center gap-1 px-2 pt-1.5 text-xs font-semibold">
+          <button onClick={onLike} aria-label="Like" aria-pressed={liked} className={`flex h-9 w-9 items-center justify-center rounded-full ${liked ? 'text-brand' : 'text-text-secondary'}`}><HeartIcon filled={liked} /></button>
+          <button onClick={onSave} aria-label="Save" aria-pressed={saved} className={`flex h-9 w-9 items-center justify-center rounded-full ${saved ? 'text-brand' : 'text-text-secondary'}`}><BookmarkIcon filled={saved} /></button>
+          <button onClick={onShare} aria-label="Share" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><ShareIcon /></button>
+          <button onClick={onReviews} aria-label="Reviews" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><StarIcon /></button>
           <span className="flex-1" />
-          {count > 0 && (
-            <button onClick={onProducts} className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-brand-muted px-3 py-1.5 text-brand-dark">
-              <TagIcon /> In this Scene · {count} product{count === 1 ? '' : 's'}
-            </button>
-          )}
+          <button onClick={() => onExplore()} className="whitespace-nowrap rounded-full bg-brand px-3.5 py-2 text-white">Explore the Scene</button>
         </div>
         {/* One line of caption: the whole caption is on the Scene itself. Margins, not padding, around it: a clamped line
             would show through padding. */}
@@ -1369,43 +1404,106 @@ function InlinePrice({ productId }: { productId: ProductId }) {
 // Where the expanded view's markers sit, as before: the first is a price label. Illustrative, like HOTSPOT_SPOTS.
 const EXPANDED_SPOTS = [{ left: '55%', top: '39%' }, { right: '12%', top: '59%' }, { left: '16%', top: '64%' }]
 
-function ExpandedPost({ postId, at, onBack, onHotspot, onProducts, onSeller, onReport }: { postId: ShoppablePostId; at: Moment; onBack: () => void; onHotspot: (product: ProductId) => void; onProducts: () => void; onSeller: () => void; onReport: () => void }) {
+// The neutral backdrop behind a Scene's image placeholder.
+const SCENE_MEDIA = 'linear-gradient(160deg, #6B5444 0%, #2E2520 100%)'
+
+/**
+ * Explore the Scene (PR-004; Mobile App design §24, Scene Explorer): the Scene's media with its exact product hotspots,
+ * and every tagged Product below it. The navigation bar gives way to it: about 5% header, 70% media, 25% Products.
+ * Hotspots and the list share one selection: choosing either selects the Product in both and shows its preview. Each
+ * Product shows its current price and availability; an unavailable one stays listed and clearly labelled, and can't be
+ * bought. View Product opens its full Product Post and orders nothing.
+ */
+function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMore, onView }: {
+  postId: ShoppablePostId; at: Moment; selected: ProductId | null; onSelect: (id: ProductId) => void
+  onBack: () => void; onSeller: () => void; onMore: () => void; onView: (id: ProductId) => void
+}) {
   const post = SHOPPABLE_POSTS[postId]
   const seller = SELLERS[post.seller]
-  // The canonical hotspot count, each tied to the tagged Product in the same position.
+  // The canonical hotspot count, hotspot n tied to the nth tagged Product. DEMO_DATA gives no coordinates, so where they
+  // sit on the placeholder is illustrative; the list numbers its Products to match.
   const markers = post.tags.slice(0, post.hotspots)
+  const current = selected && post.tags.includes(selected) ? selected : null
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden bg-text-primary">
-      <Placeholder label={`${seller.name} shoppable post: ${post.title}`} initialsOf={post.title} dark className="absolute inset-0 h-full w-full text-6xl" />
-      <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/80" />
-      <div className="relative flex items-center gap-3 p-4 text-white">
-        <IconButton label="Back" onClick={onBack} dark>‹</IconButton>
-        <button onClick={onSeller} style={ON_PHOTO} className="flex flex-1 items-center gap-2 text-left">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-muted text-xs font-bold text-brand-dark">{initials(seller.name)}</span>
-          <span className="text-sm font-semibold">{seller.name}</span>
-        </button>
-        <button onClick={onReport} style={ON_PHOTO} className="rounded-full bg-black/35 px-3 py-2 text-xs font-semibold text-white">Report</button>
+    <div className="flex flex-1 flex-col overflow-hidden bg-surface">
+      {/* One row: on a phone every button here is 44 px, so the Seller is an avatar button beside the title, not a line. */}
+      <div className="flex flex-shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-xs">
+        <IconButton label="Back" onClick={onBack}>‹</IconButton>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-display text-base font-semibold leading-tight text-text-primary">Explore the Scene</h1>
+          <p className="truncate text-text-muted">{post.title} · {seller.name}</p>
+        </div>
+        <button onClick={onSeller} aria-label={`Seller: ${seller.name}`} className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand-muted text-[11px] font-bold text-brand-dark">{initials(seller.name)}</button>
+        <IconButton label="More options" onClick={onMore}>•••</IconButton>
       </div>
-      {markers.map((product, i) => (i === 0
-        ? (
-          <button key={product} onClick={() => onHotspot(product)} aria-label={`${PRODUCTS[product].name}. Open product.`} style={{ ...EXPANDED_SPOTS[0], ...ON_PHOTO }} className="absolute flex items-center gap-2 rounded-full bg-white p-1.5 pr-3 text-xs font-semibold text-text-primary shadow-lg">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand text-white">+</span>
-            {isPurchasableAt(product, at) ? formatEtb(currentPrice(product)) : availabilityText(product)}
-          </button>
-        )
-        : <button key={product} onClick={() => onHotspot(product)} aria-label={`${PRODUCTS[product].name}. Open product.`} style={{ ...EXPANDED_SPOTS[i], ...ON_PHOTO }} className="absolute h-8 w-8 rounded-full border-2 border-white bg-brand text-white shadow-lg">+</button>
-      ))}
-      <div className="relative mt-auto p-4 text-white">
-        <span className="rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider">Scene explorer</span>
-        <div className="mt-3 font-display text-2xl font-semibold">{post.title}</div>
-        {post.tags.length > 0 && <>
-          <p className="mt-1 text-sm text-white/80">Tap a product hotspot to explore the pieces in this scene.</p>
-          <button onClick={onProducts} style={ON_PHOTO} className="mt-4 flex w-full items-center justify-between rounded-xl bg-white p-3 text-sm font-semibold text-text-primary">
-            <span className="flex items-center gap-2"><TagIcon /> In this post</span>
-            <span>{post.tags.length} product{post.tags.length === 1 ? '' : 's'}</span>
-          </button>
-        </>}
+      <div className="relative min-h-0 flex-[70]" style={{ background: SCENE_MEDIA }}>
+        <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark className="absolute inset-0 h-full w-full text-6xl" />
+        {markers.map((product, i) => {
+          const on = product === current
+          return (
+            <button
+              key={product}
+              onClick={() => onSelect(product)}
+              aria-label={PRODUCTS[product].name}
+              aria-pressed={on}
+              style={{ ...EXPANDED_SPOTS[i], ...ON_PHOTO }}
+              className={`absolute flex items-center justify-center rounded-full border-2 text-xs font-bold shadow-lg ${on ? 'h-11 w-11 border-brand bg-white text-brand ring-4 ring-white/40' : 'h-9 w-9 border-white bg-brand text-white'}`}
+            >
+              {i + 1}
+            </button>
+          )
+        })}
       </div>
+      <div className="flex min-h-[156px] flex-[25] flex-col gap-2 border-t border-border px-3 pb-3 pt-2.5">
+        {post.tags.length === 0 ? <p className="text-sm text-text-muted">No products are tagged in this Scene.</p> : (
+          <>
+            <ScenePreview productId={current} at={at} onView={onView} />
+            <div role="list" aria-label="Products in this Scene" className="flex gap-2 overflow-x-auto pb-0.5 text-xs">
+              {post.tags.map((id, i) => {
+                const on = id === current
+                const available = isPurchasableAt(id, at)
+                return (
+                  <div key={id} role="listitem" className="flex-shrink-0">
+                    <button
+                      onClick={() => onSelect(id)}
+                      aria-pressed={on}
+                      aria-label={`${PRODUCTS[id].name}, ${available ? formatEtb(currentPrice(id)) : availabilityText(id)}`}
+                      className={`flex w-44 items-center gap-2 rounded-xl border p-1.5 text-left ${on ? 'border-brand bg-brand-muted' : 'border-border bg-surface'}`}
+                    >
+                      <span className="relative flex-shrink-0">
+                        <Placeholder label={PRODUCTS[id].name} className="h-10 w-10 rounded-lg text-[10px]" />
+                        {i < markers.length && <span aria-hidden="true" className="absolute -left-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-white">{i + 1}</span>}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold text-text-primary">{PRODUCTS[id].name}</span>
+                        <span className={`block truncate ${available ? 'text-brand' : 'font-semibold text-text-muted'}`}>{available ? formatEtb(currentPrice(id)) : availabilityText(id)}</span>
+                      </span>
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** The selected Product's preview in Explore the Scene: its image, name, current price and availability, and View Product. */
+function ScenePreview({ productId, at, onView }: { productId: ProductId | null; at: Moment; onView: (id: ProductId) => void }) {
+  if (!productId) return <p className="flex min-h-14 items-center rounded-xl bg-surface-raised px-3 text-xs text-text-muted">Choose a hotspot or a product to preview it.</p>
+  const product = PRODUCTS[productId]
+  const available = isPurchasableAt(productId, at)
+  return (
+    <div role="region" aria-label="Product preview" aria-live="polite" className="flex items-center gap-3 rounded-xl bg-surface-raised p-2">
+      <Placeholder label={product.name} className="h-14 w-14 flex-shrink-0 rounded-lg text-xs" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-semibold text-text-primary">{product.name}</div>
+        {available && <PriceTag productId={productId} />}
+        <div className={`text-xs ${available ? 'text-success' : 'font-semibold text-text-muted'}`}>{availabilityText(productId)}</div>
+      </div>
+      <Button size="sm" disabled={!isBuyerVisibleAt(productId, at)} onClick={() => onView(productId)}>View Product</Button>
     </div>
   )
 }
@@ -1438,52 +1536,41 @@ function BottomSheet({ title, label, onClose, children }: { title: string; label
 }
 
 /**
- * "In this post": every tagged Product, the list that hotspots are never the only way to (§57). It keeps the post's tag
- * order; opened from a hotspot (specification §7: a Product list bottom sheet), that hotspot's Product comes first.
+ * A Scene's Reviews (PR-004): the entry to the Scene review experience, which PR-005 completes. For now it shows the
+ * Product Quality of each Product tagged in the Scene and its latest review, read-only. Scenes have no comments.
  */
-function ProductSheet({ postId, featured, at, onClose, onDetail }: { postId: ShoppablePostId; featured?: ProductId; at: Moment; onClose: () => void; onDetail: (id: ProductId) => void }) {
-  const tags = SHOPPABLE_POSTS[postId].tags
-  const [first, ...others] = featured ? [featured, ...tags.filter(id => id !== featured)] : tags
-  // An out-of-stock Product is marked, with no price, and still opens its Product Post (rule 1.8): not purchasable
-  // doesn't mean not viewable. Only a Product Buyers can't see doesn't open.
-  const viewable = (id: ProductId) => isBuyerVisibleAt(id, at)
-  const purchasable = (id: ProductId) => isPurchasableAt(id, at)
+function SceneReviewsSheet({ postId, at, onClose, onProduct }: { postId: ShoppablePostId; at: Moment; onClose: () => void; onProduct: (id: ProductId) => void }) {
+  const post = SHOPPABLE_POSTS[postId]
   return (
-    <BottomSheet title="In this post" label="Products in this post" onClose={onClose}>
-      {() => (
-        <div role="list" aria-label="Shoppable products in this post">
-          {first && <div role="listitem">
-            <button onClick={() => onDetail(first)} disabled={!viewable(first)} autoFocus={viewable(first)} className="flex w-full gap-3 text-left">
-              <Placeholder label={PRODUCTS[first].name} className="h-24 w-20 rounded-xl text-lg" />
-              <span className="flex flex-1 flex-col">
-                <span className="text-xs text-text-muted">{SELLERS[PRODUCTS[first].seller].name}</span>
-                <span className="mt-1 text-sm font-semibold leading-snug text-text-primary">{PRODUCTS[first].name}</span>
-                {purchasable(first) && <PriceTag productId={first} className="mt-2" />}
-                <span className={`mt-1 text-xs ${purchasable(first) ? 'text-success' : 'font-semibold text-text-muted'}`}>{availabilityText(first)}</span>
-              </span>
-              {viewable(first) && <IconChevronRight size={16} />}
-            </button>
-          </div>}
-          {others.map(id => (
-            <div key={id}>
-              <div className="my-4 h-px bg-border" />
-              <div role="listitem">
-                <button onClick={() => onDetail(id)} disabled={!viewable(id)} className={`flex w-full items-center gap-3 text-left ${purchasable(id) ? '' : 'opacity-70'}`}>
-                  <Placeholder label={PRODUCTS[id].name} className="h-16 w-16 rounded-xl" />
-                  <span className="flex-1"><span className="block text-sm font-semibold">{PRODUCTS[id].name}</span><span className="text-xs text-text-muted">{purchasable(id) && <><InlinePrice productId={id} /> · </>}{availabilityText(id)}</span></span>
-                  {viewable(id) && <IconChevronRight size={16} />}
-                </button>
-              </div>
+    <BottomSheet title="Reviews" label={`Reviews for ${post.title}`} onClose={onClose}>
+      {() => (post.tags.length === 0
+        ? <p className="text-sm text-text-muted">No products are tagged in this Scene, so it has no Product reviews.</p>
+        : (
+          <>
+            <p className="-mt-1 mb-3 text-xs text-text-muted">Reviews of the products in {post.title}</p>
+            <div role="list" aria-label="Reviews of the products in this Scene" className="flex flex-col gap-2">
+              {post.tags.map(id => {
+                const quality = productQualityAt(id, at)
+                const latest = reviewsAt({ product: id }, at)[0]
+                return (
+                  <div key={id} role="listitem">
+                    <button onClick={() => onProduct(id)} disabled={!isBuyerVisibleAt(id, at)} className="w-full rounded-xl bg-surface-raised p-3 text-left text-sm">
+                      <span className="block font-semibold text-text-primary">{PRODUCTS[id].name}</span>
+                      <span className="block text-xs text-text-muted">Product Quality · {quality ? `${quality.average} (${quality.ratings})` : quality === null ? 'No ratings yet' : '—'}</span>
+                      {latest && <span className="mt-1 block leading-relaxed text-text-secondary">“{REVIEWS[latest].text}”</span>}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
-          ))}
-        </div>
-      )}
+          </>
+        ))}
     </BottomSheet>
   )
 }
 
-/** More (specification §7): Not Interested where it applies, and Report. No other actions. */
-function MoreSheet({ postId, notInterested, onClose, onNotInterested, onReport }: { postId: ShoppablePostId; notInterested: boolean; onClose: () => void; onNotInterested: () => void; onReport: () => void }) {
+/** More (specification §7; PR-004): Not Interested where it applies, Hide and Report. No other actions. */
+function MoreSheet({ postId, notInterested, onClose, onNotInterested, onHide, onReport }: { postId: ShoppablePostId; notInterested: boolean; onClose: () => void; onNotInterested: () => void; onHide: () => void; onReport: () => void }) {
   return (
     <BottomSheet title="More options" onClose={onClose}>
       {() => (
@@ -1491,7 +1578,8 @@ function MoreSheet({ postId, notInterested, onClose, onNotInterested, onReport }
           <p className="-mt-1 mb-3 text-xs text-text-muted">{SHOPPABLE_POSTS[postId].title}</p>
           <div className="flex flex-col gap-2">
             {notInterested && <Button size="lg" variant="tertiary" autoFocus onClick={onNotInterested} style={{ width: '100%' }}>Not interested in this content</Button>}
-            <Button size="lg" variant="tertiary" autoFocus={!notInterested} onClick={onReport} style={{ width: '100%' }}>Report</Button>
+            <Button size="lg" variant="tertiary" autoFocus={!notInterested} onClick={onHide} style={{ width: '100%' }}>Hide this Scene</Button>
+            <Button size="lg" variant="tertiary" onClick={onReport} style={{ width: '100%' }}>Report</Button>
           </div>
         </>
       )}
@@ -1605,15 +1693,15 @@ const SELLER_TABS: { key: SellerTab; label: string }[] = [
 
 /** The Seller profile (PR-002): the same Seller identity as its public Storefront, from the same records: its public
  * Scenes, its Products, its Seller Reviews and its About facts. */
-function SellerProfile({ sellerId, at, signedIn, tab, onTab, onFollow, onMessage, onBack, onSearch, onPost, onProduct }: {
-  sellerId: SellerId; at: Moment; signedIn: boolean; tab: SellerTab; onTab: (tab: SellerTab) => void
+function SellerProfile({ sellerId, at, following, tab, onTab, onFollow, onMessage, onBack, onSearch, onPost, onProduct }: {
+  sellerId: SellerId; at: Moment; tab: SellerTab; onTab: (tab: SellerTab) => void
+  /** Whether Maya follows this Seller: the app's one follow state (PR-004). A guest follows no one. */
+  following: boolean
   onFollow: () => void; onMessage: () => void; onBack: () => void; onSearch: () => void
   onPost: (id: ShoppablePostId) => void; onProduct: (id: ProductId) => void
 }) {
   const seller = SELLERS[sellerId]
   const service = sellerServiceAt(sellerId, at)
-  // Follows are Maya's relationships: a guest has none (DEMO_DATA › Buyer).
-  const following = signedIn && (BUYERS[BUYER].follows ?? []).includes(sellerId)
   // The Seller's Scenes that are public now: published and not restricted, as on the Storefront.
   const scenes = sellerPostsAt(sellerId, at).filter(id => isPubliclyEligibleAt(id, at))
   const products = sellerProductsAt(sellerId, at)
@@ -3160,6 +3248,23 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 function TagIcon() {
   return <svg className="inline" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1.5 2.5v3.2L6.8 11 11 6.8 5.7 1.5H2.5a1 1 0 00-1 1z" stroke="currentColor" strokeWidth="1.3"/><circle cx="4" cy="4" r=".8" fill="currentColor"/></svg>
+}
+
+// The Scene action icons (PR-004). Their buttons carry the names; the icons are decorative.
+function HeartIcon({ filled }: { filled?: boolean }) {
+  return <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill={filled ? 'currentColor' : 'none'}><path d="M10 16.8s-6.3-3.9-6.3-8.4A3.5 3.5 0 0 1 10 6.3a3.5 3.5 0 0 1 6.3 2.1c0 4.5-6.3 8.4-6.3 8.4z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
+}
+
+function BookmarkIcon({ filled }: { filled?: boolean }) {
+  return <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill={filled ? 'currentColor' : 'none'}><path d="M5.5 3.5h9v13.2L10 13.4l-4.5 3.3z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
+}
+
+function ShareIcon() {
+  return <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 12.5V3.5M6.5 7 10 3.5 13.5 7M4.5 11v5.5h11V11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+}
+
+function StarIcon() {
+  return <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="m10 2.9 2.2 4.5 4.9.7-3.6 3.5.9 4.9L10 14.2l-4.4 2.3.9-4.9-3.6-3.5 4.9-.7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
 }
 
 function ChatIcon() {
