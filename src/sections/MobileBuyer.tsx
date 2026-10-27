@@ -14,7 +14,7 @@ import {
   activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, claimStateAt, claimSubmitted, claimsForOrder,
   contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
   forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDayMonth, formatEtb, formatMonthShortYear, formatMonthYear, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
-  isContextChoiceAt, isPubliclyEligibleAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, onAdulisSince, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
+  isBuyerVisiblePostAt, isContextChoiceAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, onAdulisSince, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
   productQualityAt, productsSubtotal, reviewEligibilityAt, reviewsAt, sameContext, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, storyGroupsAt, testPaymentRef, trustAt, trustLabel,
   type SellerStoryGroup, type StoryId,
   type CheckoutTest, type CheckoutTestId, type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FinalHandoff, type FulfilmentMode, type MessageContext,
@@ -110,11 +110,6 @@ const CHANNELS: { key: Channel; label: string }[] = [
   { key: 'discounts', label: 'Discounts' },
   { key: 'locally-made', label: 'Locally Made' },
 ]
-
-// Where a post's hotspot markers sit on its image, above the Seller and caption. DEMO_DATA gives each post a hotspot
-// count and its tagged Products in order, but no positions, so these are illustrative only and never Product data:
-// marker n opens the post's nth tag.
-const HOTSPOT_SPOTS = [{ left: '57%', top: '30%' }, { left: '24%', top: '16%' }, { left: '70%', top: '42%' }]
 
 // Controls on a post's photo: the keyboard focus outline uses the light inverse colour so it shows on the image (§57).
 const ON_PHOTO = { outlineColor: 'var(--color-text-inverse)' }
@@ -329,8 +324,8 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [handoffMethod, setHandoffMethod] = useState<HandoffMethod>()
   const [repeatScan, setRepeatScan] = useState(false)
   const [codeFrom, setCodeFrom] = useState<Screen>('qr-scanner')
-  // Opening a Scene opens Explore the Scene (PR-004), with a Product already selected when its hotspot was tapped.
-  const openPost = (id: ShoppablePostId, product?: ProductId) => { setDiscoverySheet(null); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); setSceneProduct(product ?? null); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
+  // Opening a Scene opens Explore the Scene (PR-004), with no Product selected: the Buyer chooses one there.
+  const openPost = (id: ShoppablePostId) => { setDiscoverySheet(null); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); setSceneProduct(null); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
   const openProduct = (id: ProductId) => { setDiscoverySheet(null); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
   const openSeller = (id: SellerId) => { setSellerId(id); setSellerTab('scenes'); setScreen('seller') }
   const openOrder = (id: OrderId) => { setOrderId(id); setOrderStage(orderStateAt(id, at) ?? 'Paid'); setScreen('order-detail') }
@@ -1043,7 +1038,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
   isSaved: (key: SaveKey) => boolean; isLiked: (post: ShoppablePostId) => boolean
   scroll: Partial<Record<Channel, number>>; onScrolled: (channel: Channel, top: number) => void
   onSignIn: () => void; onSignInFollowing: () => void; onNotifications: () => void; onSearch: () => void
-  onPost: (id: ShoppablePostId, product?: ProductId) => void; onProduct: (id: ProductId) => void
+  onPost: (id: ShoppablePostId) => void; onProduct: (id: ProductId) => void
   onSeller: (id: SellerId) => void; onFollow: (seller: SellerId) => void; onLike: (post: ShoppablePostId) => void
   onSave: (post: ShoppablePostId) => void; onShare: (post: ShoppablePostId) => void
   onReviews: (post: ShoppablePostId) => void; onMore: (post: ShoppablePostId) => void
@@ -1055,7 +1050,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
   // followed in this session (PR-004). A Scene hidden with More › Hide leaves every channel.
   const following = () => [
     ...followingAt(BUYER, at).filter(id => follows.includes(SHOPPABLE_POSTS[id].seller)),
-    ...follows.filter(id => !canonicalFollows.includes(id)).flatMap(id => sellerPostsAt(id, at).filter(post => isPubliclyEligibleAt(post, at))),
+    ...follows.filter(id => !canonicalFollows.includes(id)).flatMap(id => sellerPostsAt(id, at).filter(post => isBuyerVisiblePostAt(post, at))),
   ]
   const posts = (channel === 'foryou' ? forYouAt(at).filter(id => !hidden.includes(id))
     : channel === 'following' ? (guest ? null : following())
@@ -1092,7 +1087,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
               following={follows.includes(SHOPPABLE_POSTS[id].seller)}
               liked={isLiked(id)}
               saved={isSaved(`post:${id}`)}
-              onExplore={product => onPost(id, product)}
+              onExplore={() => onPost(id)}
               onSeller={() => onSeller(SHOPPABLE_POSTS[id].seller)}
               onFollow={() => onFollow(SHOPPABLE_POSTS[id].seller)}
               onLike={() => onLike(id)}
@@ -1292,20 +1287,18 @@ function StoryViewer({ group, at, onClose, onProduct, onPost }: {
 
 /**
  * A Scene as a For You unit (specification §7; PR-003): a structured card that leads the screen without filling it.
- * The Seller and actual public Trust level (rule 14.6) with Follow and More above the photo; on the photo, only its
- * product hotspots; under it the Scene's actions, then a short caption. Prices, stock and variants stay with the Products.
+ * The Seller and actual public Trust level (rule 14.6) with Follow and More above the photo; the photo itself, with no
+ * hotspots; under it the Scene's actions, then a short caption. Prices, stock and variants stay with the Products.
  * Its actions (PR-004): Like, Save, Share and Reviews, and Explore the Scene, the primary one; Follow (Seller-level) and
  * More above. No comments, reposts or public Like counts.
  */
 function ShoppablePostUnit({ postId, at, following, liked, saved, onExplore, onSeller, onFollow, onLike, onSave, onShare, onReviews, onMore }: {
   postId: ShoppablePostId; at: Moment; following: boolean; liked: boolean; saved: boolean
-  onExplore: (product?: ProductId) => void; onSeller: () => void; onFollow: () => void
+  onExplore: () => void; onSeller: () => void; onFollow: () => void
   onLike: () => void; onSave: () => void; onShare: () => void; onReviews: () => void; onMore: () => void
 }) {
   const post = SHOPPABLE_POSTS[postId]
   const seller = SELLERS[post.seller]
-  // The canonical hotspot count, each marker tied to the tagged Product in the same position; never more markers than tags.
-  const markers = post.tags.slice(0, post.hotspots)
   // A little shorter than the feed, so the next Scene's card shows below it: a feed of Scenes, not one full-screen video.
   return (
     <article aria-label={`${post.title}, by ${seller.name}`} className="h-[calc(100%-20px)] min-h-[360px] snap-start px-3 pt-2.5">
@@ -1324,14 +1317,10 @@ function ShoppablePostUnit({ postId, at, following, liked, saved, onExplore, onS
           <div aria-hidden="true" className="absolute inset-0">
             <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark className="h-full w-full text-6xl" />
           </div>
-          {/* The photo opens Explore the Scene; a hotspot opens it with its Product selected. The photo's focus outline is
-              drawn inside the edge, because the card clips anything outside. */}
-          <button onClick={() => onExplore()} aria-label={`Explore the Scene: ${post.title}, by ${seller.name}`} style={{ ...ON_PHOTO, ...INSET_FOCUS }} className="absolute inset-0 h-full w-full" />
-          {markers.map((product, i) => (
-            <button key={product} onClick={() => onExplore(product)} aria-label={`${PRODUCTS[product].name}. Explore the Scene from this product.`} style={{ ...HOTSPOT_SPOTS[i], ...ON_PHOTO }} className="absolute flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-brand text-sm font-bold text-white shadow-lg">
-              +
-            </button>
-          ))}
+          {/* The feed's media stays clean: no hotspots here. A Buyer enters Explore the Scene on purpose before choosing
+              exact Product locations (Engagement System & Metrics Knowledge Base v1.0). The photo opens Explore the Scene;
+              its focus outline is drawn inside the edge, because the card clips anything outside. */}
+          <button onClick={onExplore} aria-label={`Explore the Scene: ${post.title}, by ${seller.name}`} style={{ ...ON_PHOTO, ...INSET_FOCUS }} className="absolute inset-0 h-full w-full" />
         </div>
         {/* The Scene's actions. Like and Save are toggles (Like is the Scene's, never its Products'; Save keeps the Scene
             itself); no counts are shown. Explore the Scene is the primary action. */}
@@ -1341,7 +1330,7 @@ function ShoppablePostUnit({ postId, at, following, liked, saved, onExplore, onS
           <button onClick={onShare} aria-label="Share" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><ShareIcon /></button>
           <button onClick={onReviews} aria-label="Reviews" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><StarIcon /></button>
           <span className="flex-1" />
-          <button onClick={() => onExplore()} className="whitespace-nowrap rounded-full bg-brand px-3.5 py-2 text-white">Explore the Scene</button>
+          <button onClick={onExplore} className="whitespace-nowrap rounded-full bg-brand px-3.5 py-2 text-white">Explore the Scene</button>
         </div>
         {/* One line of caption: the whole caption is on the Scene itself. Margins, not padding, around it: a clamped line
             would show through padding. */}
@@ -1401,7 +1390,8 @@ function InlinePrice({ productId }: { productId: ProductId }) {
   return <>{formatEtb(currentPrice(productId))} <span className="font-normal text-text-muted line-through"><span className="sr-only">Regular price </span>{formatEtb(PRODUCTS[productId].price)}</span></>
 }
 
-// Where the expanded view's markers sit, as before: the first is a price label. Illustrative, like HOTSPOT_SPOTS.
+// Where Explore the Scene's hotspots sit, hotspot n on the nth tagged Product. DEMO_DATA gives each Scene a hotspot count
+// and its tagged Products in order but no positions, so these places are illustrative only and never Product data.
 const EXPANDED_SPOTS = [{ left: '55%', top: '39%' }, { right: '12%', top: '59%' }, { left: '16%', top: '64%' }]
 
 // The neutral backdrop behind a Scene's image placeholder.
@@ -1467,7 +1457,7 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
                     <button
                       onClick={() => onSelect(id)}
                       aria-pressed={on}
-                      aria-label={`${PRODUCTS[id].name}, ${available ? formatEtb(currentPrice(id)) : availabilityText(id)}`}
+                      aria-label={`${PRODUCTS[id].name}, ${formatEtb(currentPrice(id))}${available ? '' : `, ${availabilityText(id)}`}`}
                       className={`flex w-44 items-center gap-2 rounded-xl border p-1.5 text-left ${on ? 'border-brand bg-brand-muted' : 'border-border bg-surface'}`}
                     >
                       <span className="relative flex-shrink-0">
@@ -1476,7 +1466,8 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold text-text-primary">{PRODUCTS[id].name}</span>
-                        <span className={`block truncate ${available ? 'text-brand' : 'font-semibold text-text-muted'}`}>{available ? formatEtb(currentPrice(id)) : availabilityText(id)}</span>
+                        <span className={`block truncate ${available ? 'text-brand' : 'text-text-secondary'}`}>{formatEtb(currentPrice(id))}</span>
+                        {!available && <span className="block truncate text-[10px] font-semibold text-text-muted">{availabilityText(id)}</span>}
                       </span>
                     </button>
                   </div>
@@ -1490,7 +1481,11 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
   )
 }
 
-/** The selected Product's preview in Explore the Scene: its image, name, current price and availability, and View Product. */
+/**
+ * The selected Product's preview in Explore the Scene: its image, name, current price and availability, and View Product.
+ * An unavailable Product keeps its current price, labelled "Currently unavailable", with no purchase action here or on
+ * its Product Post.
+ */
 function ScenePreview({ productId, at, onView }: { productId: ProductId | null; at: Moment; onView: (id: ProductId) => void }) {
   if (!productId) return <p className="flex min-h-14 items-center rounded-xl bg-surface-raised px-3 text-xs text-text-muted">Choose a hotspot or a product to preview it.</p>
   const product = PRODUCTS[productId]
@@ -1500,7 +1495,7 @@ function ScenePreview({ productId, at, onView }: { productId: ProductId | null; 
       <Placeholder label={product.name} className="h-14 w-14 flex-shrink-0 rounded-lg text-xs" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-text-primary">{product.name}</div>
-        {available && <PriceTag productId={productId} />}
+        <PriceTag productId={productId} />
         <div className={`text-xs ${available ? 'text-success' : 'font-semibold text-text-muted'}`}>{availabilityText(productId)}</div>
       </div>
       <Button size="sm" disabled={!isBuyerVisibleAt(productId, at)} onClick={() => onView(productId)}>View Product</Button>
@@ -1702,8 +1697,8 @@ function SellerProfile({ sellerId, at, following, tab, onTab, onFollow, onMessag
 }) {
   const seller = SELLERS[sellerId]
   const service = sellerServiceAt(sellerId, at)
-  // The Seller's Scenes that are public now: published and not restricted, as on the Storefront.
-  const scenes = sellerPostsAt(sellerId, at).filter(id => isPubliclyEligibleAt(id, at))
+  // The Seller's Scenes that are public now: published, not restricted and not Private, as on the Storefront.
+  const scenes = sellerPostsAt(sellerId, at).filter(id => isBuyerVisiblePostAt(id, at))
   const products = sellerProductsAt(sellerId, at)
   return (
     <>

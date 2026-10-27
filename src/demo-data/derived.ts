@@ -175,6 +175,31 @@ export function isForYouEligibleAt(post: ShoppablePostId, at: Moment = DEFAULT_S
 }
 
 /**
+ * The Scene availability rule (PR-004 follow-up; Engagement System & Metrics Knowledge Base v1.0): a Scene with tagged
+ * Products stays Public while at least one of them is available, and is Private while all of them are unavailable. A
+ * Private Scene stays published, never archived or deleted (rule 1.8), and comes back automatically once a tagged
+ * Product is available again. A Scene published with no Products (rule 1.6) is untouched. Given the tags' availability.
+ */
+export function sceneAvailabilityState(tags: readonly ProductId[], available: (product: ProductId) => boolean): 'no-products' | 'public' | 'private' {
+  if (tags.length === 0) return 'no-products'
+  return tags.some(available) ? 'public' : 'private'
+}
+
+/** Whether the Scene is Private at `at` because none of its tagged Products is available (the rule above). */
+export function isPrivateByAvailabilityAt(post: ShoppablePostId, at: Moment = DEFAULT_SNAPSHOT): boolean {
+  return sceneAvailabilityState(SHOPPABLE_POSTS[post].tags, product => hasAvailableProductAt([product], at)) === 'private'
+}
+
+/**
+ * A Scene on public Buyer discovery surfaces (Following, Search, the Storefront and the Buyer app's Seller profile):
+ * publicly eligible and not Private. For You and Nearby already need an available tagged Product. Seller and Operator
+ * views keep `isPubliclyEligibleAt`, so a Private Scene still shows there as needing attention.
+ */
+export function isBuyerVisiblePostAt(post: ShoppablePostId, at: Moment = DEFAULT_SNAPSHOT): boolean {
+  return isPubliclyEligibleAt(post, at) && !isPrivateByAvailabilityAt(post, at)
+}
+
+/**
  * Seller Console Home › Shoppable Posts needing action (specification §29): published, tagged, no tagged Product
  * available. A restricted or removed post is a moderation problem, listed only under Moderation issues.
  */
@@ -193,7 +218,7 @@ export function forYouAt(at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
 
 export function followingAt(buyer: BuyerId, at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
   const follows: readonly SellerId[] = BUYERS[buyer].follows ?? []
-  return FOLLOWING_ORDER.filter(id => follows.includes(SHOPPABLE_POSTS[id].seller) && isPubliclyEligibleAt(id, at))
+  return FOLLOWING_ORDER.filter(id => follows.includes(SHOPPABLE_POSTS[id].seller) && isBuyerVisiblePostAt(id, at))
 }
 
 /** Nearby for a discovery area: Sellers in demo proximity order, each one's eligible posts with an available Product. */
@@ -226,9 +251,9 @@ export function isPurchasableAt(product: ProductId, at: Moment = DEFAULT_SNAPSHO
   return isBuyerVisibleAt(product, at) && PRODUCTS[product].availability !== 'Out of Stock'
 }
 
-/** The Shoppable Posts Buyers can see at `at` (published, not restricted), in ID order. */
+/** The Shoppable Posts Buyers can see at `at` (published, not restricted, not Private), in ID order. */
 export function buyerVisiblePostsAt(at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
-  return buyerVisibleSellers().flatMap(seller => sellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at)))
+  return buyerVisibleSellers().flatMap(seller => sellerPostsAt(seller, at).filter(id => isBuyerVisiblePostAt(id, at)))
 }
 
 /** Discounts (rule 2.11): Buyer-visible Products with an active discount, largest discount first, then the larger ETB saving. */

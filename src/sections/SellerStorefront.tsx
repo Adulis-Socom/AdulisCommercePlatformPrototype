@@ -4,7 +4,7 @@ import { StoryProvider, useStory } from '../StoryClock'
 import {
   BUYERS, MARKET, ORDERS, PRODUCTS, REVIEWS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   activeDiscount, currentPrice, describeFulfilment, formatClockShort, formatCompactCount, formatDate, formatEtb, formatMonthShortYear, formatMonthYear,
-  fulfilmentOptionsAt, initials, isPubliclyEligibleAt, onAdulisSince, productQualityAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt,
+  fulfilmentOptionsAt, initials, isBuyerVisiblePostAt, onAdulisSince, productQualityAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt,
   sellerProductsAt, sellerServiceAt, shortName, showcaseSellers, trustAt, trustLabel,
   type Availability, type ProductId, type SellerId, type ShoppablePostId,
 } from '../demo-data'
@@ -82,7 +82,8 @@ function useStorefront() {
       attributes: p.attributes.map(value => ({ label: '—', value })),
     }
   })
-  const posts: ShoppablePost[] = sellerPostsAt(sellerId, at).filter(id => isPubliclyEligibleAt(id, at)).map((id, index) => {
+  // Its public Scenes: a Scene whose tagged Products are all unavailable is Private and not shown (isBuyerVisiblePostAt).
+  const posts: ShoppablePost[] = sellerPostsAt(sellerId, at).filter(id => isBuyerVisiblePostAt(id, at)).map((id, index) => {
     const post = SHOPPABLE_POSTS[id]
     return { id, imgBg: POST_BACKGROUNDS[index % POST_BACKGROUNDS.length], title: post.title, caption: post.caption, taggedProducts: [...post.tags], hasHotspot: post.hotspots > 0, zeroProduct: post.tags.length === 0 }
   })
