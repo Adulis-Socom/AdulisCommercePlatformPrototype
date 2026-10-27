@@ -477,6 +477,76 @@ export function reviewEligibilityAt(order: OrderId, at: Moment = DEFAULT_SNAPSHO
   }
 }
 
+/**
+ * One Review a Buyer may write (PR-005; Engagement System & Metrics Knowledge Base v1.0): a Product Review of one Product
+ * in a qualifying Order, or a Seller Review of the Order's Seller. `review` is the canonical Review already written from
+ * that Order by `at`; the Buyer edits it rather than writing a second one.
+ */
+export type ReviewEntitlement =
+  | { readonly kind: 'product'; readonly order: OrderId; readonly product: ProductId; readonly seller: SellerId; readonly review?: ReviewId }
+  | { readonly kind: 'seller'; readonly order: OrderId; readonly seller: SellerId; readonly review?: ReviewId }
+
+/**
+ * The Reviews the Buyer may write at `at` (PR-005). Each of the Buyer's Orders that the provider confirmed Paid (rules
+ * 5.1–5.5; no Seller confirmation) and whose verified final Buyer-facing Handoff completed it holds the Order's one Review
+ * Grant (`reviewEligibilityAt`, rule 11.1). The grant gives one Product Review per distinct Product in the Order and one
+ * Seller Review of its Seller: one active Review per Buyer, Product (or Seller) and qualifying Order. Signing in,
+ * viewing, saving or an incomplete Order give none.
+ */
+export function reviewEntitlementsAt(buyer: BuyerId, at: Moment = DEFAULT_SNAPSHOT): ReviewEntitlement[] {
+  return ORDER_IDS.filter(id => ORDERS[id].buyer === buyer).flatMap(order => {
+    const paid = ORDERS[order].payments.some(attempt => attempt.status === 'Paid') && happenedBefore(paidAt(order), at)
+    const grant = reviewEligibilityAt(order, at)
+    if (!paid || !grant.eligible) return []
+    const { seller, lines } = ORDERS[order]
+    const covers = (product: ProductId) => grant.review && REVIEWS[grant.review].productQuality.some(q => q.product === product) ? grant.review : undefined
+    return [
+      ...[...new Set(lines.map(line => line.product))].map(product => ({ kind: 'product' as const, order, product, seller, review: covers(product) })),
+      { kind: 'seller' as const, order, seller, review: grant.review },
+    ]
+  })
+}
+
+/**
+ * A Scene's Review tabs before its Seller Review (PR-005): one per distinct tagged Product, in the Scene's tag order.
+ * They come from the Products, never the hotspots, so a Product tagged twice has one tab.
+ */
+export function sceneReviewProducts(tags: readonly ProductId[]): ProductId[] {
+  return [...new Set(tags)]
+}
+
+/** A written Review as one of its two types shows it (PR-005): a Product Review or a Seller Review. */
+export interface ReviewEntry {
+  readonly review: ReviewId
+  readonly order: OrderId
+  readonly buyer: BuyerId
+  /** Product Quality for a Product Review, Seller Service for a Seller Review: never one blended rating. */
+  readonly rating: number
+  readonly text: string
+  readonly written: CalendarDate | Moment
+  /** A Product Review's purchased variant ('M, Sand'), from the Order line. */
+  readonly variant?: string
+  /** A Seller Review's purchased Products. */
+  readonly products?: readonly ProductId[]
+}
+
+/** The Product Reviews of a Product at `at`, newest first: each Review that rated its Product Quality. */
+export function productReviewsAt(product: ProductId, at: Moment = DEFAULT_SNAPSHOT): ReviewEntry[] {
+  return reviewsAt({ product }, at).map(id => {
+    const review = REVIEWS[id]
+    const line = ORDERS[review.order].lines.find(l => l.product === product)
+    return { review: id, order: review.order, buyer: ORDERS[review.order].buyer, rating: review.productQuality.find(q => q.product === product)!.rating, text: review.text, written: review.written, variant: line && lineOptions(line) }
+  })
+}
+
+/** The Seller Reviews of a Seller at `at`, newest first: the Seller Service of each Review of the Seller's Orders, whatever was bought. */
+export function sellerReviewsAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): ReviewEntry[] {
+  return reviewsAt({ seller }, at).map(id => {
+    const review = REVIEWS[id]
+    return { review: id, order: review.order, buyer: ORDERS[review.order].buyer, rating: review.sellerService, text: review.text, written: review.written, products: review.productQuality.map(q => q.product) }
+  })
+}
+
 // ---------- Couriers ----------
 
 const ACTIVE_DELIVERY: readonly OrderState[] = ['Courier Assigned', 'Pickup Verified', 'Out for Delivery', 'Delivery Handoff']

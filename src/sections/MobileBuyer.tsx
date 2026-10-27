@@ -13,10 +13,11 @@ import {
   MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, claimStateAt, claimSubmitted, claimsForOrder,
   contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
-  forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDayMonth, formatEtb, formatMonthShortYear, formatMonthYear, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
+  forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDate, formatDayMonth, formatEtb, formatMonthYear, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
   isBuyerVisiblePostAt, isContextChoiceAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, onAdulisSince, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
-  productQualityAt, productsSubtotal, reviewEligibilityAt, reviewsAt, sameContext, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, shortName, stateTime, storyGroupsAt, testPaymentRef, trustAt, trustLabel,
-  type SellerStoryGroup, type StoryId,
+  productQualityAt, productReviewsAt, productsSubtotal, reviewEligibilityAt, reviewEntitlementsAt, reviewsAt, sameContext, sceneReviewProducts, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerReviewsAt,
+  sellerServiceAt, shortName, stateTime, storyGroupsAt, testPaymentRef, trustAt, trustLabel,
+  type BuyerId, type CalendarDate, type ReviewEntitlement, type SellerStoryGroup, type StoryId,
   type CheckoutTest, type CheckoutTestId, type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FinalHandoff, type FulfilmentMode, type MessageContext,
   type MessageRecord, type ModerationId, type Moment, type NotificationRecord, type OrderId, type OrderLine, type OrderState, type OrderTotals, type ProductId,
   type SellerId, type ShoppablePostId, type Timestamp,
@@ -45,10 +46,20 @@ type SaveKey = `product:${ProductId}` | `post:${ShoppablePostId}`
  */
 type Intent = { screen: Screen; tab?: TabKey; channel?: Channel; then?: 'checkout' | 'report' | 'save' | 'hide'; save?: SaveKey; hide?: ShoppablePostId }
 /**
- * A sheet over Home, a Scene or a Product Post: the selected Scene's Reviews (PR-004) or More, or Share, about the
- * selected Scene or a Product Post when one is given. A Scene's Products are explored in Explore the Scene.
+ * A sheet over Home, a Scene or a Product: the selected Scene's Reviews (PR-005: opened on `product`'s tab when Explore
+ * the Scene has it selected) or More; the selected Product's Reviews or More; or Share, about the selected Scene or a
+ * Product when one is given. A Scene's Products are explored in Explore the Scene.
  */
-type DiscoverySheet = { kind: 'reviews' } | { kind: 'more'; channel?: Channel } | { kind: 'share'; product?: ProductId }
+type DiscoverySheet =
+  | { kind: 'reviews'; product?: ProductId } | { kind: 'more'; channel?: Channel }
+  | { kind: 'product-reviews' } | { kind: 'product-more' } | { kind: 'share'; product?: ProductId }
+/**
+ * A Review written or edited in this session (PR-005), for the entitlement it uses: transient, on top of DEMO_DATA's
+ * Reviews, which never change. Editing replaces it; an entitlement never holds two.
+ */
+type SessionReview = { entitlement: ReviewEntitlement; rating: number; text: string; written: Moment }
+/** A Reviews tab (PR-005): a Product's Product Reviews, or a Seller's Seller Reviews. */
+type ReviewTab = { kind: 'product'; product: ProductId } | { kind: 'seller'; seller: SellerId }
 /** A line of the temporary prototype Cart: transient session state, never a canonical record (rule 3.12). */
 type CartLine = OrderLine
 /**
@@ -267,6 +278,10 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [query, setQuery] = useState('')
   const [addedToCart, setAddedToCart] = useState<{ product: ProductId; options: readonly string[]; quantity: number } | null>(null)
   const [reportOpen, setReportOpen] = useState(false)
+  // What Report reports: the selected Scene, or the selected Product (Product More, PR-005).
+  const [reportKind, setReportKind] = useState<'scene' | 'product'>('scene')
+  // Reviews written or edited in this session (PR-005), by entitlement key.
+  const [myReviews, setMyReviews] = useState<Partial<Record<string, SessionReview>>>({})
   // Seller Stories (PR-003): the Seller whose Stories are open, and the Stories seen in this session (transient).
   const [storySeller, setStorySeller] = useState<SellerId | null>(null)
   const [seenStories, setSeenStories] = useState<readonly StoryId[]>([])
@@ -526,7 +541,24 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const like = (post: ShoppablePostId, from: Intent) => requireSignIn('Sign in to like Scenes', from, () => setLiked(posts => (posts.includes(post) ? posts.filter(id => id !== post) : [...posts, post])))
   // Hide takes the Scene out of every Home channel for this session; Not Interested is For You only.
   const hideScene = (post: ShoppablePostId, from: Intent) => requireSignIn("Sign in to hide content you're not interested in", from, () => { setHiddenScenes(posts => (posts.includes(post) ? posts : [...posts, post])); setToast('Scene hidden for this session') })
-  const report = (post: ShoppablePostId, from: Intent) => { setPostId(post); requireSignIn('Sign in to report this post', { ...from, then: 'report' }, () => setReportOpen(true)) }
+  const report = (post: ShoppablePostId, from: Intent) => { setPostId(post); setReportKind('scene'); requireSignIn('Sign in to report this Scene', { ...from, then: 'report' }, () => setReportOpen(true)) }
+  const reportProduct = () => { setReportKind('product'); requireSignIn('Sign in to report this Product', { screen: 'product', then: 'report' }, () => setReportOpen(true)) }
+  // The Reviews Maya may write now (PR-005): only from her Orders' Review Grants, never from signing in, viewing,
+  // saving or an incomplete Order. A guest has none, and reads Reviews without any writing controls.
+  const entitlements = signedIn ? reviewEntitlementsAt(BUYER, at) : []
+  const writeReview = (entitlement: ReviewEntitlement, rating: number, text: string) => {
+    const key = entitlementKey(entitlement)
+    const edit = Boolean(entitlement.review || myReviews[key])
+    // A Review DEMO_DATA records for this Order but not yet written (REV-1003, Flow I): writing it is that documented
+    // event, so the story moves to it and the canonical Review becomes the one this edits.
+    const canonical = REVIEW_IDS.find(id => REVIEWS[id].order === entitlement.order)
+    const when = canonical && REVIEWS[canonical].written
+    if (!entitlement.review && when && typeof when !== 'string') advanceTo(when)
+    setMyReviews(reviews => ({ ...reviews, [key]: { entitlement, rating, text, written: reviews[key]?.written ?? at } }))
+    setToast(edit ? 'Review updated' : 'Review posted')
+  }
+  // Reporting a Review needs an account, as reporting a Scene does; a guest is asked to sign in first.
+  const signInToReportReview = () => { setDiscoverySheet(null); requireSignIn('Sign in to report a review', { screen }, () => {}) }
   const area = chosenArea ?? (signedIn ? BUYERS[BUYER].discoveryArea ?? null : null)
   useEffect(() => {
     if (!toast) return
@@ -627,6 +659,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onBack={() => setScreen(postFrom)}
             onSeller={() => openSeller(SHOPPABLE_POSTS[postId].seller)}
             onMore={() => setDiscoverySheet({ kind: 'more' })}
+            onReviews={() => setDiscoverySheet({ kind: 'reviews', product: sceneProduct ?? undefined })}
             onView={openProduct}
           />
         )}
@@ -640,10 +673,13 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onShare={() => setDiscoverySheet({ kind: 'share', product: productId })}
             onBack={() => setScreen(productFrom)}
             onSeller={() => openSeller(PRODUCTS[productId].seller)}
-            onAddToCart={(options, quantity) => { addToCart({ product: productId, options, quantity }); setAddedToCart({ product: productId, options, quantity }) }}
-            // Only a Seller with a chatbot has one to ask; otherwise Chat opens the conversation with the Seller, its
-            // composer on this Product Post (WO-005). A guest signs in first and then arrives there.
-            onChat={() => {
+            onReviews={() => setDiscoverySheet({ kind: 'product-reviews' })}
+            onMore={() => setDiscoverySheet({ kind: 'product-more' })}
+            // Order enters the existing ordering flow: the chosen variant goes to the Seller's Cart, then Checkout (PR-005).
+            onOrder={(options, quantity) => { addToCart({ product: productId, options, quantity }); setAddedToCart({ product: productId, options, quantity }) }}
+            // Ask Seller opens the Buyer's one conversation with the Seller, its composer on this Product (WO-005, PR-005);
+            // a Seller with a chatbot answers there first (Flow L). A guest signs in first and then arrives there.
+            onAskSeller={() => {
               const seller = PRODUCTS[productId].seller
               const next: Screen = CHATBOTS[seller] ? 'chatbot' : 'conversation'
               setChat({ seller, context: { product: productId }, from: 'product' })
@@ -660,6 +696,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             tab={sellerTab}
             onTab={setSellerTab}
             following={follows.includes(sellerId)}
+            sellerReviews={shownReviews({ kind: 'seller', seller: sellerId }, at, myReviews, entitlements)}
             onFollow={() => follow(sellerId, { screen: shown })}
             onMessage={() => {
               setChat({ seller: sellerId, context: GENERAL_CONTEXT, from: shown })
@@ -719,7 +756,17 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'delivery-confirmed' && <DeliveryConfirmed handoff={finalHandoffAt(orderId, at)} at={at} method={handoffMethod} repeat={repeatScan} onContinue={() => setScreen('completed')} />}
         {shown === 'otp' && <OtpFallback handoff={finalHandoffAt(orderId, at)} at={at} onBack={() => setScreen(codeFrom)} onVerify={() => handoffVerified('OTP')} onCompleted={() => setScreen('completed')} />}
         {shown === 'completed' && <CompletedOrder orderId={orderId} at={at} onBack={() => setScreen('orders')} onReview={() => setScreen('review')} onClaim={openClaim} />}
-        {shown === 'review' && <ReviewOrder orderId={orderId} onBack={() => setScreen('completed')} onSubmit={() => { const review = REVIEW_IDS.find(id => REVIEWS[id].order === orderId); if (review) advanceTo(REVIEWS[review].written); setScreen('completed') }} />}
+        {/* Flow I: the Order's Review Grant gives its Product Reviews and Seller Review (PR-005); writing them is the
+            documented review event, so the story moves to it. */}
+        {shown === 'review' && <ReviewOrder orderId={orderId} onBack={() => setScreen('completed')} onSubmit={written => {
+          const review = REVIEW_IDS.find(id => REVIEWS[id].order === orderId)
+          if (review) advanceTo(REVIEWS[review].written)
+          for (const { product, rating, text } of written) {
+            const entitlement = entitlements.find(e => e.order === orderId && (product ? e.kind === 'product' && e.product === product : e.kind === 'seller'))
+            if (entitlement) setMyReviews(reviews => ({ ...reviews, [entitlementKey(entitlement)]: { entitlement, rating, text, written: at } }))
+          }
+          setScreen('completed')
+        }} />}
         {shown === 'claim-start' && <ClaimStart orderId={orderId} issue={claimIssue} setIssue={setClaimIssue} onBack={() => setScreen('order-detail')} onContinue={() => setScreen('claim-form')} />}
         {shown === 'claim-form' && <ClaimForm claimId={claimId} issue={claimIssue} onBack={() => setScreen('claim-start')} onSubmit={() => { if (claimId) advanceTo(claimSubmitted(claimId)); setScreen('claim-status') }} />}
         {shown === 'claim-status' && <ClaimStatus orderId={orderId} claimId={claimId} at={at} onDone={() => setScreen('order-detail')} />}
@@ -733,7 +780,35 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
           <BottomNav items={TABS} active={activeTab} onSelect={k => goTab(k as TabKey)} />
         )}
 
-        {discoverySheet?.kind === 'reviews' && <SceneReviewsSheet postId={postId} at={at} onClose={() => setDiscoverySheet(null)} onProduct={id => { setDiscoverySheet(null); openProduct(id) }} />}
+        {/* Reviews (PR-005): a Product's are its Product Review and Seller Review; a Scene's are one Product Review tab per
+            distinct tagged Product, in tag order, then the Seller Review. */}
+        {(discoverySheet?.kind === 'reviews' || discoverySheet?.kind === 'product-reviews') && (() => {
+          const scene = discoverySheet.kind === 'reviews'
+          const post = SHOPPABLE_POSTS[postId]
+          const product = PRODUCTS[productId]
+          const tabs: ReviewTab[] = scene
+            ? [...sceneReviewProducts(post.tags).map(id => ({ kind: 'product' as const, product: id })), { kind: 'seller', seller: post.seller }]
+            : [{ kind: 'product', product: productId }, { kind: 'seller', seller: product.seller }]
+          const selected = scene ? discoverySheet.product : undefined
+          return (
+            <ReviewsSheet
+              label={`Reviews for ${scene ? post.title : product.name}`}
+              subtitle={scene ? `${post.title} · ${SELLERS[post.seller].name}` : `${product.name} · ${SELLERS[product.seller].name}`}
+              scene={scene}
+              tabs={tabs}
+              initial={Math.max(0, tabs.findIndex(tab => tab.kind === 'product' && tab.product === selected))}
+              at={at}
+              signedIn={signedIn}
+              entitlements={entitlements}
+              mine={myReviews}
+              onWrite={writeReview}
+              onSignInToReport={signInToReportReview}
+              onProduct={openProduct}
+              onClose={() => setDiscoverySheet(null)}
+            />
+          )
+        })()}
+        {discoverySheet?.kind === 'product-more' && <ProductMoreSheet productId={productId} onClose={() => setDiscoverySheet(null)} onReport={() => { setDiscoverySheet(null); reportProduct() }} />}
         {discoverySheet?.kind === 'more' && (
           <MoreSheet
             postId={postId}
@@ -755,7 +830,10 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onCart={() => { setAddedToCart(null); setScreen('seller-cart') }}
           />
         )}
-        {reportOpen && <ReportPostSheet postId={postId} onClose={() => setReportOpen(false)} />}
+        {reportOpen && (reportKind === 'product'
+          ? <ReportSheet title="Report Product" subject={PRODUCTS[productId].name} onClose={() => setReportOpen(false)} />
+          // The moderation case DEMO_DATA records for this Scene's report; a report on another Scene is transient.
+          : <ReportSheet title="Report Scene" subject={SHOPPABLE_POSTS[postId].title} caseId={(Object.keys(MODERATION_CASES) as ModerationId[]).find(id => MODERATION_CASES[id].post === postId)} onClose={() => setReportOpen(false)} />)}
         {shown === 'feed' && storySeller && (() => {
           const group = storyGroupsAt(at).find(g => g.seller === storySeller)
           return group && (
@@ -1103,7 +1181,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
               <Skeleton height={112} radius="var(--radius-xl)" />
             </div>
           )}
-          {channel === 'following' && guest && <ChannelMessage message="Sign in to see posts from Sellers you follow." action="Sign in / Create account" onAction={onSignInFollowing} />}
+          {channel === 'following' && guest && <ChannelMessage message="Sign in to see Scenes from Sellers you follow." action="Sign in / Create account" onAction={onSignInFollowing} />}
           {products && (
             <div className="p-4">
               <p className="mb-3 text-xs text-text-muted">{channel === 'discounts' ? 'Active discounts, the largest first.' : 'Products their Sellers mark as locally made.'}</p>
@@ -1199,7 +1277,7 @@ function NearbyAreas({ area, chosen, onArea }: { area: string | null; chosen: bo
         ))}
       </div>
       <p className="mt-2 text-xs text-text-muted">
-        {area === null ? 'Choose an area to see Shoppable Posts from Sellers near it.' : chosen ? `Sellers near ${area}.` : `Sellers near ${area}, your saved discovery area.`} Your device location isn't used.
+        {area === null ? 'Choose an area to see Scenes from Sellers near it.' : chosen ? `Sellers near ${area}.` : `Sellers near ${area}, your saved discovery area.`} Your device location isn't used.
       </p>
     </div>
   )
@@ -1402,11 +1480,12 @@ const SCENE_MEDIA = 'linear-gradient(160deg, #6B5444 0%, #2E2520 100%)'
  * and every tagged Product below it. The navigation bar gives way to it: about 5% header, 70% media, 25% Products.
  * Hotspots and the list share one selection: choosing either selects the Product in both and shows its preview. Each
  * Product shows its current price and availability; an unavailable one stays listed and clearly labelled, and can't be
- * bought. View Product opens its full Product Post and orders nothing.
+ * bought. View Product opens its full Product and orders nothing. Reviews opens the Scene's Reviews on the selected
+ * Product's tab, or on the first tagged Product's when none is selected (PR-005).
  */
-function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMore, onView }: {
+function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMore, onReviews, onView }: {
   postId: ShoppablePostId; at: Moment; selected: ProductId | null; onSelect: (id: ProductId) => void
-  onBack: () => void; onSeller: () => void; onMore: () => void; onView: (id: ProductId) => void
+  onBack: () => void; onSeller: () => void; onMore: () => void; onReviews: () => void; onView: (id: ProductId) => void
 }) {
   const post = SHOPPABLE_POSTS[postId]
   const seller = SELLERS[post.seller]
@@ -1443,6 +1522,10 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
             </button>
           )
         })}
+        {/* Reviews sits in the media's lower corner, clear of the hotspots, so the header keeps its title (PR-005). */}
+        <button onClick={onReviews} style={ON_PHOTO} className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-2 text-xs font-semibold text-text-primary shadow-lg">
+          <StarIcon /> Reviews
+        </button>
       </div>
       <div className="flex min-h-[156px] flex-[25] flex-col gap-2 border-t border-border px-3 pb-3 pt-2.5">
         {post.tags.length === 0 ? <p className="text-sm text-text-muted">No products are tagged in this Scene.</p> : (
@@ -1503,8 +1586,11 @@ function ScenePreview({ productId, at, onView }: { productId: ProductId | null; 
   )
 }
 
-/** A bottom sheet inside the phone. Escape closes it, as in the sign-in request, and closing returns focus to its opener. */
-function BottomSheet({ title, label, onClose, children }: { title: string; label?: string; onClose: () => void; children: (dismiss: () => void) => ReactNode }) {
+/**
+ * A bottom sheet inside the phone. Escape closes it, as in the sign-in request, and closing returns focus to its opener.
+ * A tall sheet keeps one height and lets its content scroll its own parts.
+ */
+function BottomSheet({ title, label, tall, onClose, children }: { title: string; label?: string; tall?: boolean; onClose: () => void; children: (dismiss: () => void) => ReactNode }) {
   const titleId = useId()
   const [trigger] = useState(() => document.activeElement)
   const dismiss = () => {
@@ -1518,9 +1604,9 @@ function BottomSheet({ title, label, onClose, children }: { title: string; label
   })
   return (
     <div onClick={dismiss} className="absolute inset-0 z-50 flex flex-col justify-end bg-black/45" role="presentation">
-      <div onClick={e => e.stopPropagation()} className="max-h-[85%] overflow-y-auto rounded-t-3xl bg-surface px-5 pb-7 pt-3 shadow-xl" role="dialog" aria-modal="true" aria-label={label} aria-labelledby={label ? undefined : titleId}>
-        <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-border-strong" />
-        <div className="mb-3 flex items-center justify-between gap-3">
+      <div onClick={e => e.stopPropagation()} className={`${tall ? 'flex h-[85%] flex-col' : 'max-h-[85%] overflow-y-auto'} rounded-t-3xl bg-surface px-5 pb-7 pt-3 shadow-xl`} role="dialog" aria-modal="true" aria-label={label} aria-labelledby={label ? undefined : titleId}>
+        <div className="mx-auto mb-4 h-1 w-9 flex-shrink-0 rounded-full bg-border-strong" />
+        <div className="mb-3 flex flex-shrink-0 items-center justify-between gap-3">
           <div id={titleId} className="font-display text-lg font-semibold">{title}</div>
           <IconButton label="Close" onClick={dismiss}>×</IconButton>
         </div>
@@ -1530,36 +1616,283 @@ function BottomSheet({ title, label, onClose, children }: { title: string; label
   )
 }
 
+/** An entitlement's key among this session's Reviews: one Review per type, qualifying Order and Product or Seller. */
+const entitlementKey = (e: ReviewEntitlement) => `${e.kind}:${e.order}:${e.kind === 'product' ? e.product : e.seller}`
+const tabTakes = (tab: ReviewTab, e: ReviewEntitlement) => (tab.kind === 'product' ? e.kind === 'product' && e.product === tab.product : e.kind === 'seller' && e.seller === tab.seller)
+
+/** A Review as a Reviews tab shows it: DEMO_DATA's, with this session's edit on top, or one written in this session. */
+type ShownReview = {
+  key: string; buyer: BuyerId; rating: number; text: string; written: CalendarDate | Moment; variant?: string; products?: readonly ProductId[]
+  edited: boolean
+  /** The signed-in Buyer's entitlement behind it, when it's hers: she edits it, and doesn't report it. */
+  own?: ReviewEntitlement
+}
+
+/** A tab's Reviews, newest first: this session's new ones, then DEMO_DATA's (with any edit). Everyone sees them all. */
+function shownReviews(tab: ReviewTab, at: Moment, mine: Partial<Record<string, SessionReview>>, entitlements: readonly ReviewEntitlement[]): ShownReview[] {
+  const canonical = tab.kind === 'product' ? productReviewsAt(tab.product, at) : sellerReviewsAt(tab.seller, at)
+  const session = Object.values(mine).filter((r): r is SessionReview => r !== undefined && tabTakes(tab, r.entitlement))
+  const own = (order: OrderId) => entitlements.find(e => e.order === order && tabTakes(tab, e))
+  const fresh = session.filter(r => !canonical.some(entry => entry.order === r.entitlement.order)).map(r => {
+    const e = r.entitlement
+    const line = e.kind === 'product' ? ORDERS[e.order].lines.find(l => l.product === e.product) : undefined
+    const products = e.kind === 'seller' ? [...new Set(ORDERS[e.order].lines.map(l => l.product))] : undefined
+    return { key: entitlementKey(e), buyer: ORDERS[e.order].buyer, rating: r.rating, text: r.text, written: r.written, variant: line && lineOptions(line), products, edited: false, own: own(e.order) }
+  })
+  const written = canonical.map(entry => {
+    const edit = session.find(r => r.entitlement.order === entry.order)
+    return { key: entry.review, buyer: entry.buyer, rating: edit ? edit.rating : entry.rating, text: edit?.text || entry.text, written: entry.written, variant: entry.variant, products: entry.products, edited: Boolean(edit), own: own(entry.order) }
+  })
+  return [...fresh, ...written]
+}
+
 /**
- * A Scene's Reviews (PR-004): the entry to the Scene review experience, which PR-005 completes. For now it shows the
- * Product Quality of each Product tagged in the Scene and its latest review, read-only. Scenes have no comments.
+ * Reviews (PR-005; Engagement System & Metrics Knowledge Base v1.0). From a Product: exactly two tabs, Product Review
+ * (the default) and Seller Review. From a Scene: one Product Review tab per distinct tagged Product, in tag order, then
+ * Seller Review; it opens on the first Product, or on the one selected in Explore the Scene. The tabs scroll sideways on
+ * a phone and never wrap. Everyone reads every Review, purchase or not. Only a Buyer whose Review Grant covers the
+ * Product or Seller sees Write Review; nobody else sees any writing control. Product Quality and Seller Service stay
+ * separate ratings, and Scene Likes touch neither. No comments or discussion.
  */
-function SceneReviewsSheet({ postId, at, onClose, onProduct }: { postId: ShoppablePostId; at: Moment; onClose: () => void; onProduct: (id: ProductId) => void }) {
-  const post = SHOPPABLE_POSTS[postId]
+function ReviewsSheet({ label, subtitle, scene, tabs, initial, at, signedIn, entitlements, mine, onWrite, onSignInToReport, onProduct, onClose }: {
+  label: string; subtitle: string; scene: boolean; tabs: readonly ReviewTab[]; initial: number; at: Moment
+  signedIn: boolean; entitlements: readonly ReviewEntitlement[]; mine: Partial<Record<string, SessionReview>>
+  onWrite: (entitlement: ReviewEntitlement, rating: number, text: string) => void; onSignInToReport: () => void
+  onProduct: (id: ProductId) => void; onClose: () => void
+}) {
+  const [index, setIndex] = useState(initial)
+  // The form over the tabs, if any: writing or editing a Review, or reporting one.
+  const [composer, setComposer] = useState<ReviewEntitlement | null>(null)
+  const [reporting, setReporting] = useState<string | null>(null)
+  const [reported, setReported] = useState<readonly string[]>([])
+  const list = useRef<HTMLDivElement>(null)
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const id = useId()
+  const tab = tabs[index]
+  // Keep the selected tab in view, as Home's channels do: from Explore the Scene it may be the third Product.
+  useEffect(() => {
+    const bar = list.current, el = tabRefs.current[index]
+    if (!bar || !el) return
+    const left = index === 0 ? 0 : el.offsetLeft - 16
+    const right = index === tabs.length - 1 ? bar.scrollWidth : el.offsetLeft + el.offsetWidth + 16
+    if (left < bar.scrollLeft) bar.scrollLeft = left
+    else if (right > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = right - bar.clientWidth
+  }, [index, composer, reporting, tabs.length])
+  const move = (to: number) => { const next = (to + tabs.length) % tabs.length; setIndex(next); tabRefs.current[next]?.focus() }
+  const reviews = shownReviews(tab, at, mine, entitlements)
+  // The next entitlement still unused for this tab: one Review per Buyer, Product or Seller, and qualifying Order.
+  const next = entitlements.find(e => tabTakes(tab, e) && !e.review && !mine[entitlementKey(e)])
+  const report = (key: string) => (signedIn ? setReporting(key) : onSignInToReport())
   return (
-    <BottomSheet title="Reviews" label={`Reviews for ${post.title}`} onClose={onClose}>
-      {() => (post.tags.length === 0
-        ? <p className="text-sm text-text-muted">No products are tagged in this Scene, so it has no Product reviews.</p>
-        : (
-          <>
-            <p className="-mt-1 mb-3 text-xs text-text-muted">Reviews of the products in {post.title}</p>
-            <div role="list" aria-label="Reviews of the products in this Scene" className="flex flex-col gap-2">
-              {post.tags.map(id => {
-                const quality = productQualityAt(id, at)
-                const latest = reviewsAt({ product: id }, at)[0]
-                return (
-                  <div key={id} role="listitem">
-                    <button onClick={() => onProduct(id)} disabled={!isBuyerVisibleAt(id, at)} className="w-full rounded-xl bg-surface-raised p-3 text-left text-sm">
-                      <span className="block font-semibold text-text-primary">{PRODUCTS[id].name}</span>
-                      <span className="block text-xs text-text-muted">Product Quality · {quality ? `${quality.average} (${quality.ratings})` : quality === null ? 'No ratings yet' : '—'}</span>
-                      {latest && <span className="mt-1 block leading-relaxed text-text-secondary">“{REVIEWS[latest].text}”</span>}
-                    </button>
-                  </div>
-                )
-              })}
+    <BottomSheet title="Reviews" label={label} tall onClose={onClose}>
+      {() => composer ? (
+        <ReviewComposer
+          entitlement={composer}
+          existing={mine[entitlementKey(composer)] ?? (composer.review ? { rating: composer.kind === 'product' ? REVIEWS[composer.review].productQuality.find(q => q.product === composer.product)!.rating : REVIEWS[composer.review].sellerService, text: REVIEWS[composer.review].text } : undefined)}
+          onCancel={() => setComposer(null)}
+          onSubmit={(rating, text) => { onWrite(composer, rating, text); setComposer(null) }}
+        />
+      ) : reporting ? (
+        <ReviewReport onCancel={() => setReporting(null)} onDone={() => { setReported(keys => [...keys, reporting]); setReporting(null) }} />
+      ) : (
+        <>
+          <p className="-mt-2 mb-2 flex-shrink-0 truncate text-xs text-text-muted">{subtitle}</p>
+          <div className="relative -mx-5 flex-shrink-0 border-b border-border">
+            <div ref={list} role="tablist" aria-label="Review types" className="flex overflow-x-auto px-3">
+              {tabs.map((t, i) => (
+                <button
+                  key={t.kind === 'product' ? t.product : 'seller'}
+                  ref={el => { tabRefs.current[i] = el }}
+                  id={`${id}-tab-${i}`}
+                  role="tab"
+                  aria-selected={i === index}
+                  aria-controls={`${id}-panel`}
+                  tabIndex={i === index ? 0 : -1}
+                  style={INSET_FOCUS}
+                  onClick={() => setIndex(i)}
+                  onKeyDown={event => {
+                    const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[event.key]
+                    if (to === undefined) return
+                    event.preventDefault()
+                    move(to)
+                  }}
+                  className={`flex-shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm ${i === index ? 'border-brand font-semibold text-text-primary' : 'border-transparent text-text-muted'}`}
+                >
+                  {t.kind === 'seller' ? 'Seller Review' : scene ? PRODUCTS[t.product].name : 'Product Review'}
+                </button>
+              ))}
             </div>
-          </>
-        ))}
+          </div>
+          <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${index}`} className="-mx-5 min-h-0 flex-1 overflow-y-auto px-5 pt-4">
+            {tab.kind === 'product' ? <ProductQualitySummary productId={tab.product} at={at} onView={scene ? onProduct : undefined} /> : <SellerServiceSummary sellerId={tab.seller} at={at} />}
+            {next && (
+              <div className="mt-3">
+                <Button size="lg" onClick={() => setComposer(next)} style={{ width: '100%' }}>Write Review</Button>
+                <p className="mt-1.5 text-center text-xs text-text-muted">From your completed Order {next.order}</p>
+              </div>
+            )}
+            <div role="list" aria-label={tab.kind === 'product' ? 'Product Reviews' : 'Seller Reviews'} className="mt-1">
+              {reviews.map(review => (
+                <ReviewCard
+                  key={review.key}
+                  review={review}
+                  kind={tab.kind}
+                  reported={reported.includes(review.key)}
+                  onEdit={review.own ? () => setComposer(review.own!) : undefined}
+                  onReport={() => report(review.key)}
+                />
+              ))}
+            </div>
+            {reviews.length === 0 && (
+              <div className="py-6 text-center">
+                <div className="text-sm font-semibold text-text-primary">{tab.kind === 'product' ? 'No reviews for this Product yet' : 'No Seller Reviews yet'}</div>
+                <p className="mt-1 text-xs text-text-muted">Reviews come from Buyers with a verified completed purchase.</p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </BottomSheet>
+  )
+}
+
+/** A Product Review tab's Product Quality: the Product's own rating, never blended with its Seller's. */
+function ProductQualitySummary({ productId, at, onView }: { productId: ProductId; at: Moment; onView?: (id: ProductId) => void }) {
+  const quality = productQualityAt(productId, at)
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-surface-raised p-3">
+      <div className="min-w-0 flex-1">
+        {onView && <div className="truncate text-sm font-semibold text-text-primary">{PRODUCTS[productId].name}</div>}
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Product Quality</div>
+        <div className="flex items-center gap-2">
+          <span className="font-display text-2xl font-semibold">{quality ? quality.average : '—'}</span>
+          {quality && <Stars rating={Math.round(quality.average)} label={`Product Quality ${quality.average} out of 5`} />}
+        </div>
+        <div className="text-xs text-text-muted">{quality ? `${quality.ratings} verified buyer ratings` : quality === null ? 'No ratings yet' : '—'}</div>
+      </div>
+      {onView && <Button size="sm" variant="tertiary" disabled={!isBuyerVisibleAt(productId, at)} onClick={() => onView(productId)}>View Product</Button>}
+    </div>
+  )
+}
+
+/** The Seller Review tab's Seller Service: the Seller's own rating, from all its Orders' Reviews. */
+function SellerServiceSummary({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+  const service = sellerServiceAt(sellerId, at)
+  return (
+    <div className="rounded-xl bg-surface-raised p-3">
+      <div className="truncate text-sm font-semibold text-text-primary">{SELLERS[sellerId].name}</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Seller Service</div>
+      <div className="flex items-center gap-2">
+        <span className="font-display text-2xl font-semibold">{service ? service.average : '—'}</span>
+        {service && <Stars rating={Math.round(service.average)} label={`Seller Service ${service.average} out of 5`} />}
+      </div>
+      <div className="text-xs text-text-muted">{service ? `${service.ratings} verified buyer ratings` : '—'}</div>
+      <p className="mt-2 text-xs leading-relaxed text-text-secondary">About the Seller's service: communication, Order handling, the accuracy of the Seller's information, and fulfilment and Handoff.</p>
+    </div>
+  )
+}
+
+/**
+ * One Review in a Reviews tab: the reviewer, the tab's rating, the date, Verified Purchase (every Review comes from a
+ * verified completed Order), the purchased variant or Products, and the text. The Buyer edits her own; anyone else's
+ * can be reported. Nobody edits or removes another Buyer's Review, the Seller included.
+ */
+function ReviewCard({ review, kind, reported, onEdit, onReport }: { review: ShownReview; kind: ReviewTab['kind']; reported?: boolean; onEdit?: () => void; onReport?: () => void }) {
+  const when = typeof review.written === 'string' ? review.written : review.written.at
+  const name = shortName(BUYERS[review.buyer].name)
+  return (
+    <div role="listitem" aria-label={`Review by ${name}`} className="border-b border-border py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{name}{review.own && <span className="font-normal text-text-muted"> · You</span>}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Stars rating={review.rating} label={`${kind === 'product' ? 'Product Quality' : 'Seller Service'} ${review.rating} out of 5`} />
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success"><CheckIconSmall /> Verified Purchase</span>
+          </div>
+        </div>
+        <span className="flex-shrink-0 text-xs text-text-muted">{formatDate(when)}{review.edited ? ' · Edited' : ''}</span>
+      </div>
+      {kind === 'product' && review.variant && <div className="mt-1 text-xs text-text-muted">Purchased: {review.variant}</div>}
+      {kind === 'seller' && review.products && <div className="mt-1 text-xs text-text-muted">Bought {review.products.map(p => PRODUCTS[p].name).join(' · ')}</div>}
+      {review.text && <p className="mt-2 text-sm leading-relaxed text-text-secondary">{review.text}</p>}
+      {(onEdit || onReport) && (
+        <div className="mt-1 flex justify-end text-xs">
+          {onEdit ? <button onClick={onEdit} className="font-semibold text-brand">Edit your review</button>
+            : reported ? <span className="py-1 text-text-muted">Reported</span>
+            : <button onClick={onReport} aria-label={`Report review by ${name}`} className="font-semibold text-text-muted">Report</button>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Writing or editing one Review (PR-005): a Product Review rates Product Quality, a Seller Review Seller Service, each with
+ * its own text. Editing changes that Review; it never adds a second one for the same purchase.
+ */
+function ReviewComposer({ entitlement, existing, onCancel, onSubmit }: {
+  entitlement: ReviewEntitlement; existing?: { rating: number; text: string }; onCancel: () => void; onSubmit: (rating: number, text: string) => void
+}) {
+  const [rating, setRating] = useState(existing?.rating ?? 0)
+  const [text, setText] = useState(existing?.text ?? '')
+  const product = entitlement.kind === 'product' ? entitlement.product : undefined
+  const line = product && ORDERS[entitlement.order].lines.find(l => l.product === product)
+  const type = product ? 'Product Review' : 'Seller Review'
+  return (
+    <div className="-mx-5 min-h-0 flex-1 overflow-y-auto px-5">
+      <div className="font-display text-xl font-semibold">{existing ? `Edit your ${type}` : `Write a ${type}`}</div>
+      <p className="mt-1 text-xs text-text-muted">{product ? PRODUCTS[product].name : SELLERS[entitlement.seller].name} · Order {entitlement.order}{line ? ` · ${lineOptions(line)}` : ''} · Verified Purchase</p>
+      {product
+        ? <RatingField label="Product Quality" description="Materials, workmanship and description accuracy" value={rating} onChange={setRating} />
+        : <RatingField label="Seller Service" description="Communication, Order handling, information accuracy and fulfilment" value={rating} onChange={setRating} />}
+      <div className="mt-6"><Textarea label={`Your ${type}`} value={text} onChange={e => setText(e.target.value)} rows={4} /></div>
+      <div className="mt-5 flex gap-2">
+        <Button variant="tertiary" onClick={onCancel}>Cancel</Button>
+        <Button disabled={!rating} onClick={() => onSubmit(rating, text.trim())} style={{ flex: 1 }}>{existing ? 'Save changes' : 'Post review'}</Button>
+      </div>
+      <p className="mt-3 text-xs text-text-muted">{existing ? 'Saving updates this Review; it never adds a second one.' : 'One Review per purchase; you can edit it later.'} Prototype: kept for this session only.</p>
+    </div>
+  )
+}
+
+// Reasons to report a Review: the prototype report categories (specification §7) that fit a Review.
+const REVIEW_REPORT_REASONS = REPORT_CATEGORIES.filter(reason => ['Spam or scam', 'Inappropriate or abusive content', 'Other'].includes(reason))
+
+/** Report Review (PR-005): a utility, never a way for a Seller to edit or remove a Review. */
+function ReviewReport({ onCancel, onDone }: { onCancel: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState('')
+  const [sent, setSent] = useState(false)
+  if (sent) return (
+    <div className="py-5 text-center">
+      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success-bg text-success"><CheckIcon /></span>
+      <div className="mt-4 font-display text-xl font-semibold">Report submitted</div>
+      <p className="mt-1 text-sm text-text-muted">Adulis reviews reported Reviews. Sellers can't edit or remove Buyer Reviews.</p>
+      <Button variant="tertiary" autoFocus onClick={onDone} style={{ marginTop: 16 }}>Back to Reviews</Button>
+    </div>
+  )
+  return (
+    <div className="-mx-5 min-h-0 flex-1 overflow-y-auto px-5">
+      <div className="font-display text-xl font-semibold">Report Review</div>
+      <p className="mt-1 text-xs text-text-muted">Select the reason that best describes the issue.</p>
+      <div className="mt-4 flex flex-col gap-2">{REVIEW_REPORT_REASONS.map(value => <button key={value} onClick={() => setReason(value)} aria-pressed={reason === value} className={`rounded-xl border p-3 text-left text-sm font-semibold ${reason === value ? 'border-brand bg-brand-muted' : 'border-border'}`}>{value}</button>)}</div>
+      <div className="mt-4 flex gap-2">
+        <Button variant="tertiary" onClick={onCancel}>Cancel</Button>
+        <Button disabled={!reason} onClick={() => setSent(true)} style={{ flex: 1 }}>Submit Report</Button>
+      </div>
+    </div>
+  )
+}
+
+/** A Product's More (PR-005): its utility actions. Report Product; no social actions. */
+function ProductMoreSheet({ productId, onClose, onReport }: { productId: ProductId; onClose: () => void; onReport: () => void }) {
+  return (
+    <BottomSheet title="More options" onClose={onClose}>
+      {() => (
+        <>
+          <p className="-mt-1 mb-3 text-xs text-text-muted">{PRODUCTS[productId].name}</p>
+          <Button size="lg" variant="tertiary" autoFocus onClick={onReport} style={{ width: '100%' }}>Report Product</Button>
+        </>
+      )}
     </BottomSheet>
   )
 }
@@ -1616,11 +1949,16 @@ function Toast({ message }: { message: string | null }) {
   )
 }
 
-function ProductDetail({ productId, at, withdrawn, onBack, onSeller, saved, onSave, onShare, onAddToCart, onChat }: {
+/**
+ * A Product (PR-005): Save (this Product only), Share, Reviews, Ask Seller, Order and More. No Like, comments or reposts.
+ * Order enters the existing ordering flow, so an unavailable Product can't be ordered.
+ */
+function ProductDetail({ productId, at, withdrawn, onBack, onSeller, saved, onSave, onShare, onReviews, onMore, onOrder, onAskSeller }: {
   productId: ProductId; at: Moment
   /** The Checkout test run's availability race made it unavailable (WO-006 requirement 24): in that run only. */
   withdrawn?: boolean
-  onBack: () => void; onSeller: () => void; saved: boolean; onSave: () => void; onShare: () => void; onAddToCart: (options: readonly string[], quantity: number) => void; onChat: () => void
+  onBack: () => void; onSeller: () => void; saved: boolean; onSave: () => void; onShare: () => void; onReviews: () => void; onMore: () => void
+  onOrder: (options: readonly string[], quantity: number) => void; onAskSeller: () => void
 }) {
   const product = PRODUCTS[productId]
   // A Product that is out of stock stays viewable, but nothing offers it for purchase (rule 1.8; DEMO_DATA › Shoppable Posts).
@@ -1635,7 +1973,7 @@ function ProductDetail({ productId, at, withdrawn, onBack, onSeller, saved, onSa
   const [quantity, setQuantity] = useState(1)
   return (
     <>
-      <Header title="Product" onBack={onBack} trailing={<IconButton label="Share" onClick={onShare}>↗</IconButton>} />
+      <Header title="Product" onBack={onBack} trailing={<><IconButton label="Share" onClick={onShare}>↗</IconButton><IconButton label="More options" onClick={onMore}>•••</IconButton></>} />
       <div className="flex-1 overflow-y-auto pb-24">
         <div className="relative">
           <Placeholder label={product.name} className="h-80 w-full text-5xl" />
@@ -1668,13 +2006,21 @@ function ProductDetail({ productId, at, withdrawn, onBack, onSeller, saved, onSa
           <InfoBlock title="Description">{product.description ?? '—'}</InfoBlock>
           <InfoBlock title="Specifications">{product.attributes.join(' · ') || '—'}</InfoBlock>
           <InfoBlock title="Fulfilment">{describeFulfilment(fulfilmentOptionsAt(product.seller, at))}</InfoBlock>
-          <InfoBlock title={`Reviews · ${quality ? `${quality.average} (${quality.ratings})` : quality === null ? 'No ratings yet' : '—'}`}>{latestReview ? <>“{REVIEWS[latestReview].text}” — {shortName(BUYERS[ORDERS[REVIEWS[latestReview].order].buyer].name)}</> : '—'}</InfoBlock>
+          {/* Reviews: the Product's Product Quality and its Seller's Seller Service, kept apart; it opens both tabs. */}
+          <button onClick={onReviews} className="flex w-full items-center gap-3 border-b border-border py-5 text-left">
+            <span className="min-w-0 flex-1">
+              <span className="mb-2 block font-display text-lg font-semibold">Reviews</span>
+              <span className="block text-sm text-text-secondary">Product Quality {quality ? `${quality.average} (${quality.ratings})` : quality === null ? 'No ratings yet' : '—'} · Seller Service {service ? `${service.average} (${service.ratings})` : '—'}</span>
+              {latestReview && <span className="mt-1 block text-sm leading-relaxed text-text-secondary">“{REVIEWS[latestReview].text}” — {shortName(BUYERS[ORDERS[REVIEWS[latestReview].order].buyer].name)}</span>}
+            </span>
+            <IconChevronRight size={16} />
+          </button>
         </div>
       </div>
       <div className="absolute bottom-0 left-0 right-0 flex gap-2 border-t border-border bg-surface p-3 pb-5">
-        <Button variant="tertiary" size="lg" onClick={onSave}>{saved ? 'Saved' : 'Save'}</Button>
-        <Button variant="tertiary" size="lg" onClick={onChat}>Chat</Button>
-        <Button size="lg" style={{ flex: 1 }} disabled={!purchasable} onClick={() => onAddToCart(choices, quantity)}>Add to Cart</Button>
+        <Button variant="tertiary" size="lg" aria-pressed={saved} onClick={onSave}>{saved ? 'Saved' : 'Save'}</Button>
+        <Button variant="tertiary" size="lg" onClick={onAskSeller}>Ask Seller</Button>
+        <Button size="lg" style={{ flex: 1 }} disabled={!purchasable} onClick={() => onOrder(choices, quantity)}>Order</Button>
       </div>
     </>
   )
@@ -1688,10 +2034,12 @@ const SELLER_TABS: { key: SellerTab; label: string }[] = [
 
 /** The Seller profile (PR-002): the same Seller identity as its public Storefront, from the same records: its public
  * Scenes, its Products, its Seller Reviews and its About facts. */
-function SellerProfile({ sellerId, at, following, tab, onTab, onFollow, onMessage, onBack, onSearch, onPost, onProduct }: {
+function SellerProfile({ sellerId, at, following, sellerReviews, tab, onTab, onFollow, onMessage, onBack, onSearch, onPost, onProduct }: {
   sellerId: SellerId; at: Moment; tab: SellerTab; onTab: (tab: SellerTab) => void
   /** Whether Maya follows this Seller: the app's one follow state (PR-004). A guest follows no one. */
   following: boolean
+  /** Its Seller Reviews as every Reviews view in the app shows them, this session's included (PR-005). */
+  sellerReviews: readonly ShownReview[]
   onFollow: () => void; onMessage: () => void; onBack: () => void; onSearch: () => void
   onPost: (id: ShoppablePostId) => void; onProduct: (id: ProductId) => void
 }) {
@@ -1733,7 +2081,7 @@ function SellerProfile({ sellerId, at, following, tab, onTab, onFollow, onMessag
         <div role="tabpanel" aria-label={SELLER_TABS.find(t => t.key === tab)?.label} className="p-4">
           {tab === 'scenes' && <SellerScenes scenes={scenes} onPost={onPost} />}
           {tab === 'products' && <SellerProducts products={products} onProduct={onProduct} />}
-          {tab === 'reviews' && <SellerReviews sellerId={sellerId} at={at} />}
+          {tab === 'reviews' && <SellerReviews sellerId={sellerId} at={at} reviews={sellerReviews} />}
           {tab === 'about' && <SellerAbout sellerId={sellerId} at={at} />}
         </div>
       </div>
@@ -1783,9 +2131,9 @@ function SellerProducts({ products, onProduct }: { products: readonly ProductId[
   )
 }
 
-// The Seller profile's Reviews are Seller Reviews: the Seller Service aggregate and the reviews of this Seller's Orders.
-// Product Quality belongs to each Product (PR-002).
-function SellerReviews({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+// The Seller profile's Reviews are Seller Reviews: the Seller Service aggregate and the reviews of this Seller's Orders,
+// whatever was bought. Product Quality belongs to each Product (PR-002; PR-005).
+function SellerReviews({ sellerId, at, reviews }: { sellerId: SellerId; at: Moment; reviews: readonly ShownReview[] }) {
   const service = sellerServiceAt(sellerId, at)
   return (
     <>
@@ -1796,23 +2144,7 @@ function SellerReviews({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
         {service && <Stars rating={Math.round(service.average)} label={`Seller Service ${service.average} out of 5`} />}
         <div className="mt-1 text-xs text-text-muted">{service ? service.ratings : '—'} verified buyer ratings</div>
       </div>
-      {reviewsAt({ seller: sellerId }, at).map(id => {
-        const review = REVIEWS[id]
-        const written = typeof review.written === 'string' ? review.written : review.written.at
-        return (
-          <div key={id} className="border-b border-border py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">{shortName(BUYERS[ORDERS[review.order].buyer].name)}</div>
-                <div className="text-xs text-text-muted">Bought {review.productQuality.map(q => PRODUCTS[q.product].name).join(' · ')}</div>
-              </div>
-              <span className="flex-shrink-0 text-xs text-text-muted">{formatMonthShortYear(written)}</span>
-            </div>
-            <div className="mt-2 flex items-center gap-2"><span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Seller Service</span><Stars rating={review.sellerService} label={`Seller Service ${review.sellerService} out of 5`} /></div>
-            <p className="mt-2 text-sm leading-relaxed text-text-secondary">{review.text}</p>
-          </div>
-        )
-      })}
+      <div role="list" aria-label="Seller Reviews">{reviews.map(review => <ReviewCard key={review.key} review={review} kind="seller" />)}</div>
       <p className="mt-4 text-xs text-text-muted">Product Quality ratings are shown on each Product.</p>
     </>
   )
@@ -1881,14 +2213,14 @@ function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, o
           value={query}
           onChange={e => setQuery(e.target.value)}
           onClear={() => setQuery('')}
-          placeholder="Search products, posts, sellers"
+          placeholder="Search Products, Scenes, Sellers"
         />
       </div>
       {!active ? <SearchLanding recent={recent} onQuery={setQuery} /> : zero ? <ZeroSearch query={query} onClear={() => setQuery('')} /> : (
         <>
           <div className="flex border-b border-border bg-surface">
             {(['top', 'products', 'posts', 'sellers'] as SearchTab[]).map(t => (
-              <button key={t} onClick={() => setTab(t)} className={`flex-1 py-3 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-brand text-brand' : 'text-text-muted'}`}>{t}</button>
+              <button key={t} onClick={() => setTab(t)} className={`flex-1 py-3 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-brand text-brand' : 'text-text-muted'}`}>{t === 'posts' ? 'Scenes' : t}</button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-4">
@@ -1934,7 +2266,7 @@ function TopResults({ at, onProduct, onPost, onSeller }: { at: Moment; onProduct
   return (
     <div>
       <ResultHeading title="Products" count={String(products.length)} /><ProductRow productId={first} onClick={() => onProduct(first)} />
-      <ResultHeading title="Posts" count={String(posts.length)} /><PostRow postId={posts[0]} onClick={() => onPost(posts[0])} />
+      <ResultHeading title="Scenes" count={String(posts.length)} /><PostRow postId={posts[0]} onClick={() => onPost(posts[0])} />
       <ResultHeading title="Sellers" count={String(sellers.length)} /><SellerRow sellerId={sellers[0]} at={at} onClick={() => onSeller(sellers[0])} />
     </div>
   )
@@ -1999,14 +2331,14 @@ function Saved({ changes, onCollection, onProduct, onPost }: { changes: Partial<
                 <Placeholder label={tiles[0]} className="h-full w-full text-2xl" />
                 <div className="grid gap-1"><Placeholder label={tiles[1]} className="h-full min-h-0 w-full" /><Placeholder label={tiles[2]} className="h-full min-h-0 w-full" /></div>
               </div>
-              <div className="mt-3 flex items-center justify-between"><span><span className="block font-semibold">{COLLECTIONS[id].name}</span><span className="text-xs text-text-muted">{products.length} Product Post{products.length === 1 ? '' : 's'} · {posts.length} Shoppable Post{posts.length === 1 ? '' : 's'}</span></span><IconChevronRight size={16} /></div>
+              <div className="mt-3 flex items-center justify-between"><span><span className="block font-semibold">{COLLECTIONS[id].name}</span><span className="text-xs text-text-muted">{products.length} Product{products.length === 1 ? '' : 's'} · {posts.length} Scene{posts.length === 1 ? '' : 's'}</span></span><IconChevronRight size={16} /></div>
             </button>
           )
         })}
         <SectionLabel>Recently saved</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
           {recentProduct && <ProductCard name={PRODUCTS[recentProduct].name} price={PRODUCTS[recentProduct].availability === 'Out of Stock' ? availabilityText(recentProduct) : <InlinePrice productId={recentProduct} />} onClick={() => onProduct(recentProduct)} />}
-          {recentPost && <PostTile title={SHOPPABLE_POSTS[recentPost].title} onClick={() => onPost(recentPost)} label="Shoppable post" />}
+          {recentPost && <PostTile title={SHOPPABLE_POSTS[recentPost].title} onClick={() => onPost(recentPost)} label="Scene" />}
         </div>
       </div>
     </>
@@ -2021,12 +2353,12 @@ function Collection({ collectionId, changes, onBack, onProduct, onPost }: { coll
       <Header title={COLLECTIONS[collectionId].name} onBack={onBack} trailing={<IconButton label="More">•••</IconButton>} />
       <div className="flex-1 overflow-y-auto p-4">
         <div className="text-sm text-text-muted">A private collection · {total} saved item{total === 1 ? '' : 's'}</div>
-        <div className="mt-4 flex gap-2"><Choice active>All {total}</Choice><Choice>Product Posts {products.length}</Choice><Choice>Shoppable Posts {posts.length}</Choice></div>
-        <SectionLabel>Product Posts</SectionLabel>
+        <div className="mt-4 flex gap-2"><Choice active>All {total}</Choice><Choice>Products {products.length}</Choice><Choice>Scenes {posts.length}</Choice></div>
+        <SectionLabel>Products</SectionLabel>
         <div className="grid grid-cols-2 gap-2">{products.map(id => <ProductCard key={id} name={PRODUCTS[id].name} price={PRODUCTS[id].availability === 'Out of Stock' ? availabilityText(id) : <InlinePrice productId={id} />} onClick={() => onProduct(id)} />)}</div>
-        <SectionLabel>Whole Shoppable Posts</SectionLabel>
+        <SectionLabel>Scenes</SectionLabel>
         <div className="grid grid-cols-2 gap-2">{posts.map(id => <PostTile key={id} title={SHOPPABLE_POSTS[id].title} onClick={() => onPost(id)} label={`${SHOPPABLE_POSTS[id].tags.length} product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}`} />)}</div>
-        {unavailable > 0 && <div className="mt-5 rounded-xl border border-warning/30 bg-warning-bg p-3"><div className="text-sm font-semibold text-warning">{unavailable} saved Product Post{unavailable === 1 ? ' is' : 's are'} unavailable</div><div className="mt-1 text-xs text-text-secondary">It remains in this Collection so you can find it again if it returns.</div></div>}
+        {unavailable > 0 && <div className="mt-5 rounded-xl border border-warning/30 bg-warning-bg p-3"><div className="text-sm font-semibold text-warning">{unavailable} saved Product{unavailable === 1 ? ' is' : 's are'} unavailable</div><div className="mt-1 text-xs text-text-secondary">It remains in this Collection so you can find it again if it returns.</div></div>}
       </div>
     </>
   )
@@ -2471,22 +2803,48 @@ function CompletedOrder({ orderId, at, onBack, onReview, onClaim }: { orderId: O
   )
 }
 
-function ReviewOrder({ orderId, onBack, onSubmit }: { orderId: OrderId; onBack: () => void; onSubmit: () => void }) {
+/**
+ * Reviewing a completed Order (Flow I; PR-005). Its Review Grant gives a Product Review of each Product and a Seller
+ * Review of the Seller: separate forms, each with its own rating and text, never one blended score.
+ */
+function ReviewOrder({ orderId, onBack, onSubmit }: { orderId: OrderId; onBack: () => void; onSubmit: (written: { product?: ProductId; rating: number; text: string }[]) => void }) {
+  const order = ORDERS[orderId]
+  const products = [...new Set(order.lines.map(line => line.product))]
+  const [quality, setQuality] = useState<Partial<Record<ProductId, number>>>({})
+  const [productText, setProductText] = useState<Partial<Record<ProductId, string>>>({})
   const [service, setService] = useState(0)
-  const [quality, setQuality] = useState(0)
-  const [comment, setComment] = useState('')
-  const seller = SELLERS[ORDERS[orderId].seller].name
+  const [sellerText, setSellerText] = useState('')
+  const seller = SELLERS[order.seller].name
+  const submit = () => onSubmit([
+    ...products.map(product => ({ product, rating: quality[product] ?? 0, text: (productText[product] ?? '').trim() })),
+    { rating: service, text: sellerText.trim() },
+  ])
   return (
     <>
       <Header title="Review Order" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
         <SellerIdentity initials={initials(seller)} name={seller} meta={`Order ${orderId} · Verified completion`} />
-        <RatingField label="Seller Service" description="Communication, preparation and seller support" value={service} onChange={setService} />
-        <RatingField label="Product Quality" description="Materials, workmanship and description accuracy" value={quality} onChange={setQuality} />
-        <div className="mt-6"><Textarea label="Share your experience (optional)" value={comment} onChange={e => setComment(e.target.value)} placeholder="What should other buyers know?" rows={4} /></div>
-        <div className="mt-4 rounded-xl bg-surface-raised p-3 text-xs text-text-muted">Seller Service and Product Quality are recorded as separate review scores.</div>
+        {products.map(product => {
+          const line = order.lines.find(l => l.product === product)
+          return (
+            <section key={product} aria-label={`Product Review: ${PRODUCTS[product].name}`} className="mt-6">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Product Review</div>
+              <div className="font-semibold">{PRODUCTS[product].name}</div>
+              {line && <div className="text-xs text-text-muted">{lineOptions(line)}</div>}
+              <RatingField label="Product Quality" description="Materials, workmanship and description accuracy" value={quality[product] ?? 0} onChange={rating => setQuality(values => ({ ...values, [product]: rating }))} />
+              <div className="mt-4"><Textarea label="Your Product Review (optional)" value={productText[product] ?? ''} onChange={e => setProductText(values => ({ ...values, [product]: e.target.value }))} placeholder="What should other buyers know about it?" rows={3} /></div>
+            </section>
+          )
+        })}
+        <section aria-label="Seller Review" className="mt-8">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Seller Review</div>
+          <div className="font-semibold">{seller}</div>
+          <RatingField label="Seller Service" description="Communication, preparation and seller support" value={service} onChange={setService} />
+          <div className="mt-4"><Textarea label="Your Seller Review (optional)" value={sellerText} onChange={e => setSellerText(e.target.value)} placeholder="How was the Seller's service?" rows={3} /></div>
+        </section>
+        <div className="mt-4 rounded-xl bg-surface-raised p-3 text-xs text-text-muted">Product Reviews and the Seller Review are separate, each with its own rating.</div>
       </div>
-      <div className="border-t border-border p-4 pb-6"><Button size="lg" disabled={!service || !quality} onClick={onSubmit} style={{ width: '100%' }}>Submit review</Button></div>
+      <div className="border-t border-border p-4 pb-6"><Button size="lg" disabled={!service || products.some(product => !quality[product])} onClick={submit} style={{ width: '100%' }}>Submit reviews</Button></div>
     </>
   )
 }
@@ -2495,7 +2853,8 @@ function RatingField({ label, description, value, onChange }: { label: string; d
   return (
     <div className="mt-7 border-b border-border pb-6">
       <div className="font-display text-lg font-semibold">{label}</div><div className="text-xs text-text-muted">{description}</div>
-      <div className="mt-3 flex justify-between">{[1, 2, 3, 4, 5].map(rating => <button key={rating} onClick={() => onChange(rating)} aria-label={`${rating} star${rating === 1 ? '' : 's'}`} className={`text-3xl ${rating <= value ? 'text-warning' : 'text-border-strong'}`}>★</button>)}</div>
+      {/* The star size is on the row: buttons inherit their font (index.css), so a size class on a button does nothing. */}
+      <div className="mt-3 flex justify-between text-3xl">{[1, 2, 3, 4, 5].map(rating => <button key={rating} onClick={() => onChange(rating)} aria-label={`${rating} star${rating === 1 ? '' : 's'}`} aria-pressed={rating <= value} className={`min-w-11 ${rating <= value ? 'text-warning' : 'text-border-strong'}`}>★</button>)}</div>
     </div>
   )
 }
@@ -2613,12 +2972,12 @@ function Conversation({ sellerId, startContext, at, sent, onSend, onBack }: {
           {messages.map((m, index) => <ChatMessage key={index} message={m} spaced={index > 0} />)}
         </div>
         <div className="border-t border-border bg-surface p-3 pb-5">
-          <button onClick={() => setChoosing(true)} aria-haspopup="dialog" aria-label={`Talking about: ${contextSubject(context)}. Change`} className="mb-2 inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand bg-brand-muted px-3 py-1 text-left text-xs font-semibold text-brand-dark">
-            <span>Talking about: {contextSubject(context)}</span>
+          <button onClick={() => setChoosing(true)} aria-haspopup="dialog" aria-label={`Talking about: ${buyerContextSubject(context)}. Change`} className="mb-2 inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand bg-brand-muted px-3 py-1 text-left text-xs font-semibold text-brand-dark">
+            <span>Talking about: {buyerContextSubject(context)}</span>
             <IconChevronDown size={12} />
           </button>
           <div className="flex items-center gap-2">
-            <div className="flex-1"><TextInput aria-label="Message" value={text} onChange={e => setText(e.target.value)} placeholder={'general' in context ? `Message ${seller}` : `Message about ${contextSubject(context)}`} /></div>
+            <div className="flex-1"><TextInput aria-label="Message" value={text} onChange={e => setText(e.target.value)} placeholder={'general' in context ? `Message ${seller}` : `Message about ${buyerContextSubject(context)}`} /></div>
             <Button size="md" onClick={send}>Send</Button>
           </div>
         </div>
@@ -2640,11 +2999,16 @@ function ChatMessage({ message, spaced }: { message: MessageRecord; spaced?: boo
   const mine = message.from === 'buyer'
   return (
     <div role="listitem" className={`${mine ? 'ml-auto items-end' : 'items-start'} ${spaced ? 'mt-3' : ''} flex max-w-[78%] flex-col`}>
-      <span className="mb-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-semibold text-text-secondary">Talking about: {contextSubject(message.context)}</span>
+      <span className="mb-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-semibold text-text-secondary">Talking about: {buyerContextSubject(message.context)}</span>
       <div className={`${mine ? 'rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface shadow-sm'} rounded-2xl p-3 text-sm`}>{message.text}</div>
     </div>
   )
 }
+
+// The Buyer app names chat contexts publicly (PR-005): Products and Scenes, never Product Posts or Shoppable Posts. The
+// shared wording, which the Seller surfaces use, is unchanged.
+const BUYER_CONTEXT_LABEL: Partial<Record<(typeof CONTEXT_GROUPS)[number]['kind'], string>> = { product: 'Products', post: 'Scenes' }
+const buyerContextSubject = (context: MessageContext) => ('post' in context ? `${SHOPPABLE_POSTS[context.post].title} Scene` : contextSubject(context))
 
 /** "Talking about": the composer's context choices, exactly the conversation's at the story moment (rules 12.5–12.6). */
 function ContextSheet({ choices, selected, onSelect, onClose }: { choices: readonly MessageContext[]; selected: MessageContext; onSelect: (context: MessageContext) => void; onClose: () => void }) {
@@ -2655,14 +3019,14 @@ function ContextSheet({ choices, selected, onSelect, onClose }: { choices: reado
           const current = sameContext(choice, selected)
           return (
             <button key={contextKey(choice)} autoFocus={current} aria-current={current ? 'true' : undefined} onClick={() => { onSelect(choice); dismiss() }} className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm ${current ? 'bg-brand-muted font-semibold text-brand-dark' : 'text-text-primary'}`}>
-              {contextSubject(choice)}
+              {buyerContextSubject(choice)}
               {current && <CheckIconSmall />}
             </button>
           )
         })
         if (!options.length) return null
         return 'label' in group
-          ? <div key={group.kind} role="group" aria-labelledby={`context-group-${group.kind}`} className="mt-4"><div id={`context-group-${group.kind}`} className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-text-muted">{group.label}</div>{options}</div>
+          ? <div key={group.kind} role="group" aria-labelledby={`context-group-${group.kind}`} className="mt-4"><div id={`context-group-${group.kind}`} className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-text-muted">{BUYER_CONTEXT_LABEL[group.kind] ?? group.label}</div>{options}</div>
           : <div key={group.kind}>{options}</div>
       })}
     </BottomSheet>
@@ -2730,18 +3094,17 @@ function NotificationItem({ unread, title, detail, time, onClick }: { unread?: b
   return <button onClick={onClick} className={`flex w-full gap-3 border-b border-border p-4 text-left ${unread ? 'bg-brand-muted/40' : 'bg-surface'}`}><span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${unread ? 'bg-brand' : 'bg-transparent'}`} /><span className="flex-1"><span className="block text-sm font-semibold">{title}</span><span className="mt-1 block text-xs leading-relaxed text-text-muted">{detail}</span></span><span className="text-[10px] text-text-muted">{time}</span></button>
 }
 
-function ReportPostSheet({ postId, onClose }: { postId: ShoppablePostId; onClose: () => void }) {
+/** Report a Scene or a Product (specification §7; PR-005), with the moderation case DEMO_DATA records for it, if any. */
+function ReportSheet({ title, subject, caseId, onClose }: { title: string; subject: string; caseId?: ModerationId; onClose: () => void }) {
   const [reason, setReason] = useState('')
   const [submitted, setSubmitted] = useState(false)
-  // The moderation case DEMO_DATA records for this post's report; a report on another post is transient.
-  const caseId = (Object.keys(MODERATION_CASES) as ModerationId[]).find(id => MODERATION_CASES[id].post === postId)
   return (
     <div onClick={onClose} className="absolute inset-0 z-50 flex flex-col justify-end bg-black/45">
       <div onClick={event => event.stopPropagation()} className="rounded-t-3xl bg-surface px-5 pb-7 pt-3 shadow-xl">
         <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-border-strong" />
         {!submitted ? <>
-          <div className="flex items-center justify-between"><div className="font-display text-xl font-semibold">Report Shoppable Post</div><IconButton label="Close" onClick={onClose}>×</IconButton></div>
-          <p className="mt-1 text-xs text-text-muted">Select the reason that best describes the issue.</p>
+          <div className="flex items-center justify-between"><div className="font-display text-xl font-semibold">{title}</div><IconButton label="Close" onClick={onClose}>×</IconButton></div>
+          <p className="mt-1 text-xs text-text-muted">{subject} · Select the reason that best describes the issue.</p>
           <div className="mt-4 flex flex-col gap-2">{REPORT_CATEGORIES.map(value => <button key={value} onClick={() => setReason(value)} className={`rounded-xl border p-3 text-left text-sm font-semibold ${reason === value ? 'border-brand bg-brand-muted' : 'border-border'}`}>{value}</button>)}</div>
           <Button disabled={!reason} onClick={() => setSubmitted(true)} style={{ width: '100%', marginTop: 16 }}>Submit Report</Button>
         </> : <div className="py-5 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success-bg text-success"><CheckIcon /></span><div className="mt-4 font-display text-xl font-semibold">Report submitted</div>{caseId && <p className="mt-1 text-sm text-text-muted">Moderation case {caseId} is ready for review.</p>}<Button variant="tertiary" onClick={onClose} style={{ marginTop: 16 }}>Done</Button></div>}
@@ -3205,7 +3568,7 @@ function ProductRow({ productId, onClick }: { productId: ProductId; onClick: () 
 
 function PostRow({ postId, onClick }: { postId: ShoppablePostId; onClick: () => void }) {
   const post = SHOPPABLE_POSTS[postId]
-  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={post.title} className="h-20 w-20 rounded-lg" /><span className="py-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-brand">Shoppable post</span><span className="mt-1 block text-sm font-semibold">{post.title}</span><span className="text-xs text-text-muted">{SELLERS[post.seller].name} · {post.tags.length} product{post.tags.length === 1 ? '' : 's'}</span></span></button>
+  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={post.title} className="h-20 w-20 rounded-lg" /><span className="py-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-brand">Scene</span><span className="mt-1 block text-sm font-semibold">{post.title}</span><span className="text-xs text-text-muted">{SELLERS[post.seller].name} · {post.tags.length} product{post.tags.length === 1 ? '' : 's'}</span></span></button>
 }
 
 function SellerRow({ sellerId, at, onClick }: { sellerId: SellerId; at: Moment; onClick: () => void }) {
@@ -3218,7 +3581,7 @@ function ProductCard({ name, price, onClick }: { name: string; price: ReactNode;
 }
 
 function PostTile({ title, label, onClick }: { title: string; label: string; onClick: () => void }) {
-  return <button onClick={onClick} className="relative overflow-hidden rounded-xl text-left"><Placeholder label={`Shoppable post: ${title}`} initialsOf={title} className="h-52 w-full text-2xl" /><span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white"><TagIcon /> <span className="ml-1">{label}</span></span></button>
+  return <button onClick={onClick} className="relative overflow-hidden rounded-xl text-left"><Placeholder label={`Scene: ${title}`} initialsOf={title} className="h-52 w-full text-2xl" /><span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white"><TagIcon /> <span className="ml-1">{label}</span></span></button>
 }
 
 function InfoBlock({ title, children }: { title: string; children: ReactNode }) {
