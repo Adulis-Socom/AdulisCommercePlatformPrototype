@@ -491,7 +491,7 @@ export function LocationInput({ label, hint, error, state }: BaseInputProps) {
       <div style={{ position: 'relative' }}>
         <svg
           width="16" height="16" viewBox="0 0 16 16" fill="none"
-          style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-brand)', pointerEvents: 'none', zIndex: 1 }}
+          style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-brand-text)', pointerEvents: 'none', zIndex: 1 }}
           stroke="currentColor" strokeWidth="1.5"
         >
           <path d="M8 9.5A2.5 2.5 0 1 0 8 4.5a2.5 2.5 0 0 0 0 5Z"/>
@@ -509,7 +509,7 @@ export function LocationInput({ label, hint, error, state }: BaseInputProps) {
           position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
           fontSize: 11, padding: '4px 8px', borderRadius: 'var(--radius-sm)',
           border: '1px solid var(--color-border)', background: 'var(--color-surface-raised)',
-          color: 'var(--color-brand)', fontFamily: 'var(--font-body)', fontWeight: 600,
+          color: 'var(--color-brand-text)', fontFamily: 'var(--font-body)', fontWeight: 600,
           cursor: 'pointer', zIndex: 1,
         }}>
           Use current

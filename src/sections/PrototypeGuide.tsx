@@ -16,6 +16,11 @@ const COLLECTOR = firstName(BUYERS[ORDERS[stageFor('M', 0).focus!.order!].buyer]
 // run are presentation paths, not among them.
 const CANONICAL_FLOWS = Object.keys(CANONICAL_FLOW_STAGES)
 
+// The Guide's categorical colours (actors, objects, flows, roles). The brand and ink entries follow Theme Lab; as text in
+// Dark mode every one is lifted toward the text colour so it reads (unchanged in Light: the lift is 0%).
+const categoryText = (color: string) => (color === 'var(--color-brand)' ? 'var(--color-brand-text)' : color === 'var(--color-ink)' ? 'var(--color-text-primary)' : `color-mix(in srgb, ${color}, var(--color-text-primary) var(--adulis-dark-lift))`)
+const onCategory = (color: string) => (color === 'var(--color-brand)' ? 'var(--color-on-brand)' : '#fff')
+
 /* ═══════════════════════════════════════════════
    00 — PROTOTYPE GUIDE
    Adulis Commerce Platform Ecosystem
@@ -67,7 +72,7 @@ function GuideHeader() {
           <AdulisLogo size={48} />
           <div>
             <div
-              style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-brand-light)', letterSpacing: '0.12em', marginBottom: 4 }}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--adulis-accent-on-dark)', letterSpacing: '0.12em', marginBottom: 4 }}
             >
               ADULIS MASTER PROTOTYPE
             </div>
@@ -103,7 +108,7 @@ function GuideHeader() {
             <span
               key={s}
               className="px-3 py-1 rounded-full text-xs font-medium"
-              style={{ background: 'rgba(194, 98, 45, 0.2)', color: 'var(--color-brand-light)', border: '1px solid rgba(194, 98, 45, 0.3)' }}
+              style={{ background: 'rgba(194, 98, 45, 0.2)', color: 'var(--adulis-accent-on-dark)', border: '1px solid rgba(194, 98, 45, 0.3)' }}
             >
               {s}
             </span>
@@ -126,7 +131,7 @@ function GuideSection({ number, title, children }: { number: string; title: stri
             width: 36,
             height: 36,
             background: 'var(--color-brand)',
-            color: '#fff',
+            color: 'var(--color-on-brand)',
             fontFamily: 'var(--font-mono)',
           }}
         >
@@ -203,7 +208,7 @@ const SURFACES = [
     id: 'seller-console',
     label: 'Seller Console',
     icon: '⚙️',
-    color: '#1A1512',
+    color: 'var(--color-ink)',
     bg: '#F5F2ED',
     desc: 'Full seller administration: products, content, orders, inbox, insights, store, automation, and settings.',
     actors: ['Seller Owner', 'Seller Team Member'],
@@ -253,7 +258,7 @@ function EcosystemMap() {
             <div className="flex items-start gap-3 mb-3">
               <span style={{ fontSize: 24 }}>{s.icon}</span>
               <div>
-                <div className="font-semibold text-sm" style={{ color: s.color }}>{s.label}</div>
+                <div className="font-semibold text-sm" style={{ color: categoryText(s.color) }}>{s.label}</div>
                 <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
                   {s.actors.join(' · ')}
                 </div>
@@ -448,7 +453,7 @@ const OBJECTS = [
   },
   {
     name: 'Seller Order',
-    color: '#1A1512',
+    color: 'var(--color-ink)',
     bg: '#F5F2ED',
     icon: '📋',
     definition: 'A paid order from a single seller. Created after successful payment verification.',
@@ -529,7 +534,7 @@ function CanonicalObjects() {
                 <span className="flex-shrink-0 text-xl mt-0.5">{obj.icon}</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
-                    <span className="font-semibold text-sm" style={{ color: obj.color }}>{obj.name}</span>
+                    <span className="font-semibold text-sm" style={{ color: categoryText(obj.color) }}>{obj.name}</span>
                     <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{isExpanded ? '▲' : '▼'}</span>
                   </div>
                   <p className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--color-text-secondary)', margin: '4px 0 0' }}>
@@ -546,7 +551,7 @@ function CanonicalObjects() {
                     <ul className="space-y-1">
                       {obj.fields.map(f => (
                         <li key={f} className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                          <span style={{ color: obj.color }}>·</span>
+                          <span style={{ color: categoryText(obj.color) }}>·</span>
                           {f}
                         </li>
                       ))}
@@ -697,7 +702,7 @@ function CommerceJourney() {
                   width: 32,
                   height: 32,
                   background: step.color,
-                  color: '#fff',
+                  color: onCategory(step.color),
                   fontFamily: 'var(--font-mono)',
                   border: '3px solid var(--color-background)',
                 }}
@@ -715,7 +720,7 @@ function CommerceJourney() {
                 }}
               >
                 <div className="flex items-center gap-3 mb-1">
-                  <span className="font-semibold text-sm" style={{ color: step.color }}>{step.label}</span>
+                  <span className="font-semibold text-sm" style={{ color: categoryText(step.color) }}>{step.label}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--color-surface-raised)', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
                     {step.surface}
                   </span>
@@ -853,7 +858,7 @@ function DemoFlowsList() {
             <div className="flex items-start gap-3 mb-3">
               <span
                 className="flex-shrink-0 flex items-center justify-center rounded-lg font-mono font-semibold text-sm"
-                style={{ width: 36, height: 36, background: flow.color, color: '#fff', fontFamily: 'var(--font-mono)' }}
+                style={{ width: 36, height: 36, background: flow.color, color: onCategory(flow.color), fontFamily: 'var(--font-mono)' }}
               >
                 {flow.id}
               </span>
@@ -931,7 +936,7 @@ const ROLE_ENTRIES = [
     section: '08-seller-console' as const,
     icon: '⚙️',
     bg: '#F5F2ED',
-    accent: '#1A1512',
+    accent: 'var(--color-ink)',
     dark: '#000',
   },
   {
@@ -1056,7 +1061,7 @@ function LauncherCard({ entry, onNavigate }: { entry: typeof ROLE_ENTRIES[0]; on
         <div className="font-semibold text-base" style={{ color: entry.dark, fontFamily: 'var(--font-display)' }}>
           {entry.role}
         </div>
-        <div className="text-xs mt-1" style={{ color: entry.accent, fontFamily: 'var(--font-mono)' }}>
+        <div className="text-xs mt-1" style={{ color: categoryText(entry.accent), fontFamily: 'var(--font-mono)' }}>
           {entry.persona}
         </div>
       </div>
@@ -1069,7 +1074,7 @@ function LauncherCard({ entry, onNavigate }: { entry: typeof ROLE_ENTRIES[0]; on
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-semibold text-sm transition-all"
           style={{
             background: entry.accent,
-            color: '#fff',
+            color: onCategory(entry.accent),
           }}
           onMouseDown={() => setPressed(true)}
           onMouseUp={() => setPressed(false)}

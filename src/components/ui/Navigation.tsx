@@ -49,7 +49,7 @@ export function MobileBottomNav({
               border: 'none',
               background: 'none',
               cursor: 'pointer',
-              color: isActive ? 'var(--color-brand)' : 'var(--color-text-muted)',
+              color: isActive ? 'var(--color-brand-text)' : 'var(--color-text-muted)',
               minWidth: 44,
               minHeight: 44,
               position: 'relative',
@@ -60,7 +60,7 @@ export function MobileBottomNav({
               {item.badge !== undefined && item.badge > 0 && (
                 <span style={{
                   position: 'absolute', top: -4, right: -6,
-                  background: 'var(--color-danger)', color: '#fff',
+                  background: 'var(--color-danger)', color: 'var(--color-on-status)',
                   borderRadius: 'var(--radius-full)', minWidth: 16, height: 16,
                   fontSize: 9, fontWeight: 700, fontFamily: 'var(--font-mono)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -98,7 +98,7 @@ export function WebsiteHeader({
   return (
     <header style={{
       position: 'sticky', top: 0, zIndex: 40,
-      background: 'rgba(250, 248, 245, 0.92)', backdropFilter: 'blur(12px)',
+      background: 'color-mix(in srgb, var(--color-background) 92%, transparent)', backdropFilter: 'blur(12px)',
       borderBottom: '1px solid var(--color-border)',
       height: 64,
       display: 'flex', alignItems: 'center',
@@ -148,7 +148,7 @@ export function WebsiteHeader({
             style={{
               padding: '8px 16px', borderRadius: 'var(--radius-md)',
               background: 'var(--color-brand)', border: 'none',
-              fontSize: 13, fontWeight: 600, color: '#fff',
+              fontSize: 13, fontWeight: 600, color: 'var(--color-on-brand)',
               cursor: 'pointer', fontFamily: 'var(--font-body)',
             }}
           >
@@ -194,7 +194,7 @@ export function StorefrontTabs({
             {tab.count !== undefined && (
               <span style={{
                 fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 600,
-                color: isActive ? 'var(--color-brand)' : 'var(--color-text-muted)',
+                color: isActive ? 'var(--color-brand-text)' : 'var(--color-text-muted)',
                 background: isActive ? 'var(--color-brand-muted)' : 'var(--color-surface-raised)',
                 padding: '1px 5px', borderRadius: 'var(--radius-full)',
               }}>{tab.count}</span>
@@ -264,7 +264,7 @@ export function Breadcrumbs({ items, onNavigate }: {
                 fontSize: 13, color: 'var(--color-text-muted)', padding: 0,
                 fontFamily: 'var(--font-body)',
               }}
-              onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-brand)')}
+              onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-brand-text)')}
               onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-muted)')}
             >
               {item.label}
@@ -344,7 +344,7 @@ export function Pagination({ page, total, pageSize = 20, onChange }: {
               width: 32, height: 32, borderRadius: 'var(--radius-md)',
               border: page === p ? '1.5px solid var(--color-brand)' : '1px solid var(--color-border)',
               background: page === p ? 'var(--color-brand)' : 'var(--color-surface)',
-              color: page === p ? '#fff' : 'var(--color-text-secondary)',
+              color: page === p ? 'var(--color-on-brand)' : 'var(--color-text-secondary)',
               cursor: 'pointer', fontSize: 13, fontWeight: page === p ? 600 : 400,
               fontFamily: 'var(--font-mono)',
             }}

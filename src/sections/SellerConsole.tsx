@@ -237,7 +237,7 @@ function PublicationReadiness() {
   return (
     <>
       <div className="mb-5 rounded-2xl border border-brand/20 bg-brand-muted p-5">
-        <div className="flex items-center justify-between"><div><div className="text-xs font-semibold uppercase tracking-wider text-brand-dark">Publication Readiness Hub · Setup snapshot · {SELLERS[snapshot.seller].name} · {formatLongDate(snapshot.replay.at)}, {formatClock(snapshot.replay.at)}</div><div className="mt-1 font-display text-2xl font-semibold">{complete} of {cards.length} foundations complete</div></div><div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface font-mono text-sm font-bold text-brand">{percent}%</div></div>
+        <div className="flex items-center justify-between"><div><div className="text-xs font-semibold uppercase tracking-wider text-brand-dark">Publication Readiness Hub · Setup snapshot · {SELLERS[snapshot.seller].name} · {formatLongDate(snapshot.replay.at)}, {formatClock(snapshot.replay.at)}</div><div className="mt-1 font-display text-2xl font-semibold">{complete} of {cards.length} foundations complete</div></div><div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface font-mono text-sm font-bold text-brand-text">{percent}%</div></div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface"><div className="h-full rounded-full bg-brand" style={{ width: `${percent}%` }} /></div>
       </div>
       <div className="grid grid-cols-3 gap-4">
@@ -254,7 +254,7 @@ function ReadinessCard({ title, detail, status, state, action }: { title: string
     <div className="flex min-h-52 flex-col rounded-2xl border border-border bg-surface p-5 shadow-sm">
       <div className="flex items-start justify-between"><span className={`flex h-9 w-9 items-center justify-center rounded-xl ${status === 'complete' ? 'bg-success-bg text-success' : status === 'checking' ? 'bg-warning-bg text-warning' : 'bg-surface-raised text-text-muted'}`}>{status === 'complete' ? <CheckIcon /> : status === 'checking' ? <ClockIcon /> : <DotIcon />}</span>{status === 'complete' && <StatusBadge status="completed" size="sm" customLabel={state} />}{status === 'checking' && <StatusBadge status="reconciling" size="sm" customLabel={state} />}{status === 'ready' && <StatusBadge status="ready" size="sm" customLabel={state} />}</div>
       <div className="mt-4 text-sm font-semibold">{title}</div><p className="mt-1 flex-1 text-xs leading-relaxed text-text-muted">{detail}</p>
-      <button onClick={() => setOpened(true)} className="mt-4 text-left text-xs font-semibold text-brand">{opened ? 'Opened in prototype' : action} →</button>
+      <button onClick={() => setOpened(true)} className="mt-4 text-left text-xs font-semibold text-brand-text">{opened ? 'Opened in prototype' : action} →</button>
     </div>
   )
 }
@@ -297,7 +297,7 @@ function DailyOperations({ sellerId, at, onOpenOrder, onOpenOrders, onOpenConten
       </div>
       <div className="flex flex-col gap-5">
         <div className="rounded-2xl border border-border bg-surface p-5">
-          <div className="mb-4 flex items-center justify-between"><div className="font-semibold">Next Paid Orders</div><button onClick={onOpenOrders} className="text-xs font-semibold text-brand">View all</button></div>
+          <div className="mb-4 flex items-center justify-between"><div className="font-semibold">Next Paid Orders</div><button onClick={onOpenOrders} className="text-xs font-semibold text-brand-text">View all</button></div>
           {toPrepare.slice(0, 3).map(id => <button key={id} onClick={() => onOpenOrder(id)} className="flex w-full items-center gap-3 border-b border-border py-3 text-left last:border-b-0"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted font-mono text-[9px] font-bold text-brand-dark">{id.slice(-3)}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{orderItems(id)}</span><span className="text-[10px] text-text-muted">{shortName(BUYERS[ORDERS[id].buyer].name)} · {formatAge(paidAt(id), at.at)}</span></span><StatusBadge {...stateBadge(orderStateAt(id, at)!)} size="sm" /></button>)}
           {toPrepare.length === 0 && <p className="py-2 text-xs text-text-muted">No Orders requiring preparation.</p>}
         </div>
@@ -413,7 +413,7 @@ function OrderDetail({ orderId, at, courierChanges, onBack }: { orderId: OrderId
   const collection = order.fulfilment === 'Buyer Collection'
   return (
     <div className="mx-auto max-w-7xl p-8">
-      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand">← Back to Orders</button>
+      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back to Orders</button>
       <div className="mb-6 flex items-start justify-between"><div><div className="flex items-center gap-3"><h1 className="font-display text-3xl font-semibold">{orderId}</h1><StatusBadge {...stateBadge(state)} /></div><p className="mt-1 text-sm text-text-muted">Seller Order · Created after provider-verified payment</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setChatOpen(!chatOpen)}>Chat with Buyer</Button>{current === 0 && <Button onClick={() => setOverride(1)}>Start Preparation</Button>}{current === 1 && <Button onClick={() => setOverride(2)}>Mark Ready</Button>}{current === 2 && courierMode && !offer && <Button onClick={toSelection}>Select Courier</Button>}</div></div>
 
       <div className="grid grid-cols-[1.45fr_1fr] gap-5">
@@ -568,7 +568,7 @@ function ProductDetailPanel({ sellerId, at, productId, onBack, onEdit }: { selle
   const discount = discountLabel(productId)
   return (
     <div className="mx-auto max-w-6xl p-8">
-      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand">← Back to Products</button>
+      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back to Products</button>
       <div className="mb-6 flex items-start justify-between"><div><div className="flex items-center gap-3"><h1 className="font-display text-3xl font-semibold">{product.name}</h1><StatusBadge status="published" /></div><p className="mt-1 font-mono text-xs text-text-muted">{productId} · Product Post</p></div><div className="flex gap-2"><Button variant="tertiary">Preview</Button><Button onClick={onEdit}>Edit Product</Button></div></div>
       <div className="grid grid-cols-[1.2fr_1fr] gap-5">
         <div className="flex flex-col gap-5">
@@ -602,7 +602,7 @@ function ProductEditor({ sellerId, at, productId, onBack }: { sellerId: SellerId
   const offered = fulfilmentOptionsAt(sellerId, at).map(option => option.mode)
   return (
     <div className="mx-auto max-w-7xl p-8">
-      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand">← Back</button>
+      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back</button>
       <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">{existing ? 'Edit Product' : 'Create Product'}</h1><p className="mt-1 text-sm text-text-muted">One Product Editor creates one Product Post.</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setPreview(!preview)}>{preview ? 'Close Preview' : 'Preview'}</Button><Button disabled={!name || !price} onClick={() => setPublished(true)}>Publish Product</Button></div></div>
       {published && <SuccessBanner title="Product published" detail={`${name} now has one published Product Post.`} />}
       <div className={`grid gap-5 ${preview ? 'grid-cols-[1.3fr_.7fr]' : 'grid-cols-1'}`}>
@@ -666,10 +666,10 @@ function ShoppablePostDetail({ sellerId, at, postId, onBack, onEdit }: { sellerI
   const eligible = isForYouEligibleAt(postId, at)
   return (
     <div className="mx-auto max-w-6xl p-8">
-      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand">← Back to Shoppable Posts</button>
+      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back to Shoppable Posts</button>
       <div className="mb-6 flex items-start justify-between"><div><div className="flex items-center gap-3"><h1 className="font-display text-3xl font-semibold">{postId}</h1><StatusBadge status={publication} /><EligibilityBadge eligible={eligible} /></div><p className="mt-1 text-sm text-text-muted">Shoppable Post · {SELLERS[sellerId].name}</p></div><div className="flex gap-2"><Button variant="tertiary">Preview</Button><Button onClick={onEdit}>Edit Post</Button></div></div>
       <div className="grid grid-cols-[1fr_1fr] gap-5">
-        <DetailCard title="Media and hotspots"><div className="relative"><ContentMedia index={zeroProduct ? 1 : 0} large />{!zeroProduct && <><span className="absolute left-[42%] top-[35%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-white shadow">+</span><span className="absolute right-[20%] top-[58%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-white shadow">+</span></>}</div></DetailCard>
+        <DetailCard title="Media and hotspots"><div className="relative"><ContentMedia index={zeroProduct ? 1 : 0} large />{!zeroProduct && <><span className="absolute left-[42%] top-[35%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-on-brand shadow">+</span><span className="absolute right-[20%] top-[58%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-on-brand shadow">+</span></>}</div></DetailCard>
         <div className="flex flex-col gap-5">
           <DetailCard title="Caption"><p className="text-sm leading-relaxed text-text-secondary">{post.caption}</p></DetailCard>
           <DetailCard title="Product selection">{zeroProduct ? <div><div className="text-sm font-semibold">No Products selected</div><p className="mt-1 text-xs text-text-muted">This is valid and does not block publication.</p></div> : <div className="space-y-2">{post.tags.map(id => <SelectedProduct key={id} name={PRODUCTS[id].name} />)}</div>}</DetailCard>
@@ -697,7 +697,7 @@ function ShoppablePostEditor({ sellerId, at, initialProduct, onBack }: { sellerI
   const eligible = eligibility === 'eligible'
   return (
     <div className="mx-auto max-w-7xl p-8">
-      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand">← Back to Shoppable Posts</button>
+      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back to Shoppable Posts</button>
       <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">Create Shoppable Post</h1><p className="mt-1 text-sm text-text-muted">Product selection and hotspots are optional.</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setPreview(!preview)}>{preview ? 'Close Preview' : 'Preview'}</Button><Button onClick={() => setPublished(true)}>Publish</Button></div></div>
       {published && <div className="mb-5 rounded-xl border border-success/20 bg-success-bg p-4"><div className="flex items-center gap-3"><CheckIcon /><div className="min-w-60 flex-1"><div className="text-sm font-semibold text-success">Shoppable Post published</div><div className="mt-1 text-xs text-text-secondary">{eligibility === 'eligible' ? 'Published · FYP Eligible' : eligibility === 'unavailable' ? NOT_ELIGIBLE.publication : 'Published · Not eligible for For You because no Products are tagged.'}</div>{eligibility === 'unavailable' && <div className="mt-1 text-xs text-text-secondary">{NOT_ELIGIBLE.sentence}</div>}</div><div className="flex items-center gap-3"><StatusBadge status="published" /><EligibilityBadge eligible={eligible} /></div></div></div>}
       <div className={`grid gap-5 ${preview ? 'grid-cols-[1.25fr_.75fr]' : 'grid-cols-1'}`}>
@@ -706,11 +706,11 @@ function ShoppablePostEditor({ sellerId, at, initialProduct, onBack }: { sellerI
           <EditorSection step="02" title="Caption"><Textarea label="Caption" value={caption} onChange={event => setCaption(event.target.value)} placeholder="Tell the story behind this post..." rows={4} /></EditorSection>
           <EditorSection step="03" title="Optional Product selection">
             <div className="mb-3 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Only Products owned by {seller} can be tagged. Leave every Product unselected to publish a zero-product post.</div>
-            <div className="grid grid-cols-3 gap-3">{products.map((id, index) => <button key={id} onClick={() => toggleProduct(id)} className={`rounded-xl border p-3 text-left ${selected.includes(id) ? 'border-brand bg-brand-muted' : 'border-border'}`}><div className="flex items-start justify-between"><ProductThumb index={index} /><span className={`flex h-5 w-5 items-center justify-center rounded border ${selected.includes(id) ? 'border-brand bg-brand text-white' : 'border-border-strong'}`}>{selected.includes(id) && '✓'}</span></div><div className="mt-3 text-xs font-semibold">{PRODUCTS[id].name}</div><div className="mt-1 text-[10px] text-text-muted">{seller} · {id}</div></button>)}</div>
+            <div className="grid grid-cols-3 gap-3">{products.map((id, index) => <button key={id} onClick={() => toggleProduct(id)} className={`rounded-xl border p-3 text-left ${selected.includes(id) ? 'border-brand bg-brand-muted' : 'border-border'}`}><div className="flex items-start justify-between"><ProductThumb index={index} /><span className={`flex h-5 w-5 items-center justify-center rounded border ${selected.includes(id) ? 'border-brand bg-brand text-on-brand' : 'border-border-strong'}`}>{selected.includes(id) && '✓'}</span></div><div className="mt-3 text-xs font-semibold">{PRODUCTS[id].name}</div><div className="mt-1 text-[10px] text-text-muted">{seller} · {id}</div></button>)}</div>
           </EditorSection>
           <EditorSection step="04" title="Optional hotspots">
             <div className="flex items-start justify-between"><div><div className="text-sm font-semibold">Product hotspots</div><div className="text-xs text-text-muted">{selected.length ? 'Place visual entry points for selected Products.' : 'Unavailable because no Products are selected.'}</div></div><Toggle label="Product hotspots" checked={hotspots && tagged} onChange={() => tagged && setHotspots(!hotspots)} disabled={!tagged} /></div>
-            {tagged && hotspots && <div className="relative mt-4 max-w-sm"><ContentMedia index={0} large /><span className="absolute left-[42%] top-[35%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-white shadow">+</span></div>}
+            {tagged && hotspots && <div className="relative mt-4 max-w-sm"><ContentMedia index={0} large /><span className="absolute left-[42%] top-[35%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-on-brand shadow">+</span></div>}
           </EditorSection>
           <EditorSection step="05" title="Preview and eligibility"><div className="grid grid-cols-2 gap-4"><div className="rounded-xl bg-surface-raised p-4"><div className="text-xs text-text-muted">Publication state</div><div className="mt-2"><StatusBadge status="published" customLabel="Will publish" /></div></div><div className="rounded-xl bg-surface-raised p-4"><div className="text-xs text-text-muted">For You eligibility</div><div className="mt-2"><EligibilityBadge eligible={eligible} /></div></div></div>{eligibility === 'unavailable' && <NotEligibleNote />}<p className="mt-3 text-xs text-text-muted">Publishing is allowed with {selected.length} tagged Product{selected.length === 1 ? '' : 's'}. Eligibility does not control publication.</p></EditorSection>
         </div>
@@ -746,16 +746,16 @@ function EditorSection({ step, title, children }: { step: string; title: string;
 }
 
 function ProductPreview({ name, category, price, description }: { name: string; category: string; price: string; description: string }) {
-  return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-surface p-4 shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-text-muted">Product Post Preview</div><div className="mt-4 h-80 rounded-2xl bg-gradient-to-br from-brand-muted to-warning-bg" /><div className="mt-4 text-[10px] font-semibold uppercase tracking-wider text-brand">{category}</div><div className="mt-1 font-display text-xl font-semibold">{name}</div><div className="mt-2 font-bold text-brand">{price}</div><p className="mt-3 text-xs leading-relaxed text-text-secondary">{description || 'Product description'}</p><Button style={{ width: '100%', marginTop: 16 }}>Add to Cart</Button><div className="mt-3 text-center text-[10px] text-text-muted">Exactly one Product · Commerce detail surface</div></aside>
+  return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-surface p-4 shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-text-muted">Product Post Preview</div><div className="mt-4 h-80 rounded-2xl bg-gradient-to-br from-brand-muted to-warning-bg" /><div className="mt-4 text-[10px] font-semibold uppercase tracking-wider text-brand-text">{category}</div><div className="mt-1 font-display text-xl font-semibold">{name}</div><div className="mt-2 font-bold text-brand-text">{price}</div><p className="mt-3 text-xs leading-relaxed text-text-secondary">{description || 'Product description'}</p><Button style={{ width: '100%', marginTop: 16 }}>Add to Cart</Button><div className="mt-3 text-center text-[10px] text-text-muted">Exactly one Product · Commerce detail surface</div></aside>
 }
 
 function ShoppablePreview({ seller, caption, productCount, hotspots, eligibility }: { seller: string; caption: string; productCount: number; hotspots: boolean; eligibility: EditorEligibility }) {
-  return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-text-primary p-3 text-white shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-white/60">Shoppable Post Preview</div><div className="relative mt-3 h-[460px] overflow-hidden rounded-2xl bg-gradient-to-br from-brand to-brand-dark">{hotspots && productCount > 0 && <span className="absolute left-[45%] top-[38%] flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-brand text-white">+</span>}<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-5 pt-20"><div className="text-sm font-semibold">{seller}</div><p className="mt-2 text-sm leading-relaxed text-white/80">{caption}</p>{productCount > 0 && <div className="mt-3 inline-flex rounded-full bg-white px-3 py-2 text-xs font-semibold text-text-primary">In this post · {productCount} Product{productCount > 1 ? 's' : ''}</div>}</div></div><div className="mt-3 text-center text-[10px] text-white/60">{eligibility === 'eligible' ? 'Published · FYP Eligible' : NOT_ELIGIBLE.publication}</div>{eligibility === 'unavailable' && <p className="mx-2 mt-1 text-center text-[10px] leading-relaxed text-white/60">{NOT_ELIGIBLE.sentence}</p>}</aside>
+  return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-ink p-3 text-white shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-white/60">Shoppable Post Preview</div><div className="relative mt-3 h-[460px] overflow-hidden rounded-2xl bg-gradient-to-br from-brand to-brand-dark">{hotspots && productCount > 0 && <span className="absolute left-[45%] top-[38%] flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-brand text-on-brand">+</span>}<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-5 pt-20"><div className="text-sm font-semibold">{seller}</div><p className="mt-2 text-sm leading-relaxed text-white/80">{caption}</p>{productCount > 0 && <div className="mt-3 inline-flex rounded-full bg-surface px-3 py-2 text-xs font-semibold text-text-primary">In this post · {productCount} Product{productCount > 1 ? 's' : ''}</div>}</div></div><div className="mt-3 text-center text-[10px] text-white/60">{eligibility === 'eligible' ? 'Published · FYP Eligible' : NOT_ELIGIBLE.publication}</div>{eligibility === 'unavailable' && <p className="mx-2 mt-1 text-center text-[10px] leading-relaxed text-white/60">{NOT_ELIGIBLE.sentence}</p>}</aside>
 }
 
 // A Product's variant groups as DEMO_DATA gives them: one price per Product, with no inventory tracking defined.
 function VariantEditor({ productId }: { productId: ProductId | null }) {
-  return <div className="rtable overflow-hidden rounded-xl border border-border"><div className="rtable-head grid grid-cols-[1fr_1.5fr_120px_100px] gap-3 bg-surface-raised px-4 py-2 text-[10px] font-semibold uppercase text-text-muted"><span>Option</span><span>Values</span><span>Price impact</span><span>Inventory</span></div>{(productId ? PRODUCTS[productId].variants : []).map((group, index) => <div key={index} className="rtable-row grid grid-cols-[1fr_1.5fr_120px_100px] gap-3 border-t border-border px-4 py-3 text-xs"><span data-label="Option">{group.name ?? '—'}</span><span data-label="Values">{group.options.join(', ')}</span><span data-label="Price impact">None</span><span data-label="Inventory">—</span></div>)}<button className="w-full border-t border-border px-4 py-3 text-left text-xs font-semibold text-brand">+ Add variant option</button></div>
+  return <div className="rtable overflow-hidden rounded-xl border border-border"><div className="rtable-head grid grid-cols-[1fr_1.5fr_120px_100px] gap-3 bg-surface-raised px-4 py-2 text-[10px] font-semibold uppercase text-text-muted"><span>Option</span><span>Values</span><span>Price impact</span><span>Inventory</span></div>{(productId ? PRODUCTS[productId].variants : []).map((group, index) => <div key={index} className="rtable-row grid grid-cols-[1fr_1.5fr_120px_100px] gap-3 border-t border-border px-4 py-3 text-xs"><span data-label="Option">{group.name ?? '—'}</span><span data-label="Values">{group.options.join(', ')}</span><span data-label="Price impact">None</span><span data-label="Inventory">—</span></div>)}<button className="w-full border-t border-border px-4 py-3 text-left text-xs font-semibold text-brand-text">+ Add variant option</button></div>
 }
 
 function VariantTable({ productId }: { productId: ProductId }) {
@@ -764,12 +764,12 @@ function VariantTable({ productId }: { productId: ProductId }) {
 
 function CheckOption({ label, checked }: { label: string; checked?: boolean }) {
   const [selected, setSelected] = useState(!!checked)
-  return <button onClick={() => setSelected(!selected)} className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold ${selected ? 'border-brand bg-brand-muted text-brand-dark' : 'border-border'}`}><span className={`flex h-5 w-5 items-center justify-center rounded border ${selected ? 'border-brand bg-brand text-white' : 'border-border-strong'}`}>{selected && '✓'}</span>{label}</button>
+  return <button onClick={() => setSelected(!selected)} className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold ${selected ? 'border-brand bg-brand-muted text-brand-dark' : 'border-border'}`}><span className={`flex h-5 w-5 items-center justify-center rounded border ${selected ? 'border-brand bg-brand text-on-brand' : 'border-border-strong'}`}>{selected && '✓'}</span>{label}</button>
 }
 
 /** An on/off switch: named by the setting it controls, which doesn't change with its state, and exposing that state (§57). */
 function Toggle({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: () => void; disabled?: boolean }) {
-  return <button role="switch" aria-checked={checked} aria-label={label} onClick={onChange} disabled={disabled} className={`console-toggle relative h-6 w-11 rounded-full transition-colors ${checked ? 'bg-brand' : 'bg-border-strong'} ${disabled ? 'opacity-50' : ''}`}><span className={`console-toggle-knob absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${checked ? 'left-6' : 'left-1'}`} /></button>
+  return <button role="switch" aria-checked={checked} aria-label={label} onClick={onChange} disabled={disabled} className={`console-toggle relative h-6 w-11 rounded-full transition-colors ${checked ? 'bg-brand' : 'bg-border-strong'} ${disabled ? 'opacity-50' : ''}`}><span className={`console-toggle-knob absolute top-1 h-4 w-4 rounded-full transition-all ${checked ? 'left-6 bg-on-brand' : 'left-1 bg-white'}`} /></button>
 }
 
 function ProductThumb({ index, className }: { index: number; className?: string }) {
@@ -855,8 +855,8 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
         {rows.map(({ id, last }) => <button key={id} onClick={() => open(id)} className={`flex w-full gap-3 border-b border-border p-4 text-left ${selected === id ? 'bg-brand-muted' : ''}`}><AvatarText name={name(id)} /><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="text-sm font-semibold">{name(id)}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="mt-1 block truncate text-xs text-text-muted">{last.text}</span><span className="mt-2 inline-flex rounded-full bg-surface-raised px-2 py-0.5 text-[10px] text-text-secondary">Talking about: {contextSubject(last.context)}</span></span>{awaitingSellerReplyAt(id, at) && <span role="img" aria-label="Needs reply" title="Needs reply" className="mt-1 h-2 w-2 rounded-full bg-brand" />}</button>)}
       </div>
       {selected && <div className="seller-inbox-thread flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border bg-surface px-5 py-3"><div className="flex items-center gap-3"><button onClick={() => setPhoneView('list')} aria-label="Back to conversations" className="seller-inbox-back flex-shrink-0 items-center justify-center rounded-lg text-lg font-semibold text-brand">←</button><AvatarText name={name(selected)} /><span><span className="block text-sm font-semibold">{name(selected)}</span><span className="text-xs text-text-muted">Buyer–Seller relationship thread</span></span></div>{escalated && <StatusBadge status="open" customLabel="Chatbot escalated" />}</div>
-        {escalated && question && <div className="flex items-center gap-3 bg-warning-bg px-5 py-3 text-xs text-text-secondary"><span className="font-semibold text-warning">Chatbot escalation</span><span>The chatbot had no approved answer for “{question.text}” A human Seller reply is requested.</span><button onClick={() => setEscalated(false)} className="ml-auto font-semibold text-brand">Mark handled</button></div>}
+        <div className="flex items-center justify-between border-b border-border bg-surface px-5 py-3"><div className="flex items-center gap-3"><button onClick={() => setPhoneView('list')} aria-label="Back to conversations" className="seller-inbox-back flex-shrink-0 items-center justify-center rounded-lg text-lg font-semibold text-brand-text">←</button><AvatarText name={name(selected)} /><span><span className="block text-sm font-semibold">{name(selected)}</span><span className="text-xs text-text-muted">Buyer–Seller relationship thread</span></span></div>{escalated && <StatusBadge status="open" customLabel="Chatbot escalated" />}</div>
+        {escalated && question && <div className="flex items-center gap-3 bg-warning-bg px-5 py-3 text-xs text-text-secondary"><span className="font-semibold text-warning">Chatbot escalation</span><span>The chatbot had no approved answer for “{question.text}” A human Seller reply is requested.</span><button onClick={() => setEscalated(false)} className="ml-auto font-semibold text-brand-text">Mark handled</button></div>}
         <div ref={list} role="list" aria-label="Messages" className="flex-1 overflow-y-auto bg-surface-raised p-5">
           {messages.map((m, index) => <ChatBubble key={index} mine={m.from !== 'buyer'} context={m.context} author={m.from === 'buyer' ? undefined : shortName(STAFF[m.from].name)}>{m.text}</ChatBubble>)}
         </div>
@@ -999,7 +999,7 @@ function ScenePerformanceView({ sellerId, at }: { sellerId: SellerId; at: Moment
 }
 
 function Outcome({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return <div className="min-w-[8.5rem] flex-1 rounded-xl bg-surface-raised p-3"><dd className={`font-display text-2xl font-semibold ${strong ? 'text-brand' : ''}`}>{value}</dd><dt className="mt-1 text-[11px] text-text-muted">{label}</dt></div>
+  return <div className="min-w-[8.5rem] flex-1 rounded-xl bg-surface-raised p-3"><dd className={`font-display text-2xl font-semibold ${strong ? 'text-brand-text' : ''}`}>{value}</dd><dt className="mt-1 text-[11px] text-text-muted">{label}</dt></div>
 }
 
 function Signal({ label, value }: { label: string; value: string }) {
@@ -1029,7 +1029,7 @@ function ProductPerformanceView({ sellerId, at }: { sellerId: SellerId; at: Mome
               <span data-label="Product rating">{rating ? `${rating.average} ★ · ${rating.ratings} review${rating.ratings === 1 ? '' : 's'}` : rating === null ? 'No ratings yet' : '—'}</span>
               <span data-label="Seller inquiries">{count(figures?.sellerInquiries)}</span>
               <span data-label="Orders initiated" className="font-semibold">{count(figures?.ordersInitiated)}</span>
-              <span data-label="Verified completed Orders" className="font-semibold text-brand">{count(figures?.completedOrders)}</span>
+              <span data-label="Verified completed Orders" className="font-semibold text-brand-text">{count(figures?.completedOrders)}</span>
             </div>
           )
         })}
@@ -1177,7 +1177,7 @@ function StorePanel({ sellerId, at, onOpenCouriers }: { sellerId: SellerId; at: 
             <DetailCard title="Store Profile"><div className="grid grid-cols-2 gap-4"><TextInput label="Store name" defaultValue={seller.name} /><TextInput label="Handle" defaultValue={seller.handle} hint="Public and unique." /><div className="col-span-2"><Textarea label="Bio" defaultValue={seller.bio ?? ''} rows={3} /></div><TextInput label="Physical Location" defaultValue={`${seller.area}, ${MARKET.city}`} /><TextInput label="Customer-facing contact" defaultValue="" /></div><div className="mt-5 flex justify-end"><Button onClick={() => setSaved(true)}>Save Profile</Button></div></DetailCard>
             <DetailCard title="Physical Location"><StoreMap sellerId={sellerId} /></DetailCard>
           </div>
-          <div className="flex flex-col gap-5"><DetailCard title="Availability"><div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">{available ? 'Store available' : 'Store unavailable'}</span><span className="text-xs text-text-muted">Controls new ordering availability.</span></span><Toggle label="Store availability" checked={available} onChange={() => setAvailable(!available)} /></div></DetailCard><DetailCard title="Public handle"><div className="font-mono text-sm font-semibold text-brand">{seller.handle}</div><div className="mt-2 text-xs text-text-muted">Handle changes affect future shared links.</div></DetailCard></div>
+          <div className="flex flex-col gap-5"><DetailCard title="Availability"><div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">{available ? 'Store available' : 'Store unavailable'}</span><span className="text-xs text-text-muted">Controls new ordering availability.</span></span><Toggle label="Store availability" checked={available} onChange={() => setAvailable(!available)} /></div></DetailCard><DetailCard title="Public handle"><div className="font-mono text-sm font-semibold text-brand-text">{seller.handle}</div><div className="mt-2 text-xs text-text-muted">Handle changes affect future shared links.</div></DetailCard></div>
         </div>
       )}
       {tab === 'fulfilment' && (
@@ -1216,8 +1216,8 @@ function StoreMap({ sellerId }: { sellerId: SellerId }) {
           <circle cx="240" cy="96" r="54" fill="var(--color-brand)" fillOpacity="0.08" stroke="var(--color-brand)" strokeOpacity="0.4" strokeDasharray="5 5" />
         </svg>
         <svg width="28" height="36" viewBox="0 0 28 36" className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full" aria-hidden="true">
-          <path d="M14 35C14 35 26 21.5 26 13A12 12 0 0 0 2 13C2 21.5 14 35 14 35Z" fill="var(--color-brand)" stroke="white" strokeWidth="2" />
-          <circle cx="14" cy="13" r="4.5" fill="white" />
+          <path d="M14 35C14 35 26 21.5 26 13A12 12 0 0 0 2 13C2 21.5 14 35 14 35Z" fill="var(--color-brand)" stroke="var(--color-on-brand)" strokeWidth="2" />
+          <circle cx="14" cy="13" r="4.5" fill="var(--color-on-brand)" />
         </svg>
         <span className="absolute left-3 top-3 rounded-full bg-surface px-2.5 py-1 text-[10px] font-semibold shadow-sm">{area}</span>
         <span className="absolute bottom-3 right-3 rounded-full bg-surface px-2.5 py-1 font-mono text-[10px] text-text-muted shadow-sm">Illustrative map</span>
@@ -1460,7 +1460,7 @@ function TeamSettings({ sellerId, team, onChange, onOpenRoles }: { sellerId: Sel
       <div className="mb-4 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Every team member uses individual human credentials. Shared team passwords are not supported.</div>
       <p className="mb-4 text-sm leading-relaxed text-text-secondary">{ROLES_SENTENCE}</p>
       <div className="space-y-3">{team.map(member => <TeamMemberCard key={member.staff} member={member} you={member.staff === you?.staff} canManage={canManage} onChange={change => onChange(member.staff, change)} />)}</div>
-      {team.length === 1 && <p className="mt-4 text-sm text-text-secondary">Only the Owner is on this team so far. Every role, and what it can do, is in <button onClick={onOpenRoles} className="font-semibold text-brand underline">Roles &amp; Permissions</button>.</p>}
+      {team.length === 1 && <p className="mt-4 text-sm text-text-secondary">Only the Owner is on this team so far. Every role, and what it can do, is in <button onClick={onOpenRoles} className="font-semibold text-brand-text underline">Roles &amp; Permissions</button>.</p>}
       <Button onClick={() => setInvited(true)} style={{ marginTop: 16 }}>{invited ? 'Invitation Sent' : 'Invite Team Member'}</Button>
     </DetailCard>
   )
@@ -1686,7 +1686,7 @@ function ChatBubble({ children, mine, context, author }: { children: ReactNode; 
   return (
     <div role="listitem" className={`mb-3 flex max-w-[70%] flex-col ${mine ? 'ml-auto items-end' : 'items-start'}`}>
       <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px]">{author && <span className="font-semibold text-text-secondary">{author}</span>}<span className="rounded-full border border-border bg-surface px-2 py-0.5 text-text-secondary">Talking about: {contextSubject(context)}</span></div>
-      <div className={`rounded-2xl p-3 text-sm shadow-sm ${mine ? 'rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface'}`}>{children}</div>
+      <div className={`rounded-2xl p-3 text-sm shadow-sm ${mine ? 'rounded-tr-sm bg-brand text-on-brand' : 'rounded-tl-sm bg-surface'}`}>{children}</div>
     </div>
   )
 }
@@ -1777,7 +1777,7 @@ function DetailCard({ title, trailing, children }: { title: string; trailing?: R
 }
 
 function Evidence({ title, status, detail }: { title: string; status: string; detail: string }) {
-  return <div className="rounded-xl bg-surface-raised p-3"><div className="text-xs font-semibold">{title}</div><div className="mt-1 text-sm font-semibold text-brand">{status}</div><div className="mt-1 text-[10px] text-text-muted">{detail}</div></div>
+  return <div className="rounded-xl bg-surface-raised p-3"><div className="text-xs font-semibold">{title}</div><div className="mt-1 text-sm font-semibold text-brand-text">{status}</div><div className="mt-1 text-[10px] text-text-muted">{detail}</div></div>
 }
 
 function Field({ label, value }: { label: string; value: ReactNode }) {
@@ -1822,5 +1822,5 @@ function StatusClockIcon() {
 }
 
 function InfoIcon() {
-  return <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-info text-xs font-bold text-white">i</span>
+  return <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-info text-xs font-bold text-on-status">i</span>
 }

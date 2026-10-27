@@ -949,7 +949,7 @@ function AppStart({ onExplore, onSignIn }: { onExplore: () => void; onSignIn: ()
  * Buyer states (WO-003), and the controls after it under the same label (the Checkout test control, WO-006).
  */
 function PrototypeSignInSwitch({ signedIn, onGuest, onSignedIn, children }: { signedIn: boolean; onGuest: () => void; onSignedIn: () => void; children?: ReactNode }) {
-  const option = (active: boolean) => `rounded-md px-3 py-1.5 text-xs font-semibold ${active ? 'bg-brand text-white' : 'text-text-secondary'}`
+  const option = (active: boolean) => `rounded-md px-3 py-1.5 text-xs font-semibold ${active ? 'bg-brand text-on-brand' : 'text-text-secondary'}`
   return (
     <div className="prototype-switch mb-3 flex max-w-full flex-wrap items-center justify-center gap-2" role="group" aria-label="Prototype navigation, not production UI">
       <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">PROTOTYPE NAVIGATION — NOT PRODUCTION UI</span>
@@ -1264,7 +1264,7 @@ function PurchasedProducts({ at, entries, purchasable, availabilityOf, entitleme
                     </span>
                     {listed ? (
                       <span className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="text-sm font-bold text-brand"><InlinePrice productId={entry.product} /></span>
+                        <span className="text-sm font-bold text-brand-text"><InlinePrice productId={entry.product} /></span>
                         <span className={`text-xs font-semibold ${availability === 'Available' ? 'text-success' : availability === 'Low Stock' ? 'text-warning' : 'text-text-secondary'}`}>{availability}</span>
                       </span>
                     ) : <span className="mt-1.5 block text-xs font-semibold text-text-secondary">No longer listed on Adulis</span>}
@@ -1402,7 +1402,7 @@ function NotificationSettings({ choices, onChange, onInbox, onBack }: {
               <button key={setting.key} role="switch" aria-checked={on} onClick={() => onChange(setting.key, !on)} className={`flex w-full items-center gap-3 rounded-xl bg-surface-raised px-4 py-3 text-left ${ROW_TARGET}`}>
                 <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-text-primary">{setting.label}</span><span className="block text-xs text-text-muted">{setting.detail}</span></span>
                 <span className="text-xs font-semibold text-text-secondary">{on ? 'On' : 'Off'}</span>
-                <span aria-hidden="true" className={`flex h-6 w-10 flex-shrink-0 items-center rounded-full p-0.5 transition-colors ${on ? 'justify-end bg-brand' : 'justify-start bg-border-strong'}`}><span className="h-5 w-5 rounded-full bg-surface shadow-sm" /></span>
+                <span aria-hidden="true" className={`flex h-6 w-10 flex-shrink-0 items-center rounded-full p-0.5 transition-colors ${on ? 'justify-end bg-brand' : 'justify-start bg-border-strong'}`}><span className={`h-5 w-5 rounded-full shadow-sm ${on ? 'bg-on-brand' : 'bg-surface'}`} /></span>
               </button>
             )
           })}
@@ -1792,7 +1792,7 @@ function StoriesRow({ groups, seen, onOpen }: { groups: readonly SellerStoryGrou
         return (
           <div key={group.seller} role="listitem" className="flex-shrink-0">
             <button onClick={() => onOpen(group)} aria-label={`${seller.name} story${unseen ? ', new' : ''}`} className="flex w-16 flex-col items-center gap-0.5">
-              <span className={`rounded-full p-[2px] ${unseen ? 'bg-gradient-to-tr from-brand to-[#E8874A]' : 'bg-border-strong'}`}>
+              <span className={`rounded-full p-[2px] ${unseen ? 'bg-gradient-to-tr from-brand to-[var(--adulis-story-ring)]' : 'bg-border-strong'}`}>
                 <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-surface bg-brand-muted text-[11px] font-bold text-brand-dark">{initials(seller.name)}</span>
               </span>
               <span className="w-full truncate text-center text-[10px] text-text-secondary">{seller.name}</span>
@@ -1818,7 +1818,7 @@ function StoryViewer({ group, at, onClose, onProduct, onPost }: {
   useEffect(() => { close.current?.focus() }, [])
   const kind = { discount: 'Discount', update: 'Update', promotion: 'Promotion' }[story.kind]
   return (
-    <div role="dialog" aria-modal="true" aria-label={`${seller.name} story`} onKeyDown={event => { if (event.key === 'Escape') onClose() }} className="absolute inset-0 z-40 flex flex-col bg-text-primary text-white">
+    <div role="dialog" aria-modal="true" aria-label={`${seller.name} story`} onKeyDown={event => { if (event.key === 'Escape') onClose() }} className="absolute inset-0 z-40 flex flex-col bg-ink text-white">
       {group.stories.length > 1 && (
         <div aria-hidden="true" className="flex gap-1 px-4 pt-3">{group.stories.map((s, i) => <span key={s.id} className={`h-0.5 flex-1 rounded-full ${i <= index ? 'bg-white' : 'bg-white/30'}`} />)}</div>
       )}
@@ -1892,12 +1892,12 @@ function ShoppablePostUnit({ postId, at, following, liked, saved, onExplore, onS
         {/* The Scene's actions. Like and Save are toggles (Like is the Scene's, never its Products'; Save keeps the Scene
             itself); no counts are shown. Explore the Scene is the primary action. */}
         <div className="flex flex-shrink-0 items-center gap-1 px-2 pt-1.5 text-xs font-semibold">
-          <button onClick={onLike} aria-label="Like" aria-pressed={liked} className={`flex h-9 w-9 items-center justify-center rounded-full ${liked ? 'text-brand' : 'text-text-secondary'}`}><HeartIcon filled={liked} /></button>
-          <button onClick={onSave} aria-label="Save" aria-pressed={saved} className={`flex h-9 w-9 items-center justify-center rounded-full ${saved ? 'text-brand' : 'text-text-secondary'}`}><BookmarkIcon filled={saved} /></button>
+          <button onClick={onLike} aria-label="Like" aria-pressed={liked} className={`flex h-9 w-9 items-center justify-center rounded-full ${liked ? 'text-brand-text' : 'text-text-secondary'}`}><HeartIcon filled={liked} /></button>
+          <button onClick={onSave} aria-label="Save" aria-pressed={saved} className={`flex h-9 w-9 items-center justify-center rounded-full ${saved ? 'text-brand-text' : 'text-text-secondary'}`}><BookmarkIcon filled={saved} /></button>
           <button onClick={onShare} aria-label="Share" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><ShareIcon /></button>
           <button onClick={onReviews} aria-label="Reviews" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><StarIcon /></button>
           <span className="flex-1" />
-          <button onClick={onExplore} className="whitespace-nowrap rounded-full bg-brand px-3.5 py-2 text-white">Explore the Scene</button>
+          <button onClick={onExplore} className="whitespace-nowrap rounded-full bg-brand px-3.5 py-2 text-on-brand">Explore the Scene</button>
         </div>
         {/* One line of caption: the whole caption is on the Scene itself. Margins, not padding, around it: a clamped line
             would show through padding. */}
@@ -1940,10 +1940,10 @@ function PriceTag({ productId, size = 'sm', ends, className = '' }: { productId:
   const product = PRODUCTS[productId]
   const discount = activeDiscount(productId)
   const main = size === 'lg' ? 'text-xl' : 'text-sm'
-  if (!discount) return <span className={`block ${main} font-bold text-brand ${className}`}>{formatEtb(product.price)}</span>
+  if (!discount) return <span className={`block ${main} font-bold text-brand-text ${className}`}>{formatEtb(product.price)}</span>
   return (
     <span className={`flex flex-wrap items-baseline gap-x-2 gap-y-0.5 ${className}`}>
-      <span className={`${main} font-bold text-brand`}>{formatEtb(currentPrice(productId))}</span>
+      <span className={`${main} font-bold text-brand-text`}>{formatEtb(currentPrice(productId))}</span>
       <span className="text-xs text-text-muted line-through"><span className="sr-only">Regular price </span>{formatEtb(product.price)}</span>
       <span className="rounded-full bg-brand-muted px-1.5 py-0.5 text-[10px] font-bold text-brand-dark">−{discount.percent}%</span>
       {ends && discount.ends && <span className="text-xs text-text-muted">Ends {formatDayMonth(discount.ends)}</span>}
@@ -2005,14 +2005,14 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
               aria-label={PRODUCTS[product].name}
               aria-pressed={on}
               style={{ ...EXPANDED_SPOTS[i], ...ON_PHOTO }}
-              className={`absolute flex items-center justify-center rounded-full border-2 text-xs font-bold shadow-lg ${on ? 'h-11 w-11 border-brand bg-white text-brand ring-4 ring-white/40' : 'h-9 w-9 border-white bg-brand text-white'}`}
+              className={`absolute flex items-center justify-center rounded-full border-2 text-xs font-bold shadow-lg ${on ? 'h-11 w-11 border-brand bg-surface text-brand-text ring-4 ring-white/40' : 'h-9 w-9 border-white bg-brand text-on-brand'}`}
             >
               {i + 1}
             </button>
           )
         })}
         {/* Reviews sits in the media's lower corner, clear of the hotspots, so the header keeps its title (PR-005). */}
-        <button onClick={onReviews} style={ON_PHOTO} className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-2 text-xs font-semibold text-text-primary shadow-lg">
+        <button onClick={onReviews} style={ON_PHOTO} className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-surface/90 px-3 py-2 text-xs font-semibold text-text-primary shadow-lg">
           <StarIcon /> Reviews
         </button>
       </div>
@@ -2034,11 +2034,11 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
                     >
                       <span className="relative flex-shrink-0">
                         <Placeholder label={PRODUCTS[id].name} className="h-10 w-10 rounded-lg text-[10px]" />
-                        {i < markers.length && <span aria-hidden="true" className="absolute -left-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-white">{i + 1}</span>}
+                        {i < markers.length && <span aria-hidden="true" className="absolute -left-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-on-brand">{i + 1}</span>}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold text-text-primary">{PRODUCTS[id].name}</span>
-                        <span className={`block truncate ${available ? 'text-brand' : 'text-text-secondary'}`}>{formatEtb(currentPrice(id))}</span>
+                        <span className={`block truncate ${available ? 'text-brand-text' : 'text-text-secondary'}`}>{formatEtb(currentPrice(id))}</span>
                         {!available && <span className="block truncate text-[10px] font-semibold text-text-muted">{availabilityText(id)}</span>}
                       </span>
                     </button>
@@ -2309,7 +2309,7 @@ function ReviewCard({ review, kind, reported, onEdit, onReport }: { review: Show
       {review.text && <p className="mt-2 text-sm leading-relaxed text-text-secondary">{review.text}</p>}
       {(onEdit || onReport) && (
         <div className="mt-1 flex justify-end text-xs">
-          {onEdit ? <button onClick={onEdit} className="font-semibold text-brand">Edit your review</button>
+          {onEdit ? <button onClick={onEdit} className="font-semibold text-brand-text">Edit your review</button>
             : reported ? <span className="py-1 text-text-muted">Reported</span>
             : <button onClick={onReport} aria-label={`Report review by ${name}`} className="font-semibold text-text-muted">Report</button>}
         </div>
@@ -2436,7 +2436,7 @@ function ShareSheet({ title, sellerId, onClose }: { title: string; sellerId: Sel
 function Toast({ message }: { message: string | null }) {
   return (
     <div role="status" aria-live="polite" className="pointer-events-none absolute bottom-20 left-4 right-4 z-[60] flex justify-center">
-      {message && <div className="rounded-xl bg-text-primary px-4 py-3 text-center text-sm font-semibold text-white shadow-lg">{message}</div>}
+      {message && <div className="rounded-xl bg-ink px-4 py-3 text-center text-sm font-semibold text-white shadow-lg">{message}</div>}
     </div>
   )
 }
@@ -2576,7 +2576,7 @@ function SellerProfile({ sellerId, at, following, sellerReviews, tab, onTab, onF
         </div>
         <div role="tablist" aria-label={`${seller.name} profile`} className="sticky top-0 z-10 flex border-b border-border bg-surface">
           {SELLER_TABS.map(t => (
-            <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => onTab(t.key)} className={`flex-1 py-3 text-xs font-semibold ${tab === t.key ? 'border-b-2 border-brand text-brand' : 'text-text-muted'}`}>{t.label}</button>
+            <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => onTab(t.key)} className={`flex-1 py-3 text-xs font-semibold ${tab === t.key ? 'border-b-2 border-brand text-brand-text' : 'text-text-muted'}`}>{t.label}</button>
           ))}
         </div>
         <div role="tabpanel" aria-label={SELLER_TABS.find(t => t.key === tab)?.label} className="p-4">
@@ -2683,7 +2683,7 @@ function SellerAbout({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
         <div className="text-sm font-semibold text-success">{trustLabel(trustAt(sellerId, at))} Seller</div>
         <p className="mt-1 text-xs leading-relaxed text-text-secondary">Trust level based on fulfilment, verified buyer reviews and claims outcomes. Updated by Adulis based on seller performance.</p>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          {facts.map(([label, value]) => <div key={label} className="rounded-lg bg-white/65 px-2.5 py-2"><div className="text-[9px] font-semibold uppercase text-text-muted">{label}</div><div className="text-sm font-bold text-success">{value}</div></div>)}
+          {facts.map(([label, value]) => <div key={label} className="rounded-lg bg-surface/65 px-2.5 py-2"><div className="text-[9px] font-semibold uppercase text-text-muted">{label}</div><div className="text-sm font-bold text-success">{value}</div></div>)}
         </div>
       </div>
       <dl className="mt-4">
@@ -2692,7 +2692,7 @@ function SellerAbout({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
       {(seller.socialAccounts ?? []).length > 0 && (
         <>
           <SectionLabel>Social</SectionLabel>
-          {(seller.socialAccounts ?? []).map(label => <div key={label} className="border-b border-border py-2.5 text-sm"><div className="font-semibold">{label}</div><div className="text-brand">{seller.handle}</div></div>)}
+          {(seller.socialAccounts ?? []).map(label => <div key={label} className="border-b border-border py-2.5 text-sm"><div className="font-semibold">{label}</div><div className="text-brand-text">{seller.handle}</div></div>)}
         </>
       )}
     </>
@@ -2721,7 +2721,7 @@ function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, o
         <>
           <div className="flex border-b border-border bg-surface">
             {(['top', 'products', 'posts', 'sellers'] as SearchTab[]).map(t => (
-              <button key={t} onClick={() => setTab(t)} className={`flex-1 py-3 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-brand text-brand' : 'text-text-muted'}`}>{t === 'posts' ? 'Scenes' : t}</button>
+              <button key={t} onClick={() => setTab(t)} className={`flex-1 py-3 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-brand text-brand-text' : 'text-text-muted'}`}>{t === 'posts' ? 'Scenes' : t}</button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-4">
@@ -3000,10 +3000,10 @@ function TimelineItem({ label, detail, done, current, last }: { label: string; d
   return (
     <div className="flex gap-3">
       <div className="flex flex-col items-center">
-        <span className={`flex h-6 w-6 items-center justify-center rounded-full border ${done ? 'border-brand bg-brand text-white' : 'border-border-strong bg-surface text-text-muted'}`}>{done ? <CheckIconSmall /> : ''}</span>
+        <span className={`flex h-6 w-6 items-center justify-center rounded-full border ${done ? 'border-brand bg-brand text-on-brand' : 'border-border-strong bg-surface text-text-muted'}`}>{done ? <CheckIconSmall /> : ''}</span>
         {!last && <span className={`h-12 w-0.5 ${done && !current ? 'bg-brand' : 'bg-border'}`} />}
       </div>
-      <div className="pb-5"><div className={`text-sm font-semibold ${current ? 'text-brand' : done ? 'text-text-primary' : 'text-text-muted'}`}>{label}</div><div className="text-xs text-text-muted">{detail}</div></div>
+      <div className="pb-5"><div className={`text-sm font-semibold ${current ? 'text-brand-text' : done ? 'text-text-primary' : 'text-text-muted'}`}>{label}</div><div className="text-xs text-text-muted">{detail}</div></div>
     </div>
   )
 }
@@ -3104,7 +3104,7 @@ function FinalHandoffCard({ handoff, at, onDelegate, onScan, onOtp, onCompleted 
         <div className="font-display text-lg font-semibold">{title}</div>
         <p className="mt-1 text-xs leading-relaxed text-text-muted">{`${giver} displays the ${handoff.qr}${handoff.mode === 'Buyer Collection' ? ` at the ${collectionPlace(handoff)}` : ''}. ${delegate ? `${delegate}, your authorized recipient, scans it to confirm receipt.` : 'Scan it to confirm you received your Order.'}`}</p>
         <Button onClick={onScan} style={{ width: '100%', marginTop: 14 }}>{`Scan ${handoff.qr}`}</Button>
-        <button onClick={onOtp} className="mt-3 w-full text-center text-xs font-semibold text-brand">Having trouble scanning? Use verification code</button>
+        <button onClick={onOtp} className="mt-3 w-full text-center text-xs font-semibold text-brand-text">Having trouble scanning? Use verification code</button>
       </div>
     )
   }
@@ -3172,14 +3172,14 @@ function DeliveryScanner({ handoff, at, onBack, onCamera, onOtp, onCompleted }: 
     <>
       <Header title="Final handoff" onBack={onBack} />
       <div className="flex flex-1 flex-col items-center justify-center px-7 text-center">
-        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-muted text-brand"><ScanIcon /></span>
+        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-muted text-brand-text"><ScanIcon /></span>
         <div className="mt-5 font-display text-2xl font-semibold">Scan {handoff.qr}</div>
         <p className="mt-2 text-sm leading-relaxed text-text-secondary">{instruction}</p>
         <div className="mt-5 w-full rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">{delegate ? `${delegate} scans ${giver}’s QR. Nobody receiving an Order displays a QR.` : `You scan ${giver}’s QR. You never need to display a QR.`}</div>
       </div>
       <div className="p-4 pb-6">
         <Button size="lg" onClick={onCamera} style={{ width: '100%' }}>Open camera</Button>
-        <button onClick={onOtp} className="mt-4 w-full text-center text-xs font-semibold text-brand">Having trouble scanning? Use verification code</button>
+        <button onClick={onOtp} className="mt-4 w-full text-center text-xs font-semibold text-brand-text">Having trouble scanning? Use verification code</button>
       </div>
     </>
   )
@@ -3188,7 +3188,7 @@ function DeliveryScanner({ handoff, at, onBack, onCamera, onOtp, onCompleted }: 
 function ScannerCamera({ handoff, onBack, onScan, onUnreadable }: { handoff: FinalHandoff; onBack: () => void; onScan: () => void; onUnreadable: () => void }) {
   const giver = presenterName(handoff)
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden bg-text-primary text-white">
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-ink text-white">
       <div className="relative z-10 flex items-center gap-3 p-4"><IconButton label="Close camera" onClick={onBack} dark>×</IconButton><div className="font-display text-lg font-semibold">Scan {giver}’s {handoff.qr}</div></div>
       <div className="flex flex-1 flex-col items-center justify-center">
         <div role="img" aria-label={`Simulated camera frame for scanning ${giver}’s ${handoff.qr}`} className="relative h-60 w-60 rounded-3xl border-2 border-white/80">
@@ -3293,12 +3293,12 @@ function CompletedOrder({ orderId, at, onBack, onReview, onClaim }: { orderId: O
     <>
       <Header title="Completed Order" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="rounded-2xl bg-success-bg p-5 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success text-white"><CheckIcon /></span><div className="mt-3 font-display text-2xl font-semibold">Completed</div><div className="mt-1 text-sm text-text-secondary">{handoffKind(handoff)} verified · Order {orderId}</div>{delegate && <div className="mt-1 text-xs text-text-muted">Received by {delegate}, your authorized recipient</div>}</div>
+        <div className="rounded-2xl bg-success-bg p-5 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success text-on-status"><CheckIcon /></span><div className="mt-3 font-display text-2xl font-semibold">Completed</div><div className="mt-1 text-sm text-text-secondary">{handoffKind(handoff)} verified · Order {orderId}</div>{delegate && <div className="mt-1 text-xs text-text-muted">Received by {delegate}, your authorized recipient</div>}</div>
         <SectionLabel>Your order</SectionLabel>
         <div className="flex gap-3"><Placeholder label={names} className="h-24 w-20 rounded-xl" /><div><div className="text-sm font-semibold">{names}</div><div className="mt-1 text-xs text-text-muted">{SELLERS[order.seller].name} · {order.lines.map(lineOptions).join(' · ')}</div><div className="mt-2 text-sm font-bold">{formatEtb(orderTotals(orderId).total)} paid</div></div></div>
         {eligibility.eligible && !eligibility.review && <div className="mt-6 rounded-xl border border-brand/20 p-4"><div className="font-display text-lg font-semibold">How was your order?</div><p className="mt-1 text-xs text-text-muted">Your verified handoff means this order now qualifies for a review.</p><p className="mt-1 text-xs font-semibold text-text-secondary">Eligible for review from {handoffTime(eligibility.from, at)} · Not reviewed yet</p><Button onClick={onReview} style={{ width: '100%', marginTop: 14 }}>Review Order</Button></div>}
         {eligibility.review && <div className="mt-6 rounded-xl bg-surface-raised p-4 text-sm text-text-secondary">You reviewed this Order.</div>}
-        <button onClick={onClaim} className="mt-5 w-full text-center text-xs font-semibold text-brand">Problem with this Order?</button>
+        <button onClick={onClaim} className="mt-5 w-full text-center text-xs font-semibold text-brand-text">Problem with this Order?</button>
       </div>
     </>
   )
@@ -3501,7 +3501,7 @@ function ChatMessage({ message, spaced }: { message: MessageRecord; spaced?: boo
   return (
     <div role="listitem" className={`${mine ? 'ml-auto items-end' : 'items-start'} ${spaced ? 'mt-3' : ''} flex max-w-[78%] flex-col`}>
       <span className="mb-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-semibold text-text-secondary">Talking about: {buyerContextSubject(message.context)}</span>
-      <div className={`${mine ? 'rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface shadow-sm'} rounded-2xl p-3 text-sm`}>{message.text}</div>
+      <div className={`${mine ? 'rounded-tr-sm bg-brand text-on-brand' : 'rounded-tl-sm bg-surface shadow-sm'} rounded-2xl p-3 text-sm`}>{message.text}</div>
     </div>
   )
 }
@@ -3653,7 +3653,7 @@ function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held
   const isHeld = (line: CartLine) => !!held && held.lines.some(item => sameLine(item, line))
   return (
     <>
-      <Header title={`${seller} cart`} onBack={onBack} trailing={<button onClick={onAllCarts} className="text-xs font-semibold text-brand">All carts</button>} />
+      <Header title={`${seller} cart`} onBack={onBack} trailing={<button onClick={onAllCarts} className="text-xs font-semibold text-brand-text">All carts</button>} />
       {lines.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-raised text-text-muted"><IconShop size={24} /></span>
@@ -3674,7 +3674,7 @@ function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held
               <div className="flex flex-1 flex-col">
                 <div className="text-sm font-semibold leading-snug">{product.name}</div>
                 <div className="mt-1 text-xs text-text-muted">{lineOptions(line)}</div>
-                <div className={`mt-2 text-sm font-bold ${gone ? 'text-danger' : 'text-brand'}`}>{gone ? availabilityOf(line.product) : <InlinePrice productId={line.product} />}</div>
+                <div className={`mt-2 text-sm font-bold ${gone ? 'text-danger' : 'text-brand-text'}`}>{gone ? availabilityOf(line.product) : <InlinePrice productId={line.product} />}</div>
                 <div className="mt-auto flex items-center justify-between">
                   <div className="inline-flex items-center rounded-lg border border-border">
                     <button onClick={() => onQuantity(line, Math.max(1, line.quantity - 1))} disabled={locked} aria-label={`Decrease ${product.name} quantity`} className={`h-8 w-8${locked ? ' opacity-40' : ''}`}>−</button>
@@ -4039,7 +4039,7 @@ function PriceRow({ label, value, strong }: { label: string; value: string; stro
 }
 
 function StepDot({ active, label }: { active?: boolean; label: string }) {
-  return <span className={`flex flex-col items-center gap-1 ${active ? 'text-brand' : 'text-text-muted'}`}><span className={`h-2.5 w-2.5 rounded-full ${active ? 'bg-brand' : 'bg-border-strong'}`} /><span>{label}</span></span>
+  return <span className={`flex flex-col items-center gap-1 ${active ? 'text-brand-text' : 'text-text-muted'}`}><span className={`h-2.5 w-2.5 rounded-full ${active ? 'bg-brand' : 'bg-border-strong'}`} /><span>{label}</span></span>
 }
 
 function StepLine() {
@@ -4064,21 +4064,21 @@ function ResultHeading({ title, count }: { title: string; count: string }) {
 
 function ProductRow({ productId, onClick }: { productId: ProductId; onClick: () => void }) {
   const product = PRODUCTS[productId]
-  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={product.name} className="h-20 w-20 rounded-lg" /><span className="flex-1 py-1"><span className="block text-sm font-semibold">{product.name}</span><span className="block text-xs text-text-muted">{SELLERS[product.seller].name}</span><span className="mt-2 block text-sm font-bold text-brand"><InlinePrice productId={productId} /></span></span></button>
+  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={product.name} className="h-20 w-20 rounded-lg" /><span className="flex-1 py-1"><span className="block text-sm font-semibold">{product.name}</span><span className="block text-xs text-text-muted">{SELLERS[product.seller].name}</span><span className="mt-2 block text-sm font-bold text-brand-text"><InlinePrice productId={productId} /></span></span></button>
 }
 
 function PostRow({ postId, onClick }: { postId: ShoppablePostId; onClick: () => void }) {
   const post = SHOPPABLE_POSTS[postId]
-  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={post.title} className="h-20 w-20 rounded-lg" /><span className="py-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-brand">Scene</span><span className="mt-1 block text-sm font-semibold">{post.title}</span><span className="text-xs text-text-muted">{SELLERS[post.seller].name} · {post.tags.length} product{post.tags.length === 1 ? '' : 's'}</span></span></button>
+  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={post.title} className="h-20 w-20 rounded-lg" /><span className="py-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-brand-text">Scene</span><span className="mt-1 block text-sm font-semibold">{post.title}</span><span className="text-xs text-text-muted">{SELLERS[post.seller].name} · {post.tags.length} product{post.tags.length === 1 ? '' : 's'}</span></span></button>
 }
 
 function SellerRow({ sellerId, at, onClick }: { sellerId: SellerId; at: Moment; onClick: () => void }) {
   const seller = SELLERS[sellerId]
-  return <button onClick={onClick} className="flex w-full items-center gap-3 rounded-xl bg-surface-raised p-3 text-left"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials(seller.name)}</span><span className="flex-1"><span className="block text-sm font-semibold">{seller.name}</span><span className="text-xs text-text-muted">{seller.category} · {trustLabel(trustAt(sellerId, at))}</span></span><span className="text-xs font-semibold text-brand">View</span></button>
+  return <button onClick={onClick} className="flex w-full items-center gap-3 rounded-xl bg-surface-raised p-3 text-left"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials(seller.name)}</span><span className="flex-1"><span className="block text-sm font-semibold">{seller.name}</span><span className="text-xs text-text-muted">{seller.category} · {trustLabel(trustAt(sellerId, at))}</span></span><span className="text-xs font-semibold text-brand-text">View</span></button>
 }
 
 function ProductCard({ name, price, onClick }: { name: string; price: ReactNode; onClick: () => void }) {
-  return <button onClick={onClick} className="overflow-hidden rounded-xl bg-surface text-left"><Placeholder label={name} className="h-44 w-full rounded-xl text-2xl" /><span className="mt-2 block text-xs font-semibold leading-snug">{name}</span><span className="mt-1 block text-xs font-bold text-brand">{price}</span></button>
+  return <button onClick={onClick} className="overflow-hidden rounded-xl bg-surface text-left"><Placeholder label={name} className="h-44 w-full rounded-xl text-2xl" /><span className="mt-2 block text-xs font-semibold leading-snug">{name}</span><span className="mt-1 block text-xs font-bold text-brand-text">{price}</span></button>
 }
 
 function PostTile({ title, label, onClick }: { title: string; label: string; onClick: () => void }) {

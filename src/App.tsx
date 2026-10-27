@@ -13,6 +13,7 @@ import DemoFlows, { FLOW_DEFINITIONS, type FlowId } from './sections/DemoFlows'
 import SystemStates from './sections/SystemStates'
 import { stageFor } from './demo-data'
 import { StoryProvider } from './StoryClock'
+import { ThemeLab } from './theme/ThemeLab'
 
 export type SectionKey =
   | '00-guide'
@@ -137,7 +138,7 @@ export default function App() {
                     width: 28,
                     height: 28,
                     background: isActive ? 'var(--color-brand)' : 'var(--color-surface-raised)',
-                    color: isActive ? '#fff' : 'var(--color-text-muted)',
+                    color: isActive ? 'var(--color-on-brand)' : 'var(--color-text-muted)',
                     fontFamily: 'var(--font-mono)',
                   }}
                 >
@@ -167,7 +168,14 @@ export default function App() {
         )}
       </aside>
 
-      {/* Main content. `data-section` lets index.css's responsive rules address a section without changing it. */}
+      {/* Theme Lab, the prototype's colour-system comparison (design evaluation), mounted once for every section. From
+          tablet widths up it has a bar of its own above main, so it never covers a surface's top bar; on a phone
+          index.css places it at the end of the section bar. */}
+      <div className="app-topbar">
+        <ThemeLab />
+      </div>
+
+      {/* Main content.`data-section` lets index.css's responsive rules address a section without changing it. */}
       <main data-section={active} className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}`}>
         <StoryProvider stage={stageFor(journey?.id, journey?.stage ?? 0)}>
           <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} />
@@ -178,9 +186,9 @@ export default function App() {
           under main, in its own row of the shell, so it never covers the product (WO-007). */}
       {journey && flow && flowStage && (
         <div className="flow-guide fixed bottom-5 right-5 z-[500] w-96 rounded-2xl border border-border bg-surface p-4 shadow-xl" role="dialog" aria-label="Guided prototype flow">
-          <div className="flow-guide-head flex items-start justify-between"><div className="flow-guide-heading"><div className="font-mono text-[10px] font-bold uppercase tracking-wider text-brand">Flow {flow.id} · Step {journey.stage + 1} of {flow.stages.length}</div><div className="flow-guide-title mt-1 font-display text-lg font-semibold">{flowStage.title}</div></div><button onClick={() => setJourney(null)} aria-label="Close guided flow" className="flow-guide-close flex h-7 w-7 items-center justify-center rounded-full bg-surface-raised text-text-muted">×</button></div>
+          <div className="flow-guide-head flex items-start justify-between"><div className="flow-guide-heading"><div className="font-mono text-[10px] font-bold uppercase tracking-wider text-brand-text">Flow {flow.id} · Step {journey.stage + 1} of {flow.stages.length}</div><div className="flow-guide-title mt-1 font-display text-lg font-semibold">{flowStage.title}</div></div><button onClick={() => setJourney(null)} aria-label="Close guided flow" className="flow-guide-close flex h-7 w-7 items-center justify-center rounded-full bg-surface-raised text-text-muted">×</button></div>
           <p className="flow-guide-instruction mt-2 text-xs leading-relaxed text-text-secondary">{flowStage.instruction}</p>
-          <div className="flow-guide-actions mt-4 flex items-center gap-2"><button disabled={journey.stage === 0} onClick={() => moveFlow(-1)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-secondary disabled:opacity-40">Previous</button><span className="flex-1" />{journey.stage < flow.stages.length - 1 ? <button onClick={() => moveFlow(1)} className="rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white">Next frame →</button> : <button onClick={() => { setJourney(null); setActive('10-demo-flows') }} className="rounded-lg bg-success px-3 py-2 text-xs font-semibold text-white">Finish demo</button>}</div>
+          <div className="flow-guide-actions mt-4 flex items-center gap-2"><button disabled={journey.stage === 0} onClick={() => moveFlow(-1)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-secondary disabled:opacity-40">Previous</button><span className="flex-1" />{journey.stage < flow.stages.length - 1 ? <button onClick={() => moveFlow(1)} className="rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-on-brand">Next frame →</button> : <button onClick={() => { setJourney(null); setActive('10-demo-flows') }} className="rounded-lg bg-success px-3 py-2 text-xs font-semibold text-on-status">Finish demo</button>}</div>
         </div>
       )}
     </div>
@@ -195,14 +203,14 @@ export function AdulisLogo({ size = 32 }: { size?: number }) {
       <rect width="32" height="32" rx="8" fill="var(--color-brand)" />
       <path
         d="M9 23L16 9L23 23"
-        stroke="white"
+        stroke="var(--color-on-brand)"
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M11.5 18.5H20.5"
-        stroke="white"
+        stroke="var(--color-on-brand)"
         strokeWidth="2.5"
         strokeLinecap="round"
       />

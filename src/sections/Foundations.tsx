@@ -1135,7 +1135,7 @@ export function PlaceholderSection({ number, title, description, items }: {
       <div className="flex items-center gap-4 mb-8">
         <span
           className="flex-shrink-0 flex items-center justify-center rounded-xl font-mono text-sm font-semibold"
-          style={{ width: 48, height: 48, background: 'var(--color-brand)', color: '#fff', fontFamily: 'var(--font-mono)' }}
+          style={{ width: 48, height: 48, background: 'var(--color-brand)', color: 'var(--color-on-brand)', fontFamily: 'var(--font-mono)' }}
         >
           {number}
         </span>

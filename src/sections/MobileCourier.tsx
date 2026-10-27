@@ -119,7 +119,7 @@ export default function MobileCourier({ demoTarget }: { demoTarget?: string }) {
               {activeTab === 'history' && <HistoryTab courierId={courierId} at={at} />}
               {activeTab === 'account' && <AccountTab courierId={courierId} at={at} availability={availability} onAvailability={setAvailability} onRelationships={() => setScreen('relationships')} opportunity={opportunities[0]} onOpportunity={openOpportunity} />}
             </div>
-            <BottomNav items={TABS.map(tab => (tab.key === 'assignments' ? { ...tab, badge: offers.length } : tab))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-courier)" />
+            <BottomNav items={TABS.map(tab => (tab.key === 'assignments' ? { ...tab, badge: offers.length } : tab))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-courier)" onAccent="var(--color-on-status)" />
           </>
         )}
         {screen === 'offer' && offerId && <OfferDetail orderId={offerId} hasActive={stage !== 'none' && stage !== 'verified'} onBack={() => setScreen('tabs')} onAccept={() => { setOrderId(offerId); setStage('accepted'); setActiveTab('active'); setScreen('tabs') }} />}
@@ -269,7 +269,7 @@ const ON_SCANNER = { outlineColor: 'var(--color-text-inverse)' }
 
 function PickupScanner({ onBack, onScan }: { onBack: () => void; onScan: () => void }) {
   return (
-    <div className="flex flex-1 flex-col bg-text-primary text-white">
+    <div className="flex flex-1 flex-col bg-ink text-white">
       <div className="flex items-center gap-3 p-4"><button onClick={onBack} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-xl" style={ON_SCANNER}>×</button><div className="font-display text-lg font-semibold">Scan Seller Pickup QR</div></div>
       <div className="flex flex-1 flex-col items-center justify-center">
         <ScanFrame />
@@ -498,8 +498,8 @@ function QrPattern() {
   return (
     <svg width="190" height="190" viewBox="0 0 190 190" aria-label="Courier Delivery QR">
       <rect width="190" height="190" rx="12" fill="white" />
-      {[[10, 10], [120, 10], [10, 120]].map(([x, y]) => <g key={`${x}-${y}`}><rect x={x} y={y} width="60" height="60" rx="4" fill="var(--color-text-primary)"/><rect x={x + 10} y={y + 10} width="40" height="40" fill="white"/><rect x={x + 20} y={y + 20} width="20" height="20" fill="var(--color-text-primary)"/></g>)}
-      {modules.map((module, index) => module.on && <rect key={index} x={module.x} y={module.y} width="10" height="10" rx="1" fill="var(--color-text-primary)"/>)}
+      {[[10, 10], [120, 10], [10, 120]].map(([x, y]) => <g key={`${x}-${y}`}><rect x={x} y={y} width="60" height="60" rx="4" fill="var(--color-ink)"/><rect x={x + 10} y={y + 10} width="40" height="40" fill="white"/><rect x={x + 20} y={y + 20} width="20" height="20" fill="var(--color-ink)"/></g>)}
+      {modules.map((module, index) => module.on && <rect key={index} x={module.x} y={module.y} width="10" height="10" rx="1" fill="var(--color-ink)"/>)}
     </svg>
   )
 }

@@ -878,7 +878,7 @@ function OperationalShowcase() {
   }))
 
   const columns = [
-    { key: 'ref', header: 'Order', width: '120px', render: (r: typeof tableRows[0]) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--color-brand)' }}>{r.ref}</span> },
+    { key: 'ref', header: 'Order', width: '120px', render: (r: typeof tableRows[0]) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--color-brand-text)' }}>{r.ref}</span> },
     { key: 'buyer', header: 'Buyer', width: '120px', render: (r: typeof tableRows[0]) => <span style={{ fontSize: 13 }}>{r.buyer}</span> },
     { key: 'status', header: 'Status', width: '140px', render: (r: typeof tableRows[0]) => <StatusBadge {...stateBadge(r.state)} size="sm" /> },
     { key: 'total', header: 'Total', width: '120px', render: (r: typeof tableRows[0]) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600 }}>{r.total}</span> },

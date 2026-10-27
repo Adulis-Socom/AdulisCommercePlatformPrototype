@@ -3,12 +3,19 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap');
 
 @import 'tailwindcss';
+@import './theme/theme-tokens.css';
 
-@theme inline {
+/* The colours are emitted as variables, and utilities read them through var(), so Theme Lab (src/theme/) can restate
+   them at runtime. These values are Baseline Light, the approved design. */
+@theme static {
   --color-brand:             #A04720;
   --color-brand-light:       #D97B45;
   --color-brand-muted:       #F0DDD1;
   --color-brand-dark:        #943F1A;
+  /* Brand as text, and text or icons on a brand or status fill. */
+  --color-brand-text:        var(--color-brand);
+  --color-on-brand:          #FFFFFF;
+  --color-on-status:         #FFFFFF;
 
   --color-background:        #FAF8F5;
   --color-surface:           #FFFFFF;
@@ -19,8 +26,10 @@
   --color-text-secondary:    #5C4F45;
   --color-text-muted:        #746860;
   --color-text-inverse:      #FAF8F5;
+  /* Dark immersive surfaces (Story viewer, camera, toasts, QR modules): the text colour in the Baseline. */
+  --color-ink:               var(--color-text-primary);
 
-  --color-border:            #E8E0D8;
+  --color-border:           #E8E0D8;
   --color-border-strong:     #C8BDB5;
 
   --color-success:           #2D7A4F;
@@ -43,8 +52,12 @@
   --color-operator-text:     #E8EAF0;
   --color-operator-muted:    #8C95A9;
   --color-operator-accent:   #E8874A;
+  /* Operator cautions and alerts: the accent in the Baseline. */
+  --color-operator-warning:  var(--color-operator-accent);
+}
 
-  --font-display:            'Fraunces', Georgia, serif;
+@theme inline {
+  --font-display:           'Fraunces', Georgia, serif;
   --font-body:               'Outfit', system-ui, sans-serif;
   --font-mono:               'DM Mono', 'Courier New', monospace;
 
@@ -97,8 +110,9 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The focus ring is the info blue in the Baseline; a Theme Lab system gives it its primary (src/theme/). */
 :where(button, [role='button'], a, input, select, textarea):focus-visible {
-  outline: 3px solid var(--color-info);
+  outline: 3px solid var(--adulis-focus-ring);
   outline-offset: 2px;
 }
 
@@ -122,7 +136,7 @@ textarea {
 }
 
 .operator-console [aria-label='Clear search']:focus-visible {
-  outline-color: var(--color-info);
+  outline-color: var(--adulis-focus-ring);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -257,28 +271,257 @@ textarea {
   }
 }
 
-/* Tablet: the shell's narrow rail spans both rows; the card sits under main with its instruction beside its buttons. */
+/* Theme Lab (src/theme/ThemeLab.tsx), the shell's top-right control. From tablet widths up the shell is a grid: the
+   sidebar beside a row for Theme Lab's bar above main, so the control never covers a surface's own top bar. On a
+   phone it sits at the end of the section bar (in the 640 px block below). */
+.app-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 44px;
+  padding-inline: 8px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+@media (min-width: 641px) {
+  .app-shell {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .app-shell > .app-sidebar {
+    grid-column: 1;
+    grid-row: 1 / -1;
+  }
+
+  .app-shell > .app-topbar {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .app-shell > .app-main {
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 0;
+  }
+}
+
+.theme-lab-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: min(420px, 100%);
+  padding-inline: 10px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.theme-lab-trigger:hover,
+.theme-lab-option:hover {
+  background: var(--adulis-hover);
+}
+
+.theme-lab-tag,
+.theme-lab-legend {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.theme-lab-current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-lab-chevron {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.theme-lab-swatch {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 0 1.5px var(--color-surface);
+}
+
+.theme-lab-panel {
+  position: fixed;
+  z-index: 900;
+  top: 48px;
+  right: 8px;
+  width: 340px;
+  max-height: calc(100dvh - 56px);
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xl);
+  color: var(--color-text-primary);
+}
+
+.theme-lab-close {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -6px 0 0;
+  border-radius: var(--radius-full);
+  color: var(--color-text-muted);
+  font-size: 18px;
+}
+
+.theme-lab-step,
+.theme-lab-reset {
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.theme-lab-step {
+  flex: 1;
+  color: var(--color-text-secondary);
+}
+
+.theme-lab-reset {
+  width: 100%;
+  margin-top: 16px;
+  color: var(--color-brand-text);
+}
+
+.theme-lab-reset:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.theme-lab-legend {
+  margin-bottom: 4px;
+}
+
+/* Palette names wrap rather than truncate, so every name stays readable at any width. */
+.theme-lab-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.theme-lab-option:has(:checked) {
+  background: var(--color-brand-muted);
+  color: var(--color-brand-dark);
+  font-weight: 600;
+}
+
+.theme-lab-option input {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-brand);
+}
+
+.theme-lab-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+}
+
+.theme-lab-mode {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-lab-mode input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.theme-lab-mode:has(:checked) {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.theme-lab-mode:has(:focus-visible) {
+  outline: 3px solid var(--adulis-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Touch widths: every Theme Lab control is at least 44 px tall. */
+@media (max-width: 1200px) {
+  .theme-lab-close {
+    width: 44px;
+    height: 44px;
+    margin: -10px -10px 0 0;
+  }
+
+  .theme-lab-step,
+  .theme-lab-reset,
+  .theme-lab-option,
+  .theme-lab-mode {
+    min-height: 44px;
+  }
+}
+
+/* Tablet: the shell's narrow rail spans every row; the card sits under main with its instruction beside its buttons. */
 @media (max-width: 1200px) and (min-width: 641px) {
   .app-shell.flow-active {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
 
   .app-shell.flow-active > .app-sidebar {
     grid-column: 1;
-    grid-row: 1 / span 2;
+    grid-row: 1 / -1;
   }
 
   .app-shell.flow-active > .app-main {
     grid-column: 2;
-    grid-row: 1;
+    grid-row: 2;
     min-height: 0;
   }
 
   .app-shell.flow-active > .flow-guide {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 3;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     column-gap: 24px;
@@ -518,8 +761,46 @@ textarea {
   .app-sidebar {
     width: 100% !important;
     height: 52px;
+    padding-right: 52px;
     border-right: 0;
     border-bottom: 1px solid var(--color-border);
+  }
+
+  /* Theme Lab at the end of the section bar, which scrolls in the space left of it; its panel opens below the bar,
+     the width of the screen. */
+  .app-shell {
+    position: relative;
+  }
+
+  .app-topbar {
+    position: absolute;
+    z-index: 1;
+    top: 4px;
+    right: 4px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .theme-lab-trigger {
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .theme-lab-tag,
+  .theme-lab-current,
+  .theme-lab-chevron {
+    display: none;
+  }
+
+  .theme-lab-panel {
+    top: 56px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: calc(100dvh - 64px);
   }
 
   .app-sidebar > div:first-child,

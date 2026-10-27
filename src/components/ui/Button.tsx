@@ -19,7 +19,7 @@ const STYLES: Record<ButtonVariant, {
 }> = {
   primary: {
     bg: 'var(--color-brand)',
-    color: 'var(--color-text-inverse)',
+    color: 'var(--adulis-button-label)',
     border: 'transparent',
     hoverBg: 'var(--color-brand-light)',
     activeBg: 'var(--color-brand-dark)',
@@ -28,7 +28,7 @@ const STYLES: Record<ButtonVariant, {
   },
   secondary: {
     bg: 'transparent',
-    color: 'var(--color-brand)',
+    color: 'var(--color-brand-text)',
     border: 'var(--color-brand)',
     hoverBg: 'var(--color-brand-muted)',
     activeBg: 'var(--color-brand-muted)',
@@ -46,7 +46,7 @@ const STYLES: Record<ButtonVariant, {
   },
   text: {
     bg: 'transparent',
-    color: 'var(--color-brand)',
+    color: 'var(--color-brand-text)',
     border: 'transparent',
     hoverBg: 'var(--color-brand-muted)',
     activeBg: 'var(--color-brand-muted)',
@@ -55,7 +55,7 @@ const STYLES: Record<ButtonVariant, {
   },
   destructive: {
     bg: 'var(--color-danger)',
-    color: '#fff',
+    color: 'var(--color-on-status)',
     border: 'transparent',
     hoverBg: '#D94040',
     activeBg: '#A02020',

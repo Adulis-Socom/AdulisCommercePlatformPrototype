@@ -307,7 +307,7 @@ export default function SystemStates() {
   return (
     <div className="system-states mx-auto max-w-7xl p-8">
       <div className="mb-8">
-        <div className="font-mono text-xs font-semibold uppercase tracking-widest text-brand">Operational resilience</div>
+        <div className="font-mono text-xs font-semibold uppercase tracking-widest text-brand-text">Operational resilience</div>
         <h1 className="mt-2 font-display text-4xl font-semibold">System States</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-text-secondary">
           Representative non-happy paths across Adulis. Each state preserves the authority and boundary of the underlying business workflow.

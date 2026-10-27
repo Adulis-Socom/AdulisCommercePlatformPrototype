@@ -171,7 +171,7 @@ export function OrderTimeline({ events }: { events: TimelineEvent[] }) {
                 background: event.status === 'pending' ? 'var(--color-surface)' : color,
                 border: `2px solid ${color}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, color: event.status === 'pending' ? color : '#fff',
+                fontSize: 10, color: event.status === 'pending' ? color : event.status === 'active' ? 'var(--color-on-brand)' : 'var(--color-on-status)',
                 fontWeight: 700, zIndex: 1,
               }}>
                 {statusIcon[event.status]}
@@ -232,7 +232,7 @@ export function AuditEntry({ entry }: { entry: AuditEntryData }) {
           <span style={{ color: 'var(--color-text-muted)' }}>→</span>
           <span style={{ color: 'var(--color-text-secondary)' }}>{entry.action}</span>
           <span style={{ color: 'var(--color-text-muted)' }}>on</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-brand)' }}>{entry.target}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-brand-text)' }}>{entry.target}</span>
         </div>
         {entry.reason && (
           <div style={{ color: 'var(--color-text-muted)', fontSize: 11, fontStyle: 'italic' }}>"{entry.reason}"</div>
@@ -297,7 +297,7 @@ export function WorkQueueRow({ item, onClaim, onOpen }: {
       {/* Queue */}
       <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>{item.queue}</div>
       {/* Case ref */}
-      <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-brand)', fontWeight: 600 }}>{item.caseRef}</div>
+      <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-brand-text)', fontWeight: 600 }}>{item.caseRef}</div>
       {/* Subject */}
       <div style={{ fontSize: 13, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.subject}</div>
       {/* Market */}
@@ -323,7 +323,7 @@ export function WorkQueueRow({ item, onClaim, onOpen }: {
         {onOpen && (
           <button
             onClick={e => { e.stopPropagation(); onOpen(item.id) }}
-            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--color-brand)', color: 'var(--color-on-brand)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
           >
             Open
           </button>
@@ -364,7 +364,7 @@ export function ApprovalBlock({
               </button>
             )}
             {onApprove && (
-              <button onClick={onApprove} style={{ padding: '8px 16px', borderRadius: 'var(--radius-md)', background: 'var(--color-success)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
+              <button onClick={onApprove} style={{ padding: '8px 16px', borderRadius: 'var(--radius-md)', background: 'var(--color-success)', border: 'none', color: 'var(--color-on-status)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
                 Approve
               </button>
             )}

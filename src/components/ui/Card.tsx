@@ -462,7 +462,7 @@ export function NotificationCard({ notif, onDismiss }: { notif: NotificationData
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>{notif.body}</div>
         <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{notif.time}</div>
         {notif.action && (
-          <button style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: 'var(--color-brand)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+          <button style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: 'var(--color-brand-text)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
             {notif.action} →
           </button>
         )}

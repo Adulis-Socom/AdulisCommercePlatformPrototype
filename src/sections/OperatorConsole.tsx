@@ -72,6 +72,8 @@ const BORDER = 'var(--color-operator-border)'
 const TEXT = 'var(--color-operator-text)'
 const MUTED = 'var(--color-operator-muted)'
 const ACCENT = 'var(--color-operator-accent)'
+// Cautions, alerts and warning states. The Baseline shows them in the accent; a Theme Lab system keeps them amber.
+const WARNING = 'var(--color-operator-warning)'
 
 const keys = <T extends string>(record: Readonly<Record<T, unknown>>) => Object.keys(record) as T[]
 
@@ -199,7 +201,7 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
         </nav>
         {labelled && (live
           ? <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: 'var(--color-danger)', background: 'var(--color-danger-bg)' }}><p className="text-xs font-semibold" style={{ color: 'var(--color-danger)' }}>EXCEPTIONAL SOLO COVERAGE</p><p className="mt-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>Audited · Expires in {formatDuration(live.remaining)}</p></div>
-          : <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: `${ACCENT}40`, background: `${ACCENT}10` }}><p className="text-xs font-semibold" style={{ color: ACCENT }}>PRIVILEGED SESSION</p><p className="mt-1 text-xs" style={{ color: MUTED }}>Reasoned access · Audit logging · Named actions only</p></div>)}
+          : <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border p-3" style={{ borderColor: `${WARNING}40`, background: `${WARNING}10` }}><p className="text-xs font-semibold" style={{ color: WARNING }}>PRIVILEGED SESSION</p><p className="mt-1 text-xs" style={{ color: MUTED }}>Reasoned access · Audit logging · Named actions only</p></div>)}
         {/* Beside the rail and outside the scrolling nav, so nothing clips it. The button it describes is already named. */}
         {rail && tip && <div className="operator-rail-tooltip pointer-events-none absolute z-40 whitespace-nowrap rounded-md border px-2 py-1 text-xs font-medium" aria-hidden="true" style={{ left: 'calc(100% + 8px)', top: tip.top, transform: 'translateY(-50%)', background: RAISED, borderColor: BORDER, color: TEXT, boxShadow: 'var(--shadow-lg)' }}>{tip.label}</div>}
       </aside>
@@ -663,8 +665,8 @@ function FounderDecisionsPanel({ at }: { at: Moment }) {
     <div className="mx-auto max-w-7xl p-8">
       <OperatorHeader title="Founder Decisions" description="Material decisions require evidence, a proposal, and review by the other Founder." trailing={<FounderSwitcher actor={actor} setActor={setActor} />} />
       <div className="mb-5 grid grid-cols-2 gap-4">
-        <button className="rounded-2xl border p-5 text-left" style={{ borderColor: needsReview ? ACCENT : BORDER, background: needsReview ? `${ACCENT}10` : SURFACE }}><div className="text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>Needs My Review</div><div className="mt-2 font-mono text-3xl font-bold" style={{ color: needsReview ? ACCENT : TEXT }}>{needsReview ? 1 : 0}</div><div className="mt-1 text-xs" style={{ color: MUTED }}>{actor} review queue</div></button>
-        <button className="rounded-2xl border p-5 text-left" style={{ borderColor: needsApproval ? ACCENT : BORDER, background: needsApproval ? `${ACCENT}10` : SURFACE }}><div className="text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>Needs My Approval</div><div className="mt-2 font-mono text-3xl font-bold" style={{ color: needsApproval ? ACCENT : TEXT }}>{needsApproval ? 1 : 0}</div><div className="mt-1 text-xs" style={{ color: MUTED }}>{needsApproval ? `Proposal by ${proposer}` : 'No proposal awaiting this Founder'}</div></button>
+        <button className="rounded-2xl border p-5 text-left" style={{ borderColor: needsReview ? WARNING : BORDER, background: needsReview ? `${WARNING}10` : SURFACE }}><div className="text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>Needs My Review</div><div className="mt-2 font-mono text-3xl font-bold" style={{ color: needsReview ? WARNING : TEXT }}>{needsReview ? 1 : 0}</div><div className="mt-1 text-xs" style={{ color: MUTED }}>{actor} review queue</div></button>
+        <button className="rounded-2xl border p-5 text-left" style={{ borderColor: needsApproval ? WARNING : BORDER, background: needsApproval ? `${WARNING}10` : SURFACE }}><div className="text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>Needs My Approval</div><div className="mt-2 font-mono text-3xl font-bold" style={{ color: needsApproval ? WARNING : TEXT }}>{needsApproval ? 1 : 0}</div><div className="mt-1 text-xs" style={{ color: MUTED }}>{needsApproval ? `Proposal by ${proposer}` : 'No proposal awaiting this Founder'}</div></button>
       </div>
       <div className="grid grid-cols-[1.35fr_.65fr] gap-5">
         <div className="flex flex-col gap-5">
@@ -918,9 +920,9 @@ function DurationPicker({ from, after, latest, option, custom, onOption, onCusto
       <div className="mt-3 rounded-lg p-3 text-xs leading-relaxed" style={{ background: RAISED, color: MUTED }}>
         {allowedExpiry(expires, after, latest)
           ? <div><span className="font-semibold" style={{ color: TEXT }}>Expected return and expiry: {dateTime(expires)}</span> · {formatDuration(minutesBetween(from, expires))} from {dateTime(from)}</div>
-          : minutesBetween(after, latest) <= 0 ? <div role="alert" className="font-semibold" style={{ color: ACCENT }}>Solo Coverage already runs to its maximum, {dateTime(latest)}, so it can't be extended further.</div>
-          : expires && minutesBetween(expires, latest) < 0 ? <div role="alert" className="font-semibold" style={{ color: ACCENT }}>Error: {dateTime(expires)} is beyond the maximum. Choose a date and time no later than {dateTime(latest)}.</div>
-          : custom ? <div role="alert" className="font-semibold" style={{ color: ACCENT }}>Error: choose a date and time after {dateTime(after)}.</div> : <div>Choose a date and time after {dateTime(after)}.</div>}
+          : minutesBetween(after, latest) <= 0 ? <div role="alert" className="font-semibold" style={{ color: WARNING }}>Solo Coverage already runs to its maximum, {dateTime(latest)}, so it can't be extended further.</div>
+          : expires && minutesBetween(expires, latest) < 0 ? <div role="alert" className="font-semibold" style={{ color: WARNING }}>Error: {dateTime(expires)} is beyond the maximum. Choose a date and time no later than {dateTime(latest)}.</div>
+          : custom ? <div role="alert" className="font-semibold" style={{ color: WARNING }}>Error: choose a date and time after {dateTime(after)}.</div> : <div>Choose a date and time after {dateTime(after)}.</div>}
         <div className="mt-1">Maximum Solo Coverage: {SOLO_COVERAGE_MAX_DAYS} days from activation, until {dateTime(latest)}.</div>
         <div className="mt-1">Expected duration is an estimate and temporary governance boundary, not permanent authority.</div>
       </div>
@@ -950,7 +952,7 @@ function SoloActivation({ at, actor, onActivate }: { at: Moment; actor: FounderA
   return (
     <>
       <div className="mb-3"><SessionLabel dark /></div>
-      <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-danger)', background: `${ACCENT}08` }}><div className="text-sm font-semibold" style={{ color: ACCENT }}>Exceptional use only</div><p className="mt-1 text-xs leading-relaxed" style={{ color: MUTED }}>Use only when the other Founder is genuinely unavailable and delay would create material operational risk.</p></div>
+      <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-danger)', background: `${WARNING}08` }}><div className="text-sm font-semibold" style={{ color: WARNING }}>Exceptional use only</div><p className="mt-1 text-xs leading-relaxed" style={{ color: MUTED }}>Use only when the other Founder is genuinely unavailable and delay would create material operational risk.</p></div>
       <div className="mt-5"><SoloStep label={`${other} unavailable`} detail="Required: the other Founder is unavailable for dual review" done={unavailable} doneText="Confirmed" onDone={() => setUnavailable(true)} /></div>
       <div className="mt-3"><SoloStep label="Fresh strong reauthentication" detail="Required immediately before activation" done={reauth} doneText="Verified" onDone={() => setReauth(true)} /></div>
       <div className="mt-4"><Textarea label="Exceptional reason" value={reason} onChange={event => setReason(event.target.value)} rows={4} placeholder="Explain why dual review is temporarily unavailable and why delay creates risk." /></div>
@@ -1136,12 +1138,12 @@ function DarkPanel({ title, trailing, children }: { title: string; trailing?: Re
 }
 
 function OperatorMetric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: string }) {
-  const color = tone === 'danger' ? 'var(--color-danger)' : ACCENT
+  const color = tone === 'danger' ? 'var(--color-danger)' : WARNING
   return <div className="rounded-xl border p-4" style={{ borderColor: BORDER, background: SURFACE }}><div className="text-xs" style={{ color: MUTED }}>{label}</div><div className="mt-2 font-mono text-2xl font-bold" style={{ color }}>{value}</div><div className="mt-1 text-[10px]" style={{ color: MUTED }}>{detail}</div></div>
 }
 
 function OperatorState({ children, tone }: { children: ReactNode; tone: 'danger' | 'warning' | 'success' | 'neutral' }) {
-  const color = tone === 'danger' ? 'var(--color-danger)' : tone === 'warning' ? ACCENT : tone === 'success' ? 'var(--color-success)' : MUTED
+  const color = tone === 'danger' ? 'var(--color-danger)' : tone === 'warning' ? WARNING : tone === 'success' ? 'var(--color-success)' : MUTED
   return <span className="inline-flex w-fit rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color, background: `${color}18` }}>{children}</span>
 }
 

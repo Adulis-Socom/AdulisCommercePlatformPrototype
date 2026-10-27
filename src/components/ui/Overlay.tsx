@@ -183,7 +183,7 @@ export function Confirmation({
             style={{
               padding: '9px 18px', borderRadius: 'var(--radius-md)', border: 'none',
               background: variant === 'destructive' ? 'var(--color-danger)' : 'var(--color-brand)',
-              color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)',
+              color: variant === 'destructive' ? 'var(--color-on-status)' : 'var(--color-on-brand)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)',
             }}
           >
             {confirmLabel}
@@ -218,7 +218,7 @@ export function Toast({ message, variant = 'info', onDismiss }: {
       boxShadow: 'var(--shadow-lg)',
       minWidth: 240, maxWidth: 360,
     }}>
-      <span style={{ width: 22, height: 22, borderRadius: '50%', background: cfg.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+      <span style={{ width: 22, height: 22, borderRadius: '50%', background: cfg.color, color: 'var(--color-on-status)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
         {cfg.icon}
       </span>
       <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: cfg.color, lineHeight: 1.4 }}>{message}</span>
@@ -275,7 +275,7 @@ export function Tooltip({ content, children }: { content: string; children: Reac
         style={{
           position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
           marginBottom: 6, padding: '5px 10px',
-          background: 'var(--color-text-primary)', color: '#fff',
+          background: 'var(--color-ink)', color: '#fff',
           borderRadius: 'var(--radius-md)', fontSize: 11, fontFamily: 'var(--font-body)',
           whiteSpace: 'nowrap', pointerEvents: 'none',
           opacity: 0, transition: 'opacity 0.15s',
@@ -338,7 +338,7 @@ export function ErrorState({ title = 'Something went wrong', description, onRetr
       {onRetry && (
         <button
           onClick={onRetry}
-          style={{ marginTop: 8, padding: '9px 20px', borderRadius: 'var(--radius-md)', background: 'var(--color-brand)', border: 'none', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}
+          style={{ marginTop: 8, padding: '9px 20px', borderRadius: 'var(--radius-md)', background: 'var(--color-brand)', border: 'none', color: 'var(--color-on-brand)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}
         >
           Try again
         </button>

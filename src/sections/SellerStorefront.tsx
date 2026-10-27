@@ -148,7 +148,7 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
   const pillStyle = (active: boolean) => ({
     padding: '4px 12px', borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: 'none',
     background: active ? 'var(--color-brand)' : 'var(--color-surface-raised)',
-    color: active ? '#fff' : 'var(--color-text-muted)',
+    color: active ? 'var(--color-on-brand)' : 'var(--color-text-muted)',
   })
 
   return (
@@ -306,7 +306,7 @@ function StorefrontView({ tab, setTab, navigate, onOpenAdulisApp }: {
             onClick={() => setTab(t.key)}
             style={{
               flex: 1, padding: '12px 0', fontSize: 12, fontWeight: tab === t.key ? 700 : 500,
-              color: tab === t.key ? 'var(--color-brand)' : 'var(--color-text-muted)',
+              color: tab === t.key ? 'var(--color-brand-text)' : 'var(--color-text-muted)',
               background: 'transparent', border: 'none', cursor: 'pointer', position: 'relative',
             }}
           >
@@ -333,7 +333,7 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
       {/* top row: identity + actions */}
       <div className="storefront-identity-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
         <div className="storefront-identity" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <div style={{ width: 54, height: 54, borderRadius: 16, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, color: 'var(--color-brand)', flexShrink: 0 }}>
+          <div style={{ width: 54, height: 54, borderRadius: 16, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, color: 'var(--color-brand-text)', flexShrink: 0 }}>
             {initials(seller.name)}
           </div>
           <div>
@@ -358,7 +358,7 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
           <button
             onClick={() => onOpenAdulisApp()}
             className="storefront-open-adulis"
-            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 13px', borderRadius: 999, background: 'var(--color-brand)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 13px', borderRadius: 999, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
           >
             <AdulisLogo size={12} />
             <span>Open Adulis</span>
@@ -379,7 +379,7 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
 
       {/* Follow and Message happen in the Adulis app: on this public page they open it. */}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <button onClick={() => onOpenAdulisApp(`Follow ${seller.name} in the Adulis app.`)} style={{ flex: 1, padding: '8px 0', borderRadius: 999, background: 'var(--color-brand)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+        <button onClick={() => onOpenAdulisApp(`Follow ${seller.name} in the Adulis app.`)} style={{ flex: 1, padding: '8px 0', borderRadius: 999, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
           Follow
         </button>
         <button onClick={() => onOpenAdulisApp(`Message ${seller.name} in the Adulis app.`)} style={{ flex: 1, padding: '8px 0', borderRadius: 999, background: 'var(--color-surface)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-strong)', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
@@ -434,7 +434,7 @@ function SceneCard({ post, height, withCaption, onOpen }: { post: ShoppablePost;
       aria-label={`Scene: ${post.title}`}
       style={{ display: 'block', width: '100%', height, background: post.imgBg, borderRadius: 16, border: 'none', overflow: 'hidden', textAlign: 'left', cursor: 'pointer', padding: 0, position: 'relative' }}
     >
-      <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', background: post.zeroProduct ? 'rgba(0,0,0,0.45)' : 'var(--color-brand)', color: '#fff', padding: '3px 8px', borderRadius: 999, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+      <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', background: post.zeroProduct ? 'rgba(0,0,0,0.45)' : 'var(--color-brand)', color: post.zeroProduct ? '#fff' : 'var(--color-on-brand)', padding: '3px 8px', borderRadius: 999, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
         {post.zeroProduct ? 'Scene' : `${tagged} product${tagged === 1 ? '' : 's'} tagged`}
       </span>
       {post.hasHotspot && (
@@ -468,18 +468,18 @@ function ProductsTab({ navigate }: { navigate: (s: Screen) => void }) {
           <div style={{ height: 130, background: p.imgBg, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{p.imgLabel}</span>
             {p.discount && (
-              <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 10, fontWeight: 700, background: 'var(--color-brand)', color: '#fff', padding: '2px 7px', borderRadius: 999 }}>−{p.discount.percent}%</span>
+              <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 10, fontWeight: 700, background: 'var(--color-brand)', color: 'var(--color-on-brand)', padding: '2px 7px', borderRadius: 999 }}>−{p.discount.percent}%</span>
             )}
             {p.availability === 'Out of Stock' && (
-              <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', background: 'white', padding: '3px 8px', borderRadius: 999 }}>Out of Stock</span>
+              <div style={{ position: 'absolute', inset: 0, background: 'color-mix(in srgb, var(--color-surface) 55%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', background: 'var(--color-surface)', padding: '3px 8px', borderRadius: 999 }}>Out of Stock</span>
               </div>
             )}
           </div>
           {/* info */}
           <div style={{ padding: '10px 10px 12px' }}>
             <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 3px', lineHeight: 1.3 }}>{p.name}</p>
-            <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-brand)', margin: '0 0 5px' }}>{p.price}{p.regularPrice && <span style={{ marginLeft: 5, fontSize: 10, color: 'var(--color-text-muted)', textDecoration: 'line-through' }}>{p.regularPrice}</span>}</p>
+            <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-brand-text)', margin: '0 0 5px' }}>{p.price}{p.regularPrice && <span style={{ marginLeft: 5, fontSize: 10, color: 'var(--color-text-muted)', textDecoration: 'line-through' }}>{p.regularPrice}</span>}</p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <AvailBadge avail={p.availability} />
               <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>★ {qualityText(p.quality)}</span>
@@ -516,7 +516,7 @@ function ReviewsTab() {
         <div key={i} style={{ paddingBottom: 16, marginBottom: 16, borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--color-brand)' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--color-brand-text)' }}>
                 {r.buyer[0]}
               </div>
               <div>
@@ -566,7 +566,7 @@ function AboutTab({ onOpenAdulisApp }: { onOpenAdulisApp: () => void }) {
             { label: 'Orders Fulfilled', value: completed === undefined ? '—' : String(completed) },
             { label: 'Claim Rate', value: '—' },
           ].map(s => (
-            <div key={s.label} style={{ background: 'rgba(255,255,255,0.65)', borderRadius: 8, padding: '7px 9px' }}>
+            <div key={s.label} style={{ background: 'color-mix(in srgb, var(--color-surface) 65%, transparent)', borderRadius: 8, padding: '7px 9px' }}>
               <p style={{ fontSize: 9, color: 'var(--color-text-muted)', margin: '0 0 2px', fontWeight: 600, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>{s.label}</p>
               <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-success)', margin: 0 }}>{s.value}</p>
             </div>
@@ -596,7 +596,7 @@ function AboutTab({ onOpenAdulisApp }: { onOpenAdulisApp: () => void }) {
             <span style={{ fontSize: 16 }}>{s.icon}</span>
             <div>
               <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{s.label}</p>
-              <p style={{ fontSize: 11, color: 'var(--color-brand)', margin: 0 }}>{s.handle}</p>
+              <p style={{ fontSize: 11, color: 'var(--color-brand-text)', margin: 0 }}>{s.handle}</p>
             </div>
           </div>
         ))}
@@ -605,7 +605,7 @@ function AboutTab({ onOpenAdulisApp }: { onOpenAdulisApp: () => void }) {
       {/* Open Adulis CTA */}
       <button
         onClick={onOpenAdulisApp}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '14px', borderRadius: 14, background: 'var(--color-brand)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14 }}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '14px', borderRadius: 14, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14 }}
       >
         <AdulisLogo size={18} />
         Open in Adulis App
@@ -658,7 +658,7 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
             <div style={{ flex: 1 }}>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 6px', lineHeight: 1.2 }}>{product.name}</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <p style={{ fontSize: 20, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-brand)', margin: 0 }}>{product.price}</p>
+                <p style={{ fontSize: 20, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-brand-text)', margin: 0 }}>{product.price}</p>
                 {product.quality && <StarRow rating={product.quality.average} small />}
                 <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>({product.quality ? product.quality.ratings : qualityText(product.quality)})</span>
               </div>
@@ -673,7 +673,7 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
 
           {/* Seller trust row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, padding: '10px 12px', background: 'var(--color-surface-raised)', borderRadius: 10 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--color-brand)' }}>{initials(seller.name)}</div>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--color-brand-text)' }}>{initials(seller.name)}</div>
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{seller.name}</p>
               <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>{seller.handle}</p>
@@ -694,7 +694,7 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
                     <button
                       key={opt}
                       onClick={() => setSelectedVariants(sv => ({ ...sv, [v.label]: opt }))}
-                      style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: isSelected ? 700 : 400, border: `1.5px solid ${isSelected ? 'var(--color-brand)' : 'var(--color-border)'}`, background: isSelected ? 'var(--color-brand-muted)' : 'transparent', color: isSelected ? 'var(--color-brand)' : 'var(--color-text-secondary)', cursor: 'pointer' }}
+                      style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: isSelected ? 700 : 400, border: `1.5px solid ${isSelected ? 'var(--color-brand)' : 'var(--color-border)'}`, background: isSelected ? 'var(--color-brand-muted)' : 'transparent', color: isSelected ? 'var(--color-brand-text)' : 'var(--color-text-secondary)', cursor: 'pointer' }}
                     >
                       {opt}
                     </button>
@@ -749,7 +749,7 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
           {productReviews.slice(0, 2).map((r, i) => (
             <div key={i} style={{ marginBottom: 10, padding: '10px', background: 'var(--color-surface-raised)', borderRadius: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'var(--color-brand)' }}>{r.buyer[0]}</div>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'var(--color-brand-text)' }}>{r.buyer[0]}</div>
                 <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-primary)' }}>{r.buyer}</span>
                 <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginLeft: 'auto' }}>{r.date}</span>
               </div>
@@ -775,7 +775,7 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
         ) : (
           <button
             onClick={onOpenAdulisApp}
-            style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-brand)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <AdulisLogo size={18} />
             Open in Adulis to Order
@@ -841,14 +841,14 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
               aria-expanded={Boolean(hotspotActive)}
               style={{ position: 'absolute', top: '40%', right: '28%', width: 26, height: 26, background: hotspotActive ? 'var(--color-brand)' : 'rgba(255,255,255,0.92)', borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(0,0,0,0.3)', transition: 'all 0.15s' }}
             >
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: hotspotActive ? '#fff' : 'var(--color-brand)' }} />
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: hotspotActive ? 'var(--color-on-brand)' : 'var(--color-brand)' }} />
             </button>
           )}
           {/* hotspot product card */}
           {hotspotActive && (
             <button
               onClick={() => navigate({ type: 'product-detail', productId: hotspotActive })}
-              style={{ position: 'absolute', top: '28%', right: '5%', background: 'rgba(255,255,255,0.97)', borderRadius: 12, padding: '10px 12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, boxShadow: 'var(--shadow-md)', width: 160 }}
+              style={{ position: 'absolute', top: '28%', right: '5%', background: 'color-mix(in srgb, var(--color-surface) 97%, transparent)', borderRadius: 12, padding: '10px 12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, boxShadow: 'var(--shadow-md)', width: 160 }}
             >
               <div style={{ width: 36, height: 36, borderRadius: 8, background: hotspotProduct?.imgBg || 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{hotspotProduct?.imgLabel}</span>
@@ -857,7 +857,7 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
                 <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {hotspotProduct?.name}
                 </p>
-                <p style={{ fontSize: 10, color: 'var(--color-brand)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
+                <p style={{ fontSize: 10, color: 'var(--color-brand-text)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
                   {hotspotProduct?.price}
                 </p>
               </div>
@@ -867,7 +867,7 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
 
         {/* seller row */}
         <div style={{ padding: '12px 16px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--color-brand)', flexShrink: 0 }}>{initials(seller.name)}</div>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--color-brand-text)', flexShrink: 0 }}>{initials(seller.name)}</div>
           <div style={{ flex: 1 }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{seller.name}</p>
             <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>{seller.handle}</p>
@@ -907,7 +907,7 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-brand)', fontWeight: 600 }}>{p.price}</span>
+                    <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-brand-text)', fontWeight: 600 }}>{p.price}</span>
                     <AvailBadge avail={p.availability} />
                   </div>
                 </div>
@@ -924,7 +924,7 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
       <div style={{ padding: '12px 16px', background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', flexShrink: 0 }}>
         <button
           onClick={onOpenAdulisApp}
-          style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-brand)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
         >
           <AdulisLogo size={18} />
           Open in Adulis
@@ -1002,7 +1002,7 @@ function SearchView({ onBack, navigate }: { onBack: () => void; navigate: (s: Sc
                 </div>
                 <div style={{ padding: '8px 10px 10px' }}>
                   <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 2px', lineHeight: 1.3 }}>{p.name}</p>
-                  <p style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-brand)', margin: 0 }}>{p.price}</p>
+                  <p style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-brand-text)', margin: 0 }}>{p.price}</p>
                 </div>
               </button>
             ))}
@@ -1020,7 +1020,7 @@ function OpenInAdulisSheet({ note, onClose }: { note: string; onClose: () => voi
   const [installed, setInstalled] = useState<'unknown' | 'open' | 'install'>('unknown')
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Open in Adulis" style={{ position: 'absolute', inset: 0, background: 'rgba(26,21,18,0.5)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', zIndex: 50 }}>
+    <div role="dialog" aria-modal="true" aria-label="Open in Adulis" style={{ position: 'absolute', inset: 0, background: 'color-mix(in srgb, var(--color-ink) 50%, transparent)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', zIndex: 50 }}>
       <div style={{ background: 'var(--color-surface)', borderRadius: '24px 24px 0 0', padding: '24px 20px 40px' }}>
         <div style={{ width: 36, height: 4, background: 'var(--color-border-strong)', borderRadius: 999, margin: '0 auto 20px' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
@@ -1035,7 +1035,7 @@ function OpenInAdulisSheet({ note, onClose }: { note: string; onClose: () => voi
           <>
             <button
               onClick={() => setInstalled('open')}
-              style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-brand)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, marginBottom: 10 }}
+              style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, marginBottom: 10 }}
             >
               Open Adulis App
             </button>
@@ -1056,7 +1056,7 @@ function OpenInAdulisSheet({ note, onClose }: { note: string; onClose: () => voi
         )}
         {installed === 'install' && (
           <div style={{ background: 'var(--color-brand-muted)', borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 10 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-brand)', margin: '0 0 4px' }}>Redirecting to App Store…</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-brand-text)', margin: '0 0 4px' }}>Redirecting to App Store…</p>
             <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0 }}>Search for "Adulis" to find us.</p>
           </div>
         )}
@@ -1080,7 +1080,7 @@ function ShareSheet({ onClose, url }: { onClose: () => void; url?: string }) {
   const [copied, setCopied] = useState(false)
   const { seller } = useStorefront()
   return (
-    <div role="dialog" aria-modal="true" aria-label="Share storefront" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, background: 'rgba(26,21,18,0.4)', zIndex: 40, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+    <div role="dialog" aria-modal="true" aria-label="Share storefront" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, background: 'color-mix(in srgb, var(--color-ink) 40%, transparent)', zIndex: 40, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
       <div style={{ background: 'var(--color-surface)', borderRadius: '24px 24px 0 0', padding: '20px 18px 36px' }}>
         <div style={{ width: 36, height: 4, background: 'var(--color-border-strong)', borderRadius: 999, margin: '0 auto 18px' }} />
         <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 14px' }}>Share {seller.name}</p>

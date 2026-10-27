@@ -68,7 +68,7 @@ export default function CompanyWebsite({ demoTarget }: { demoTarget?: string }) 
                 key={v}
                 onClick={() => setView(v)}
                 className="px-3 py-1 text-xs font-medium transition-colors"
-                style={{ background: view === v ? 'var(--color-brand)' : 'var(--color-surface)', color: view === v ? '#fff' : 'var(--color-text-muted)' }}
+                style={{ background: view === v ? 'var(--color-brand)' : 'var(--color-surface)', color: view === v ? 'var(--color-on-brand)' : 'var(--color-text-muted)' }}
               >
                 {v === 'desktop' ? '↔ Desktop' : '📱 390px'}
               </button>
@@ -103,7 +103,7 @@ function WebHeader({ activePage, navigate, mobileMenuOpen, setMobileMenuOpen }: 
   return (
     <header
       className="website-header flex items-center gap-6 px-10 border-b sticky top-0 z-30"
-      style={{ height: 64, background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(10px)', borderColor: 'var(--color-border)' }}
+      style={{ height: 64, background: 'color-mix(in srgb, var(--color-surface) 96%, transparent)', backdropFilter: 'blur(10px)', borderColor: 'var(--color-border)' }}
     >
       <button onClick={() => navigate('home')} className="flex items-center gap-2 flex-shrink-0">
         <AdulisLogo size={28} />
@@ -117,7 +117,7 @@ function WebHeader({ activePage, navigate, mobileMenuOpen, setMobileMenuOpen }: 
             onClick={() => navigate(item.key)}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             style={{
-              color: activePage === item.key ? 'var(--color-brand)' : 'var(--color-text-secondary)',
+              color: activePage === item.key ? 'var(--color-brand-text)' : 'var(--color-text-secondary)',
               background: activePage === item.key ? 'var(--color-brand-muted)' : 'transparent',
             }}
           >
@@ -130,7 +130,7 @@ function WebHeader({ activePage, navigate, mobileMenuOpen, setMobileMenuOpen }: 
         <button
           onClick={() => navigate('waitlist')}
           className="px-5 py-2 rounded-full text-sm font-semibold transition-opacity hover:opacity-80"
-          style={{ background: 'var(--color-brand)', color: '#fff' }}
+          style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)' }}
         >
           Join Seller Waitlist
         </button>
@@ -142,7 +142,7 @@ function WebHeader({ activePage, navigate, mobileMenuOpen, setMobileMenuOpen }: 
 /* ─── Desktop Footer ─── */
 function WebFooter({ navigate }: { navigate: (p: PageKey) => void }) {
   return (
-    <footer className="border-t" style={{ borderColor: 'var(--color-border)', background: '#FAF8F5' }}>
+    <footer className="border-t" style={{ borderColor: 'var(--color-border)', background: 'var(--color-background)' }}>
       <div className="max-w-6xl mx-auto px-10 py-14 grid grid-cols-5 gap-8">
         <div className="col-span-2 flex flex-col gap-4">
           <div className="flex items-center gap-2">
@@ -215,7 +215,7 @@ function MobileFrame({ page, navigate }: { page: PageKey; navigate: (p: PageKey)
         {/* mobile header */}
         <div
           className="flex items-center justify-between px-5 border-b flex-shrink-0"
-          style={{ height: 56, background: 'rgba(255,255,255,0.97)', borderColor: 'var(--color-border)' }}
+          style={{ height: 56, background: 'color-mix(in srgb, var(--color-surface) 97%, transparent)', borderColor: 'var(--color-border)' }}
         >
           <button onClick={() => navigate('home')} className="flex items-center gap-2">
             <AdulisLogo size={22} />
@@ -225,7 +225,7 @@ function MobileFrame({ page, navigate }: { page: PageKey; navigate: (p: PageKey)
             <button
               onClick={() => navigate('waitlist')}
               className="px-3 py-1.5 rounded-full text-xs font-semibold"
-              style={{ background: 'var(--color-brand)', color: '#fff' }}
+              style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)' }}
             >
               Join Waitlist
             </button>
@@ -306,11 +306,11 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
   return (
     <div>
       {/* Hero */}
-      <section style={{ background: 'linear-gradient(170deg, #F7F0E8 0%, #FAF8F5 60%, var(--color-surface) 100%)', padding: '96px 0 80px' }}>
+      <section style={{ background: 'linear-gradient(170deg, var(--adulis-tint-warm) 0%, var(--color-background) 60%, var(--color-surface) 100%)', padding: '96px 0 80px' }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', padding: '0 48px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 64, alignItems: 'center' }}>
             <div>
-              <span style={{ display: 'inline-block', background: 'var(--color-brand-muted)', color: 'var(--color-brand)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 12px', borderRadius: 999, fontFamily: 'var(--font-mono)', marginBottom: 24 }}>
+              <span style={{ display: 'inline-block', background: 'var(--color-brand-muted)', color: 'var(--color-brand-text)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 12px', borderRadius: 999, fontFamily: 'var(--font-mono)', marginBottom: 24 }}>
                 Now in development · Ethiopia
               </span>
               <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 52, fontWeight: 600, lineHeight: 1.12, color: 'var(--color-text-primary)', margin: '0 0 24px' }}>
@@ -322,7 +322,7 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
               <div style={{ display: 'flex', gap: 14 }}>
                 <button
                   onClick={() => navigate('waitlist')}
-                  style={{ background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}
+                  style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}
                 >
                   Join Seller Waitlist
                 </button>
@@ -407,7 +407,7 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
             <p style={{ fontSize: 15, lineHeight: 1.75, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>
               Tap a tagged product to see the full Product — price, variants, availability, seller. Add to cart directly from within the Scene.
             </p>
-            <button onClick={() => navigate('for-buyers')} style={{ background: 'transparent', color: 'var(--color-brand)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0 }}>
+            <button onClick={() => navigate('for-buyers')} style={{ background: 'transparent', color: 'var(--color-brand-text)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0 }}>
               Learn more about the buyer experience →
             </button>
           </div>
@@ -427,7 +427,7 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
             <p style={{ fontSize: 15, lineHeight: 1.75, color: 'var(--color-text-secondary)', margin: '0 0 20px' }}>
               Storefronts are publicly accessible on the web. Share your link on Instagram, TikTok, or anywhere else. Buyers see your catalogue, Trust level, and reviews before they ever open the Adulis app.
             </p>
-            <button onClick={() => navigate('for-sellers')} style={{ background: 'transparent', color: 'var(--color-brand)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0 }}>
+            <button onClick={() => navigate('for-sellers')} style={{ background: 'transparent', color: 'var(--color-brand-text)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0 }}>
               Learn more for sellers →
             </button>
           </div>
@@ -453,7 +453,7 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
           ))}
         </div>
         <div style={{ textAlign: 'center', marginTop: 36 }}>
-          <button onClick={() => navigate('trust')} style={{ background: 'transparent', color: 'var(--color-brand)', border: '1.5px solid var(--color-brand)', borderRadius: 999, padding: '10px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+          <button onClick={() => navigate('trust')} style={{ background: 'transparent', color: 'var(--color-brand-text)', border: '1.5px solid var(--color-brand)', borderRadius: 999, padding: '10px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
             Read our Trust & Safety approach
           </button>
         </div>
@@ -474,7 +474,7 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
           Adulis is being developed with a focus on the Ethiopian market — particularly Addis Ababa. The architecture is designed for international expansion, but we won't claim coverage we haven't built.
         </p>
         <div style={{ textAlign: 'center', marginTop: 28 }}>
-          <button onClick={() => navigate('availability')} style={{ background: 'transparent', color: 'var(--color-brand)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+          <button onClick={() => navigate('availability')} style={{ background: 'transparent', color: 'var(--color-brand-text)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
             View availability details →
           </button>
         </div>
@@ -533,11 +533,11 @@ function CtaBand({ title, body, brief, onAction }: { title: string; body: string
     <section style={{ background: 'var(--color-brand)', padding: '72px 48px' }}>
       <div style={{ maxWidth: 1120, margin: '0 auto', display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 56, alignItems: 'center' }}>
         <div>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 600, color: '#fff', margin: '0 0 16px', lineHeight: 1.2 }}>{title}</h2>
-          <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.82)', lineHeight: 1.65, margin: '0 0 32px', maxWidth: 480 }}>{body}</p>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 600, color: 'var(--color-on-brand)', margin: '0 0 16px', lineHeight: 1.2 }}>{title}</h2>
+          <p style={{ fontSize: 16, color: 'var(--adulis-on-primary-muted)', lineHeight: 1.65, margin: '0 0 32px', maxWidth: 480 }}>{body}</p>
           <button
             onClick={onAction}
-            style={{ background: '#fff', color: 'var(--color-brand)', border: 'none', borderRadius: 999, padding: '16px 36px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}
+            style={{ background: 'var(--color-on-brand)', color: 'var(--color-brand-text)', border: 'none', borderRadius: 999, padding: '16px 36px', fontWeight: 700, fontSize: 16, cursor: 'pointer' }}
           >
             Join Seller Waitlist
           </button>
@@ -567,10 +567,10 @@ function HeroScene() {
           <PhotoSlot tone="sand" radius={10} framed={false} style={{ width: 52, height: 52, flexShrink: 0 }} />
           <div style={{ minWidth: 0 }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px' }}>{tagged.name}</p>
-            <p style={{ fontSize: 12, color: 'var(--color-brand)', fontFamily: 'var(--font-mono)', margin: '0 0 6px' }}>{formatEtb(tagged.price)}</p>
+            <p style={{ fontSize: 12, color: 'var(--color-brand-text)', fontFamily: 'var(--font-mono)', margin: '0 0 6px' }}>{formatEtb(tagged.price)}</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               <span style={{ fontSize: 10, background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{tagged.availability}</span>
-              <span style={{ fontSize: 10, background: 'var(--color-brand-muted)', color: 'var(--color-brand)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{trustLabel(trustAt(tagged.seller, moment))}</span>
+              <span style={{ fontSize: 10, background: 'var(--color-brand-muted)', color: 'var(--color-brand-text)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{trustLabel(trustAt(tagged.seller, moment))}</span>
             </div>
           </div>
         </div>
@@ -594,14 +594,14 @@ function FeedIllustration() {
           <PhotoSlot tone={p.tone} radius={0} framed={false} style={{ height: 180 }} />
           <div style={{ padding: '12px 14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <div style={{ width: 22, height: 22, background: 'var(--color-brand-muted)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'var(--color-brand)' }}>
+              <div style={{ width: 22, height: 22, background: 'var(--color-brand-muted)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'var(--color-brand-text)' }}>
                 {p.seller[0]}
               </div>
               <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)' }}>{p.seller}</span>
             </div>
             <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '0 0 10px' }}>{p.label}</p>
             <div style={{ height: 28, background: 'var(--color-brand)', borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, color: '#fff', fontWeight: 600 }}>{p.tags} tagged product{p.tags === 1 ? '' : 's'}</span>
+              <span style={{ fontSize: 11, color: 'var(--color-on-brand)', fontWeight: 600 }}>{p.tags} tagged product{p.tags === 1 ? '' : 's'}</span>
             </div>
           </div>
         </div>
@@ -621,7 +621,7 @@ function StorefrontIllustration() {
       {/* header */}
       <div style={{ background: 'var(--color-brand-muted)', padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 44, height: 44, background: 'var(--color-brand)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#fff' }}>{initials(seller.name)}</div>
+          <div style={{ width: 44, height: 44, background: 'var(--color-brand)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: 'var(--color-on-brand)' }}>{initials(seller.name)}</div>
           <div>
             <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{seller.name}</p>
             <span style={{ fontSize: 10, background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{trustLabel(trustAt(SURFACE_DEFAULTS.seller, moment))}</span>
@@ -635,7 +635,7 @@ function StorefrontIllustration() {
             <div style={{ height: 70, background: p.bg }} />
             <div style={{ padding: '8px 8px 6px' }}>
               <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 2px', lineHeight: 1.3 }}>{p.label}</p>
-              <p style={{ fontSize: 10, color: 'var(--color-brand)', fontFamily: 'var(--font-mono)', margin: 0 }}>{p.price}</p>
+              <p style={{ fontSize: 10, color: 'var(--color-brand-text)', fontFamily: 'var(--font-mono)', margin: 0 }}>{p.price}</p>
             </div>
           </div>
         ))}
@@ -662,7 +662,7 @@ function HowCommerceWorksMini({ navigate }: { navigate: (p: PageKey) => void }) 
         {steps.map((s, i) => (
           <Fragment key={s.n}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <div style={{ width: 52, height: 52, background: 'var(--color-surface)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 700, color: 'var(--color-brand)', boxShadow: 'var(--shadow-sm)' }}>
+              <div style={{ width: 52, height: 52, background: 'var(--color-surface)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 700, color: 'var(--color-brand-text)', boxShadow: 'var(--shadow-sm)' }}>
                 {String(s.n).padStart(2, '0')}
               </div>
               <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-primary)', textAlign: 'center', maxWidth: 60 }}>{s.label}</span>
@@ -674,7 +674,7 @@ function HowCommerceWorksMini({ navigate }: { navigate: (p: PageKey) => void }) 
         ))}
       </div>
       <div style={{ textAlign: 'center', marginTop: 32 }}>
-        <button onClick={() => navigate('how-it-works')} style={{ background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '12px 28px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+        <button onClick={() => navigate('how-it-works')} style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '12px 28px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
           See the full journey
         </button>
       </div>
@@ -729,8 +729,8 @@ function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
             Adulis is designed so that every step of the buyer journey has a clear owner, verifiable evidence, and a path to resolution if something goes wrong.
           </p>
           <div style={{ display: 'flex', gap: 14, justifyContent: 'center' }}>
-            <button onClick={() => navigate('for-buyers')} style={{ background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '12px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>For Buyers</button>
-            <button onClick={() => navigate('for-sellers')} style={{ background: 'transparent', color: 'var(--color-brand)', border: '1.5px solid var(--color-brand)', borderRadius: 999, padding: '12px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>For Sellers</button>
+            <button onClick={() => navigate('for-buyers')} style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '12px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>For Buyers</button>
+            <button onClick={() => navigate('for-sellers')} style={{ background: 'transparent', color: 'var(--color-brand-text)', border: '1.5px solid var(--color-brand)', borderRadius: 999, padding: '12px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>For Sellers</button>
           </div>
         </div>
         <div style={{ maxWidth: 1024, margin: '48px auto 0' }}>
@@ -743,7 +743,7 @@ function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
         {steps.map((step, i) => (
           <div key={step.n} style={{ display: 'flex', gap: 32, marginBottom: 48, alignItems: 'flex-start' }}>
             <div style={{ flexShrink: 0 }}>
-              <div style={{ width: 64, height: 64, background: step.color, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+              <div style={{ width: 64, height: 64, background: step.color, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--color-ink)' }}>
                 {step.n}
               </div>
               {i < steps.length - 1 && (
@@ -795,7 +795,7 @@ function ForSellersPage({ navigate }: { navigate: (p: PageKey) => void }) {
           </p>
           <button
             onClick={() => navigate('waitlist')}
-            style={{ background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}
+            style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}
           >
             Join Seller Waitlist
           </button>
@@ -844,7 +844,7 @@ function ForBuyersPage({ navigate }: { navigate: (p: PageKey) => void }) {
 
   return (
     <div>
-      <section style={{ background: 'linear-gradient(170deg, #EAF0E8 0%, var(--color-surface) 100%)', padding: '72px 48px 64px', textAlign: 'center' }}>
+      <section style={{ background: 'linear-gradient(170deg, var(--adulis-tint-sage) 0%, var(--color-surface) 100%)', padding: '72px 48px 64px', textAlign: 'center' }}>
         <div style={{ maxWidth: 640, margin: '0 auto' }}>
           <SectionLabel>For Buyers</SectionLabel>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 48, fontWeight: 600, lineHeight: 1.15, color: 'var(--color-text-primary)', margin: '16px 0 20px' }}>
@@ -978,7 +978,7 @@ function TrustSection({ title, children }: { title: string; children: React.Reac
 function AvailabilityPage({ navigate }: { navigate: (p: PageKey) => void }) {
   return (
     <div>
-      <section style={{ background: 'linear-gradient(170deg, #EAF0E8 0%, var(--color-surface) 100%)', padding: '72px 48px 64px', textAlign: 'center' }}>
+      <section style={{ background: 'linear-gradient(170deg, var(--adulis-tint-sage) 0%, var(--color-surface) 100%)', padding: '72px 48px 64px', textAlign: 'center' }}>
         <div style={{ maxWidth: 640, margin: '0 auto' }}>
           <SectionLabel>Availability</SectionLabel>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 48, fontWeight: 600, lineHeight: 1.15, color: 'var(--color-text-primary)', margin: '16px 0 20px' }}>
@@ -1025,7 +1025,7 @@ function AvailabilityPage({ navigate }: { navigate: (p: PageKey) => void }) {
 function EthiopiaPage({ navigate }: { navigate: (p: PageKey) => void }) {
   return (
     <div>
-      <section style={{ background: 'linear-gradient(170deg, #EAF5EE 0%, var(--color-surface) 100%)', padding: '72px 48px 64px', textAlign: 'center' }}>
+      <section style={{ background: 'linear-gradient(170deg, var(--adulis-tint-mint) 0%, var(--color-surface) 100%)', padding: '72px 48px 64px', textAlign: 'center' }}>
         <div style={{ maxWidth: 640, margin: '0 auto' }}>
           <SectionLabel>Ethiopia Market</SectionLabel>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 48, fontWeight: 600, lineHeight: 1.15, color: 'var(--color-text-primary)', margin: '16px 0 20px' }}>
@@ -1052,7 +1052,7 @@ function EthiopiaPage({ navigate }: { navigate: (p: PageKey) => void }) {
               <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: 0 }}>{s.body}</p>
             </div>
           ))}
-          <button onClick={() => navigate('availability')} style={{ alignSelf: 'flex-start', background: 'transparent', color: 'var(--color-brand)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0 }}>
+          <button onClick={() => navigate('availability')} style={{ alignSelf: 'flex-start', background: 'transparent', color: 'var(--color-brand-text)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0 }}>
             ← Back to Availability
           </button>
         </div>
@@ -1085,7 +1085,7 @@ function PricingPage({ navigate }: { navigate: (p: PageKey) => void }) {
           <p style={{ fontSize: 17, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>
             We're not ready to publish seller plan pricing yet. When we do, it will be published here — with no hidden fees, no invented tiers, and no asterisks.
           </p>
-          <button onClick={() => navigate('waitlist')} style={{ marginTop: 32, background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}>
+          <button onClick={() => navigate('waitlist')} style={{ marginTop: 32, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}>
             Join Waitlist to be notified
           </button>
         </div>
@@ -1103,7 +1103,7 @@ function PricingPage({ navigate }: { navigate: (p: PageKey) => void }) {
           ))}
         </div>
         <div style={{ textAlign: 'center', marginTop: 36 }}>
-          <button onClick={() => navigate('for-sellers')} style={{ background: 'transparent', color: 'var(--color-brand)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+          <button onClick={() => navigate('for-sellers')} style={{ background: 'transparent', color: 'var(--color-brand-text)', border: 'none', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
             Explore the Seller tools →
           </button>
         </div>
@@ -1214,7 +1214,7 @@ function WaitlistPage({ navigate }: { navigate: (p: PageKey) => void }) {
             <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.65 }}>
               While you wait, review the way Adulis protects buyers and Sellers, and make sure your social presence reflects your business clearly — we’ll look.
             </p>
-            <button onClick={() => navigate('trust')} style={{ marginTop: 12, background: 'transparent', border: 'none', padding: 0, color: 'var(--color-brand)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            <button onClick={() => navigate('trust')} style={{ marginTop: 12, background: 'transparent', border: 'none', padding: 0, color: 'var(--color-brand-text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               Read Trust &amp; Safety
             </button>
           </div>
@@ -1260,7 +1260,7 @@ function WaitlistPage({ navigate }: { navigate: (p: PageKey) => void }) {
 
         <button
           type="submit"
-          style={{ background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '16px 32px', fontWeight: 700, fontSize: 16, cursor: 'pointer', width: '100%' }}
+          style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '16px 32px', fontWeight: 700, fontSize: 16, cursor: 'pointer', width: '100%' }}
         >
           Submit Application
         </button>
@@ -1278,7 +1278,7 @@ function Field({ label, value, onChange, error, required, type = 'text', placeho
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <label htmlFor={id} style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>
-        {label}{required && <span style={{ color: 'var(--color-brand)', marginLeft: 3 }}>*</span>}
+        {label}{required && <span style={{ color: 'var(--color-brand-text)', marginLeft: 3 }}>*</span>}
       </label>
       <input
         id={id}
@@ -1310,7 +1310,7 @@ function SelectField({ label, value, onChange, error, required, options }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <label htmlFor={id} style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>
-        {label}{required && <span style={{ color: 'var(--color-brand)', marginLeft: 3 }}>*</span>}
+        {label}{required && <span style={{ color: 'var(--color-brand-text)', marginLeft: 3 }}>*</span>}
       </label>
       <select
         id={id}
@@ -1375,7 +1375,7 @@ function HelpPage({ navigate }: { navigate: (p: PageKey) => void }) {
         <div style={{ textAlign: 'center', marginTop: 36 }}>
           <p style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
             Can't find your answer?{' '}
-            <button onClick={() => navigate('contact')} style={{ background: 'transparent', border: 'none', color: 'var(--color-brand)', fontWeight: 600, cursor: 'pointer', fontSize: 15 }}>
+            <button onClick={() => navigate('contact')} style={{ background: 'transparent', border: 'none', color: 'var(--color-brand-text)', fontWeight: 600, cursor: 'pointer', fontSize: 15 }}>
               Contact us
             </button>
           </p>
@@ -1414,7 +1414,7 @@ function ContactPage() {
         </div>
         <Field label="Subject" value={msg.subject} onChange={v => setMsg(m => ({ ...m, subject: v }))} required />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label htmlFor="contact-message" style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>Message <span style={{ color: 'var(--color-brand)' }}>*</span></label>
+          <label htmlFor="contact-message" style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>Message <span style={{ color: 'var(--color-brand-text)' }}>*</span></label>
           <textarea
             id="contact-message"
             value={msg.message}
@@ -1423,7 +1423,7 @@ function ContactPage() {
             style={{ padding: '10px 14px', borderRadius: 10, fontSize: 14, border: '1.5px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-primary)', resize: 'vertical', fontFamily: 'var(--font-body)' }}
           />
         </div>
-        <button type="submit" style={{ background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+        <button type="submit" style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
           Send Message
         </button>
       </form>
@@ -1536,7 +1536,7 @@ function AccountDeletionPage() {
           <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>
             To request deletion, first verify your account with its phone number and a 6-digit code. The verification is for this deletion only.
           </p>
-          <button onClick={() => setFlow({ step: 'phone' })} style={{ background: 'var(--color-danger)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer', width: '100%' }}>
+          <button onClick={() => setFlow({ step: 'phone' })} style={{ background: 'var(--color-danger)', color: 'var(--color-on-status)', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer', width: '100%' }}>
             Verify your account
           </button>
         </>
@@ -1578,7 +1578,7 @@ const codeComplete = (code: string) => /^\d+$/.test(code) && code.length === COD
 const stepHeading = { fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 14px' } as const
 const stepText = { fontSize: 15, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 24px' } as const
 const stepLabel = { display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 6 } as const
-const primaryButton = { background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer', width: '100%' } as const
+const primaryButton = { background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer', width: '100%' } as const
 const quietButton = { background: 'transparent', color: 'var(--color-text-secondary)', border: 'none', fontSize: 14, cursor: 'pointer', padding: '12px', minHeight: 44 } as const
 
 function VerifyPhoneStep({ title, intro, onSendCode, onCancel }: { title: string; intro: string; onSendCode: (phone: string) => void; onCancel: () => void }) {
@@ -1733,7 +1733,7 @@ function ConfirmDeleteForm({ onConfirm, onCancel }: { onConfirm: () => void; onC
       <button
         onClick={onConfirm}
         disabled={val !== 'DELETE'}
-        style={{ background: val === 'DELETE' ? 'var(--color-danger)' : 'var(--color-border)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: val === 'DELETE' ? 'pointer' : 'not-allowed', transition: 'background 0.2s' }}
+        style={{ background: val === 'DELETE' ? 'var(--color-danger)' : 'var(--color-border)', color: val === 'DELETE' ? 'var(--color-on-status)' : '#fff', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: val === 'DELETE' ? 'pointer' : 'not-allowed', transition: 'background 0.2s' }}
       >
         Delete My Account
       </button>
@@ -1863,7 +1863,7 @@ function ReportContentPage() {
             To submit a report, you'll first verify your Adulis account with its phone number and a 6-digit code.
           </p>
         )}
-        <button type="submit" style={{ background: 'var(--color-warning)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+        <button type="submit" style={{ background: 'var(--color-warning)', color: 'var(--color-on-status)', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
           Submit Report
         </button>
       </form>
@@ -1878,8 +1878,8 @@ function MobileHomePage({ navigate }: { navigate: (p: PageKey) => void }) {
   return (
     <div>
       {/* hero */}
-      <section style={{ background: 'linear-gradient(170deg, #F7F0E8 0%, var(--color-surface) 100%)', padding: '40px 24px 32px' }}>
-        <span style={{ display: 'inline-block', background: 'var(--color-brand-muted)', color: 'var(--color-brand)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 10px', borderRadius: 999, fontFamily: 'var(--font-mono)', marginBottom: 18 }}>
+      <section style={{ background: 'linear-gradient(170deg, var(--adulis-tint-warm) 0%, var(--color-surface) 100%)', padding: '40px 24px 32px' }}>
+        <span style={{ display: 'inline-block', background: 'var(--color-brand-muted)', color: 'var(--color-brand-text)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 10px', borderRadius: 999, fontFamily: 'var(--font-mono)', marginBottom: 18 }}>
           Now in development · Ethiopia
         </span>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 600, lineHeight: 1.2, color: 'var(--color-text-primary)', margin: '0 0 16px' }}>
@@ -1888,7 +1888,7 @@ function MobileHomePage({ navigate }: { navigate: (p: PageKey) => void }) {
         <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>
           Browse Products and Scenes from verified sellers. Trust is built in.
         </p>
-        <button onClick={() => navigate('waitlist')} style={{ background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '13px 22px', fontWeight: 700, fontSize: 14, cursor: 'pointer', width: '100%' }}>
+        <button onClick={() => navigate('waitlist')} style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '13px 22px', fontWeight: 700, fontSize: 14, cursor: 'pointer', width: '100%' }}>
           Join Seller Waitlist
         </button>
       </section>
@@ -1914,7 +1914,7 @@ function MobileHomePage({ navigate }: { navigate: (p: PageKey) => void }) {
 
       {/* cta */}
       <div style={{ padding: '0 20px 32px' }}>
-        <button onClick={() => navigate('how-it-works')} style={{ background: 'transparent', color: 'var(--color-brand)', border: '1.5px solid var(--color-brand)', borderRadius: 999, padding: '13px', fontWeight: 600, fontSize: 14, cursor: 'pointer', width: '100%' }}>
+        <button onClick={() => navigate('how-it-works')} style={{ background: 'transparent', color: 'var(--color-brand-text)', border: '1.5px solid var(--color-brand)', borderRadius: 999, padding: '13px', fontWeight: 600, fontSize: 14, cursor: 'pointer', width: '100%' }}>
           See How It Works
         </button>
       </div>
@@ -1937,7 +1937,7 @@ function MobileHowItWorks({ navigate }: { navigate: (p: PageKey) => void }) {
       <ol aria-label="How Adulis works" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {steps.map(([number, title, description]) => (
           <li key={number} style={{ display: 'flex', gap: 14, padding: '16px 0', borderBottom: '1px solid var(--color-border)' }}>
-            <span aria-hidden="true" style={{ flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: 'var(--color-brand)' }}>{number}</span>
+            <span aria-hidden="true" style={{ flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: 'var(--color-brand-text)' }}>{number}</span>
             <span>
               <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4 }}>{title}</span>
               <span style={{ display: 'block', fontSize: 13, lineHeight: 1.6, color: 'var(--color-text-secondary)' }}>{description}</span>
@@ -1945,7 +1945,7 @@ function MobileHowItWorks({ navigate }: { navigate: (p: PageKey) => void }) {
           </li>
         ))}
       </ol>
-      <button onClick={() => navigate('for-sellers')} style={{ marginTop: 28, background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer', width: '100%' }}>
+      <button onClick={() => navigate('for-sellers')} style={{ marginTop: 28, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer', width: '100%' }}>
         Explore selling on Adulis
       </button>
     </div>
@@ -1968,7 +1968,7 @@ function MobileForSellers({ navigate }: { navigate: (p: PageKey) => void }) {
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>{title}</span>
         </div>
       ))}
-      <button onClick={() => navigate('waitlist')} style={{ marginTop: 28, background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer', width: '100%' }}>
+      <button onClick={() => navigate('waitlist')} style={{ marginTop: 28, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer', width: '100%' }}>
         Join Seller Waitlist
       </button>
     </div>
@@ -1998,7 +1998,7 @@ function MobileWaitlist() {
         <Field label="Your Name" value={name} onChange={setName} required />
         <Field label="Email" value={email} onChange={setEmail} required type="email" />
         <Field label="Business Name" value={business} onChange={setBusiness} required />
-        <button type="submit" style={{ background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginTop: 8 }}>
+        <button type="submit" style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginTop: 8 }}>
           Submit Application
         </button>
       </form>
@@ -2054,7 +2054,7 @@ function SectionLabel({ children, align = 'center', small }: { children?: React.
         <span style={{
           display: 'inline-block',
           background: 'var(--color-brand-muted)',
-          color: 'var(--color-brand)',
+          color: 'var(--color-brand-text)',
           fontSize: small ? 9 : 11,
           fontWeight: 700,
           letterSpacing: '0.1em',

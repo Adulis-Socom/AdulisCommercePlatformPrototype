@@ -113,14 +113,14 @@ function QRPattern() {
         const x = (i % grid) * 18 + 1
         const y = Math.floor(i / grid) * 18 + 1
         const filled = Math.random() > 0.45
-        return filled ? <rect key={i} x={x} y={y} width="15" height="15" rx="2" fill="var(--color-text-primary)" opacity={0.85} /> : null
+        return filled ? <rect key={i} x={x} y={y} width="15" height="15" rx="2" fill="var(--color-ink)" opacity={0.85} /> : null
       })}
       {/* Corner finders */}
       {[[1,1],[1,127],[127,1]].map(([cx,cy], i) => (
         <g key={i}>
-          <rect x={cx} y={cy} width="33" height="33" rx="4" fill="var(--color-text-primary)" opacity={0.9}/>
+          <rect x={cx} y={cy} width="33" height="33" rx="4" fill="var(--color-ink)" opacity={0.9}/>
           <rect x={cx+4} y={cy+4} width="25" height="25" rx="2" fill="white"/>
-          <rect x={cx+8} y={cy+8} width="17" height="17" rx="2" fill="var(--color-text-primary)" opacity={0.9}/>
+          <rect x={cx+8} y={cy+8} width="17" height="17" rx="2" fill="var(--color-ink)" opacity={0.9}/>
         </g>
       ))}
     </svg>
@@ -148,7 +148,7 @@ export function QRScannerFrame({
       {/* Viewfinder */}
       <div style={{
         width: 260, height: 260,
-        background: 'rgba(26,21,18,0.85)',
+        background: 'color-mix(in srgb, var(--color-ink) 85%, transparent)',
         borderRadius: 'var(--radius-xl)',
         position: 'relative',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -249,7 +249,7 @@ export function VerificationSuccess({ title, subtitle, detail, onContinue }: {
       {onContinue && (
         <button
           onClick={onContinue}
-          style={{ marginTop: 8, padding: '11px 28px', borderRadius: 'var(--radius-md)', background: 'var(--color-success)', border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}
+          style={{ marginTop: 8, padding: '11px 28px', borderRadius: 'var(--radius-md)', background: 'var(--color-success)', border: 'none', color: 'var(--color-on-status)', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}
         >
           Continue
         </button>
@@ -280,7 +280,7 @@ export function VerificationFailed({ title = 'Verification failed', message, onR
       </div>
       <div style={{ display: 'flex', gap: 10, flexDirection: 'column', width: '100%', maxWidth: 280 }}>
         {onRetry && (
-          <button onClick={onRetry} style={{ padding: '11px', borderRadius: 'var(--radius-md)', background: 'var(--color-brand)', border: 'none', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
+          <button onClick={onRetry} style={{ padding: '11px', borderRadius: 'var(--radius-md)', background: 'var(--color-brand)', border: 'none', color: 'var(--color-on-brand)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}>
             Try again
           </button>
         )}

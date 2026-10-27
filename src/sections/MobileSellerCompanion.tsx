@@ -249,7 +249,7 @@ function SellerSwitcher({ current, onClose, onSelect }: { current: SellerId; onC
           <button key={id} autoFocus={id === current} onClick={() => onSelect(id)} aria-current={id === current ? 'true' : undefined} className={`mb-2 flex min-h-14 w-full items-center gap-3 rounded-xl border p-3 text-left ${id === current ? 'border-brand bg-brand-muted' : 'border-border'}`}>
             <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-brand-muted text-xs font-bold text-brand-dark">{initials(SELLERS[id].name)}</span>
             <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{SELLERS[id].name}</span><span className="text-xs text-text-muted">{SELLERS[id].category} · {SELLERS[id].handle}</span></span>
-            {id === current && <span className="text-xs font-semibold text-brand">Current</span>}
+            {id === current && <span className="text-xs font-semibold text-brand-text">Current</span>}
           </button>
         ))}
       </div>
@@ -305,7 +305,7 @@ function AlertRow({ tone, title, detail, time, action, onClick }: {
     <button onClick={onClick} className="flex w-full items-start gap-3 border-b border-border px-4 py-4 text-left">
       <span className={`mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full ${colors[tone]}`} />
       <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{title}</span><span className="mt-0.5 block text-xs text-text-secondary">{detail}</span></span>
-      <span className="text-right"><span className="block text-[10px] text-text-muted">{time}</span>{action && <span className="mt-1 block text-xs font-semibold text-brand">{action}</span>}</span>
+      <span className="text-right"><span className="block text-[10px] text-text-muted">{time}</span>{action && <span className="mt-1 block text-xs font-semibold text-brand-text">{action}</span>}</span>
     </button>
   )
 }
@@ -366,7 +366,7 @@ function OrderDetail({ orderId, stage, at, notice, onBack, onPrepare, onCouriers
   const preparation = preparationAt(orderId, at)
   return (
     <>
-      <ScreenHeader title={orderId} onBack={onBack} trailing={<button onClick={onChat} className="rounded-lg bg-surface-raised px-3 py-2 text-xs font-semibold text-brand">Chat</button>} />
+      <ScreenHeader title={orderId} onBack={onBack} trailing={<button onClick={onChat} className="rounded-lg bg-surface-raised px-3 py-2 text-xs font-semibold text-brand-text">Chat</button>} />
       <div className="flex-1 overflow-y-auto p-4">
         {notice && <div className="mb-3 rounded-xl bg-success-bg p-3 text-sm font-semibold text-success">{notice}</div>}
         <div className="rounded-2xl bg-brand-muted p-4">
@@ -462,7 +462,7 @@ function PrepareOrder({ orderId, onBack, onReady }: { orderId: OrderId; onBack: 
         <div className="rounded-xl bg-surface-raised p-3"><div className="text-xs text-text-muted">{orderId}</div><div className="mt-1 text-sm font-semibold">{lines.map(line => PRODUCTS[line.product].name).join(', ')}</div><div className="text-xs text-text-muted">{lines.map(lineOptions).join(' · ')}</div>{order.prepareBy && <div className="mt-1 text-xs font-semibold text-text-secondary">Prepare by {formatDayMonth(order.prepareBy)} {formatClock(order.prepareBy)}</div>}</div>
         <SectionTitle>Preparation checklist</SectionTitle>
         <div className="overflow-hidden rounded-xl border border-border">
-          {labels.map((label, index) => <button key={label} onClick={() => toggle(index)} className="flex w-full items-center gap-3 border-b border-border p-4 text-left last:border-b-0"><span className={`flex h-6 w-6 items-center justify-center rounded-md border ${checks[index] ? 'border-success bg-success text-white' : 'border-border-strong'}`}>{checks[index] && '✓'}</span><span className="text-sm font-medium">{label}</span></button>)}
+          {labels.map((label, index) => <button key={label} onClick={() => toggle(index)} className="flex w-full items-center gap-3 border-b border-border p-4 text-left last:border-b-0"><span className={`flex h-6 w-6 items-center justify-center rounded-md border ${checks[index] ? 'border-success bg-success text-on-status' : 'border-border-strong'}`}>{checks[index] && '✓'}</span><span className="text-sm font-medium">{label}</span></button>)}
         </div>
         <div className="mt-4 rounded-xl bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">Mark Ready only after the package is physically prepared for {handover}.</div>
       </div>
@@ -483,7 +483,7 @@ function CourierSelection({ sellerId, at, compensation, onBack, onSelect }: { se
       <ScreenHeader title="Approved Courier Pool" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
         <p className="text-sm leading-relaxed text-text-secondary">Select from couriers approved by {SELLERS[sellerId].name}. {pool.filter(card => card.selectable).length} of {pool.length} are available for an offer now.</p>
-        <div className="mt-3 flex items-baseline justify-between gap-3 rounded-xl bg-surface-raised p-3"><span className="text-xs font-semibold">Courier compensation for this Order<span className="block font-normal text-text-muted">The same whichever Courier you choose</span></span><span className="text-sm font-bold text-brand">{compensation === undefined ? '—' : formatEtb(compensation)}</span></div>
+        <div className="mt-3 flex items-baseline justify-between gap-3 rounded-xl bg-surface-raised p-3"><span className="text-xs font-semibold">Courier compensation for this Order<span className="block font-normal text-text-muted">The same whichever Courier you choose</span></span><span className="text-sm font-bold text-brand-text">{compensation === undefined ? '—' : formatEtb(compensation)}</span></div>
         {pool.map(card => <CourierCard key={card.courier} card={card} area={SELLERS[sellerId].area} compensation={compensation} onSelect={() => onSelect(card.courier)} />)}
       </div>
     </>
@@ -497,7 +497,7 @@ function CourierCard({ card, area, compensation, onSelect }: { card: CourierCard
   const since = card.since && (typeof card.since === 'string' ? card.since : card.since.at)
   return (
     <div className={`mt-4 rounded-2xl border border-border p-4 ${card.selectable ? '' : 'bg-surface-raised'}`}>
-      <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-info-bg font-bold text-info">{initials(card.name)}</span><span className="flex-1"><span className="block text-sm font-semibold">{card.name}</span><span className={`inline-flex items-center gap-1 text-xs ${tone}`}>{card.availability === 'Available' ? <StatusCheckIcon /> : card.availability === 'Busy' ? <StatusClockIcon /> : null}{card.availability}</span></span><span className="text-right"><span className="block text-sm font-bold text-brand">{compensation === undefined ? '—' : formatEtb(compensation)}</span><span className="block text-[10px] text-text-muted">for this delivery</span></span></div>
+      <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-info-bg font-bold text-info">{initials(card.name)}</span><span className="flex-1"><span className="block text-sm font-semibold">{card.name}</span><span className={`inline-flex items-center gap-1 text-xs ${tone}`}>{card.availability === 'Available' ? <StatusCheckIcon /> : card.availability === 'Busy' ? <StatusClockIcon /> : null}{card.availability}</span></span><span className="text-right"><span className="block text-sm font-bold text-brand-text">{compensation === undefined ? '—' : formatEtb(compensation)}</span><span className="block text-[10px] text-text-muted">for this delivery</span></span></div>
       <div className="mt-3 rounded-xl bg-surface-raised p-3 text-xs"><span className="block text-sm font-semibold">{card.completedForSeller} completed for your store</span><span className="block text-text-muted">{card.totalCompleted} total completed deliveries</span><span className="mt-2 block border-t border-border pt-2 text-text-secondary">{card.vehicle} · {card.areas.join(', ')} · <span className={`font-semibold ${card.coversSellerArea ? 'text-success' : 'text-warning'}`}>{card.coversSellerArea ? `covers ${area}` : `outside ${area}`}</span></span>{since && <span className="mt-1 block text-text-muted">With you since {formatMonthShortYear(since)}</span>}</div>
       {card.note && <p className="mt-2 text-xs font-semibold text-text-secondary">Can’t receive an offer · {card.note}</p>}
       <Button size="sm" variant="secondary" disabled={!card.selectable} onClick={onSelect} style={{ width: '100%', marginTop: 12 }}>Send Delivery Offer</Button>
@@ -599,7 +599,7 @@ function SellerDeliveryQr({ orderId, onBack, onScanned, onOtp }: { orderId: Orde
       </div>
       <div className="p-4 pb-6">
         <Button onClick={onScanned} size="lg" style={{ width: '100%' }}>Simulate Buyer scan</Button>
-        <button onClick={onOtp} className="mt-4 w-full text-center text-xs font-semibold text-brand">Buyer can't scan? Use OTP fallback</button>
+        <button onClick={onOtp} className="mt-4 w-full text-center text-xs font-semibold text-brand-text">Buyer can't scan? Use OTP fallback</button>
       </div>
     </>
   )
@@ -655,7 +655,7 @@ function CollectionQr({ orderId, at, onBack }: { orderId: OrderId; at: Moment; o
               <InfoRow label="Displayed by" value={staff ? shortName(STAFF[staff].name) : seller.name} />
               <InfoRow label="Scanned by" value={buyer} />
             </div>
-            <div role="status" className="mt-3 text-sm font-semibold text-brand">Waiting for {buyer} to scan</div>
+            <div role="status" className="mt-3 text-sm font-semibold text-brand-text">Waiting for {buyer} to scan</div>
             <div className="mt-3 w-full rounded-xl bg-warning-bg p-3 text-left text-xs leading-relaxed text-text-secondary">Hand over the Order once the scan is verified; only that verification completes it. If {buyer} can’t scan, they enter the verification code Adulis sends to their phone. If both fail, only Adulis Operators can verify the handoff manually.</div>
           </>
         )}
@@ -777,7 +777,7 @@ function ContextSheet({ choices, selected, onSelect, onClose }: { choices: reado
             return (
               <button key={contextKey(choice)} autoFocus={current} aria-current={current ? 'true' : undefined} onClick={() => { onSelect(choice); dismiss() }} className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm ${current ? 'bg-brand-muted font-semibold text-brand-dark' : 'text-text-primary'}`}>
                 {contextSubject(choice)}
-                {current && <span className="text-xs font-semibold text-brand">Current</span>}
+                {current && <span className="text-xs font-semibold text-brand-text">Current</span>}
               </button>
             )
           })
@@ -838,7 +838,7 @@ function Pill({ children, active, onClick }: { children: ReactNode; active?: boo
 }
 
 function StatusText({ children, tone }: { children: ReactNode; tone: string }) {
-  const classes: Record<string, string> = { brand: 'text-brand', warning: 'text-warning', success: 'text-success', info: 'text-info' }
+  const classes: Record<string, string> = { brand: 'text-brand-text', warning: 'text-warning', success: 'text-success', info: 'text-info' }
   return <span className={`mt-1 block text-[10px] font-semibold ${classes[tone]}`}>{children}</span>
 }
 
@@ -851,7 +851,7 @@ function Bubble({ children, mine, context, author }: { children: ReactNode; mine
   return (
     <div role="listitem" className={`mb-3 flex max-w-[82%] flex-col ${mine ? 'ml-auto items-end' : 'items-start'}`}>
       <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px]">{author && <span className="font-semibold text-text-secondary">{author}</span>}<span className="rounded-full border border-border bg-surface px-2 py-0.5 text-text-secondary">Talking about: {contextSubject(context)}</span></div>
-      <div className={`rounded-2xl p-3 text-sm shadow-sm ${mine ? 'rounded-tr-sm bg-brand text-white' : 'rounded-tl-sm bg-surface'}`}>{children}</div>
+      <div className={`rounded-2xl p-3 text-sm shadow-sm ${mine ? 'rounded-tr-sm bg-brand text-on-brand' : 'rounded-tl-sm bg-surface'}`}>{children}</div>
     </div>
   )
 }
@@ -864,9 +864,9 @@ function QrPattern({ label = 'Seller Pickup QR' }: { label?: string }) {
   return (
     <svg width="190" height="190" viewBox="0 0 190 190" aria-label={label}>
       <rect width="190" height="190" rx="12" fill="white" />
-      {[12, 122].map(x => [12, 122].map(y => <g key={`${x}-${y}`}><rect x={x} y={y} width="56" height="56" rx="4" fill="var(--color-text-primary)"/><rect x={x + 10} y={y + 10} width="36" height="36" rx="2" fill="white"/><rect x={x + 19} y={y + 19} width="18" height="18" fill="var(--color-text-primary)"/></g>))}
-      <rect x="12" y="12" width="56" height="56" rx="4" fill="var(--color-text-primary)"/><rect x="22" y="22" width="36" height="36" rx="2" fill="white"/><rect x="31" y="31" width="18" height="18" fill="var(--color-text-primary)"/>
-      {[78, 94, 110, 126, 142, 158].flatMap((x, i) => [16, 32, 48, 78, 94, 110, 142, 158].map((y, j) => (i + j) % 3 !== 1 && <rect key={`${x}-${y}`} x={x} y={y} width="10" height="10" rx="1" fill="var(--color-text-primary)"/>))}
+      {[12, 122].map(x => [12, 122].map(y => <g key={`${x}-${y}`}><rect x={x} y={y} width="56" height="56" rx="4" fill="var(--color-ink)"/><rect x={x + 10} y={y + 10} width="36" height="36" rx="2" fill="white"/><rect x={x + 19} y={y + 19} width="18" height="18" fill="var(--color-ink)"/></g>))}
+      <rect x="12" y="12" width="56" height="56" rx="4" fill="var(--color-ink)"/><rect x="22" y="22" width="36" height="36" rx="2" fill="white"/><rect x="31" y="31" width="18" height="18" fill="var(--color-ink)"/>
+      {[78, 94, 110, 126, 142, 158].flatMap((x, i) => [16, 32, 48, 78, 94, 110, 142, 158].map((y, j) => (i + j) % 3 !== 1 && <rect key={`${x}-${y}`} x={x} y={y} width="10" height="10" rx="1" fill="var(--color-ink)"/>))}
     </svg>
   )
 }

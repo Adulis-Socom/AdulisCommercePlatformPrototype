@@ -84,16 +84,19 @@ export interface BottomNavItem {
   badge?: number
 }
 
+/** `onAccent` is the badge text on the `accent` fill (on-status for a status colour such as the Courier's). */
 export function BottomNav({
   items,
   active,
   onSelect,
   accent = 'var(--color-brand)',
+  onAccent = 'var(--color-on-brand)',
 }: {
   items: BottomNavItem[]
   active: string
   onSelect: (k: string) => void
   accent?: string
+  onAccent?: string
 }) {
   return (
     <nav
@@ -116,8 +119,8 @@ export function BottomNav({
           >
             {item.badge ? (
               <span
-                className="absolute top-1 right-1/4 flex items-center justify-center text-white text-xs font-bold rounded-full"
-                style={{ width: 16, height: 16, background: accent, fontSize: 9, fontFamily: 'var(--font-mono)' }}
+                className="absolute top-1 right-1/4 flex items-center justify-center text-xs font-bold rounded-full"
+                style={{ width: 16, height: 16, background: accent, color: onAccent, fontSize: 9, fontFamily: 'var(--font-mono)' }}
               >
                 {item.badge}
               </span>
@@ -155,7 +158,7 @@ export function TabBar({
             key={t.key}
             onClick={() => onSelect(t.key)}
             className="flex-1 py-3 text-xs font-semibold transition-colors relative"
-            style={{ color: isActive ? 'var(--color-brand)' : 'var(--color-text-muted)' }}
+            style={{ color: isActive ? 'var(--color-brand-text)' : 'var(--color-text-muted)' }}
           >
             {t.label}
             {isActive && (
@@ -286,7 +289,7 @@ export function ConsoleTopBar<T extends string>({
         <div className="flex items-center gap-2">
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-            style={{ background: accent, color: '#fff' }}
+            style={{ background: accent, color: 'var(--color-on-brand)' }}
           >
             {initials(sellerName)}
           </div>
@@ -340,7 +343,7 @@ function SellerMenu<T extends string>({ sellerName, options, selected, onSelect,
       >
         <span
           className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-          style={{ background: accent, color: '#fff' }}
+          style={{ background: accent, color: 'var(--color-on-brand)' }}
         >
           {initials(sellerName)}
         </span>
@@ -372,12 +375,12 @@ function SellerMenu<T extends string>({ sellerName, options, selected, onSelect,
                   className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left"
                   style={{ minHeight: 44, background: current ? 'var(--color-brand-muted)' : 'transparent' }}
                 >
-                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: current ? accent : 'var(--color-surface-raised)', color: current ? '#fff' : 'var(--color-text-secondary)' }}>{initials(option.name)}</span>
+                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: current ? accent : 'var(--color-surface-raised)', color: current ? 'var(--color-on-brand)' : 'var(--color-text-secondary)' }}>{initials(option.name)}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{option.name}</span>
                     <span className="block truncate text-xs" style={{ color: 'var(--color-text-muted)' }}>{option.detail}</span>
                   </span>
-                  {current && <span className="text-xs font-semibold" style={{ color: 'var(--color-brand)' }}>Current</span>}
+                  {current && <span className="text-xs font-semibold" style={{ color: 'var(--color-brand-text)' }}>Current</span>}
                 </button>
               )
             })}
@@ -512,7 +515,7 @@ export function SidebarItem({
   collapsed?: boolean
   labelHidden?: boolean
 }) {
-  const activeBg = dark ? 'rgba(232,135,74,0.12)' : 'var(--color-brand-muted)'
+  const activeBg = dark ? 'color-mix(in srgb, var(--color-operator-accent) 12%, transparent)' : 'var(--color-brand-muted)'
   const activeText = dark ? 'var(--color-operator-accent)' : 'var(--color-brand-dark)'
   const inactiveText = dark ? 'var(--color-operator-text)' : 'var(--color-text-secondary)'
   const hoverBg = dark ? 'rgba(255,255,255,0.04)' : 'var(--color-surface-raised)'
@@ -539,7 +542,7 @@ export function SidebarItem({
       {badge !== undefined && (
         <span
           className="flex-shrink-0 text-xs font-bold rounded-full px-1.5 py-0.5"
-          style={{ background: dark ? 'rgba(232,135,74,0.2)' : 'var(--color-brand-muted)', color: dark ? 'var(--color-operator-accent)' : 'var(--color-brand)', fontSize: 10, fontFamily: 'var(--font-mono)', ...(collapsed ? { position: 'absolute', top: 0, right: 2, padding: '0 4px', lineHeight: '14px' } : {}) }}
+          style={{ background: dark ? 'color-mix(in srgb, var(--color-operator-accent) 20%, transparent)' : 'var(--color-brand-muted)', color: dark ? 'var(--color-operator-accent)' : 'var(--color-brand-text)', fontSize: 10, fontFamily: 'var(--font-mono)', ...(collapsed ? { position: 'absolute', top: 0, right: 2, padding: '0 4px', lineHeight: '14px' } : {}) }}
         >
           {badge}
         </span>
