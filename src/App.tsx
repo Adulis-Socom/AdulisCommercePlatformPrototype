@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import PrototypeGuide from './sections/PrototypeGuide'
 import Foundations from './sections/Foundations'
 import Components from './sections/Components'
@@ -61,12 +61,74 @@ function SectionContent({ active, onNavigate, demoTarget, onStartFlow }: { activ
   }
 }
 
+/** How far Theme Lab keeps from the Website header's controls, and how far below the header it sits when moved. */
+const HEADER_CLEARANCE = 8
+const BELOW_HEADER_GAP = 10
+
+/**
+ * Keeps Theme Lab reachable while the Company Website's sticky header holds the top line. Wherever the header's own
+ * controls would reach Theme Lab's usual place (its navigation does at some desktop widths), Theme Lab moves to just
+ * below the header, 8 px from main's right edge; elsewhere it stays where index.css puts it. The position is written to
+ * the element itself, so scrolling never re-renders the shell. Phones keep Theme Lab in the section bar.
+ */
+function useThemeLabClearOfWebsiteHeader(slot: RefObject<HTMLDivElement | null>, main: RefObject<HTMLElement | null>, active: SectionKey) {
+  useEffect(() => {
+    const element = slot.current
+    const scroller = main.current
+    if (!element || !scroller || active !== '03-website') return
+    const wide = window.matchMedia('(min-width: 641px)')
+    let frame = 0
+    const place = () => {
+      frame = 0
+      const header = scroller.querySelector<HTMLElement>('.website-header')
+      // Theme Lab's usual place, from index.css, with room around it.
+      const style = getComputedStyle(element)
+      const top = parseFloat(style.getPropertyValue('--theme-lab-top')) || 6
+      const right = parseFloat(style.getPropertyValue('--theme-lab-right')) || 8
+      const viewport = document.documentElement.clientWidth
+      const usual = { left: viewport - right - 44 - HEADER_CLEARANCE, right: viewport - right + HEADER_CLEARANCE, top: top - HEADER_CLEARANCE, bottom: top + 44 + HEADER_CLEARANCE }
+      const reached = wide.matches && !!header && [...header.querySelectorAll('button, a[href], input')].some(control => {
+        const box = control.getBoundingClientRect()
+        return box.width > 0 && box.left < usual.right && box.right > usual.left && box.top < usual.bottom && box.bottom > usual.top
+      })
+      if (!reached || !header) {
+        delete element.dataset.belowHeader
+        return
+      }
+      const edge = scroller.getBoundingClientRect().left + scroller.clientWidth
+      element.style.setProperty('--theme-lab-below-top', `${Math.round(header.getBoundingClientRect().bottom) + BELOW_HEADER_GAP}px`)
+      element.style.setProperty('--theme-lab-below-right', `${Math.round(viewport - edge) + 8}px`)
+      element.dataset.belowHeader = ''
+    }
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(place)
+    }
+    place()
+    // Scrolling, a change of Website page or view, and any change to main's size (window, sidebar, flow card).
+    const content = new MutationObserver(schedule)
+    content.observe(scroller, { childList: true, subtree: true })
+    const size = new ResizeObserver(schedule)
+    size.observe(scroller)
+    scroller.addEventListener('scroll', schedule, { passive: true })
+    return () => {
+      cancelAnimationFrame(frame)
+      content.disconnect()
+      size.disconnect()
+      scroller.removeEventListener('scroll', schedule)
+      delete element.dataset.belowHeader
+    }
+  }, [slot, main, active])
+}
+
 export default function App() {
   const [active, setActive] = useState<SectionKey>('10-demo-flows')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [journey, setJourney] = useState<{ id: FlowId; stage: number } | null>(null)
   const flow = journey ? FLOW_DEFINITIONS.find(item => item.id === journey.id)! : null
   const flowStage = flow && journey ? flow.stages[journey.stage] : null
+  const themeLabSlot = useRef<HTMLDivElement>(null)
+  const mainArea = useRef<HTMLElement>(null)
+  useThemeLabClearOfWebsiteHeader(themeLabSlot, mainArea, active)
 
   const startFlow = (id: FlowId) => {
     const definition = FLOW_DEFINITIONS.find(item => item.id === id)!
@@ -170,13 +232,14 @@ export default function App() {
 
       {/* Theme Lab, the prototype's colour-system comparison (design evaluation), mounted once for every section. It
           floats at the top right, outside every surface's layout; `data-section` lets index.css place it beside a
-          section's own top-right controls rather than over them. On a phone it sits at the end of the section bar. */}
-      <div className="app-topbar" data-section={active}>
+          section's own top-right controls rather than over them, and the hook above keeps it clear of the Website's
+          sticky header. On a phone it sits at the end of the section bar. */}
+      <div ref={themeLabSlot} className="app-topbar" data-section={active}>
         <ThemeLab />
       </div>
 
       {/* Main content. `data-section` lets index.css's responsive rules address a section without changing it. */}
-      <main data-section={active} className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}`}>
+      <main ref={mainArea} data-section={active} className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}`}>
         <StoryProvider stage={stageFor(journey?.id, journey?.stage ?? 0)}>
           <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} />
         </StoryProvider>

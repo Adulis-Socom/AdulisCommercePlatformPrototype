@@ -292,8 +292,10 @@ textarea {
 }
 
 @media (min-width: 641px) {
-  /* Beside the Company Website's view toggle, centred on its toolbar. */
+  /* Beside the Company Website's view toggle, centred on its toolbar, and above the site's sticky header once the page
+     scrolls. Where that header's own controls would reach this place, App.tsx moves Theme Lab below the header. */
   .app-topbar[data-section='03-website'] {
+    z-index: 31;
     --theme-lab-top: 3px;
     --theme-lab-right: 227px;
   }
@@ -315,13 +317,18 @@ textarea {
   }
 }
 
-/* Once the Website's page scrolls, its sticky header holds the top line. Where the header leaves Theme Lab's place
-   free (up to 1200 px, and from 1420 px) Theme Lab stays above it. At 1201–1419 px the header's navigation reaches
-   that place, so the header covers Theme Lab until the page is back at the top. */
-@media (min-width: 641px) and (max-width: 1200px), (min-width: 1420px) {
-  .app-topbar[data-section='03-website'] {
-    z-index: 31;
-  }
+/* Just below the Company Website's sticky header, 8 px from main's right edge, wherever the header's own controls
+   would reach Theme Lab's usual place (App.tsx writes the position). No Website control that can scroll there comes
+   that close to the edge. */
+.app-topbar[data-below-header] {
+  top: var(--theme-lab-below-top);
+  right: var(--theme-lab-below-right);
+}
+
+.app-topbar[data-below-header] .theme-lab-panel {
+  top: calc(var(--theme-lab-below-top) + 52px);
+  right: min(var(--theme-lab-below-right), calc(100vw - 348px));
+  max-height: calc(100dvh - var(--theme-lab-below-top) - 60px);
 }
 
 .app-topbar:has(.theme-lab-panel) {
