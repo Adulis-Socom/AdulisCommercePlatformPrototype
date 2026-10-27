@@ -4,6 +4,8 @@
 //   scenario/  prototype orchestration: guided-flow steps, surface defaults and Checkout test runs (not business data)
 //   stories.ts Seller Stories: their structure and a few prototype fixtures (PR-003), until the full dataset (PR-009)
 //   account-deletion.ts  Account Deletion's wording, shared by the Website's and the Buyer app's flows (PR-006)
+//   seller-roles.ts      the Seller team's six roles and what each may do, by business area (PR-007)
+//   engagement-analytics.ts  Seller engagement analytics: DEMO figures for Scenes and Products, and reputation (PR-007)
 export * from './types.ts'
 export * from './time.ts'
 export * from './money.ts'
@@ -28,3 +30,5 @@ export * from './scenario/defaults.ts'
 export * from './scenario/checkout-tests.ts'
 export * from './stories.ts'
 export * from './account-deletion.ts'
+export * from './seller-roles.ts'
+export * from './engagement-analytics.ts'

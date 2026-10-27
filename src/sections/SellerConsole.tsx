@@ -12,18 +12,18 @@ import {
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
-  BUYERS, CHATBOTS, CLAIMS, CLAIM_IDS, CONTENT_PERFORMANCE_7D, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, DEFAULT_SNAPSHOT,
-  GENERAL_CONTEXT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS,
-  SELLER_SESSIONS, SELLER_SETTINGS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, VOLT_HOUSE_PREPUBLICATION,
-  activeDiscount, awaitingSellerReplyAt, byMessageTime, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt, contextKey,
-  contextSubject, courierAvailabilityAt, courierCardAt, courierCompensationAt, currentPrice, deliveryOfferAt, effectiveMessagesAt, formatAge, formatCalendarDate, formatClock, formatDate,
-  formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, hasAvailableProductAt, isForYouEligibleAt, lineOptions, messagesAt,
+  ACCESS_AREAS, BUYERS, CAPABILITIES, CHATBOTS, CLAIMS, CLAIM_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, DEFAULT_SNAPSHOT,
+  GENERAL_CONTEXT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET, NO_ROLE_CAN, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS,
+  SELLER_ROLES, SELLER_SESSIONS, SELLER_SETTINGS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, TEAM_ROLES, VOLT_HOUSE_PREPUBLICATION,
+  activeDiscount, areaAccess, awaitingSellerReplyAt, byMessageTime, capabilitiesOf, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt, contextKey,
+  contextSubject, courierAvailabilityAt, courierCardAt, courierCompensationAt, currentPrice, deliveryOfferAt, effectiveMessagesAt, firstName, formatAge, formatCalendarDate, formatClock, formatDate,
+  formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, hasAvailableProductAt, isForYouEligibleAt, lineOptions, memberRoles, messagesAt,
   moderationIssuesAt, onAdulisSince, orderStateAt, orderTotals, ordersAt, ordersRequiringPreparationAt, paidAt,
-  paymentReference, postsNeedingAttentionAt, preparationAt, prepublicationCards, prepublicationSnapshotFor, productQualityAt, relationshipHistoryAt,
-  relationshipStatusAt, restrictionAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerServiceAt, sessionStaffOn, shortName,
-  showcaseSellers, stateTime, trustAt,
-  type ClaimId, type ClaimState, type ConversationId, type CourierAvailability, type CourierId, type MessageContext, type MessageRecord, type Moment,
-  type OrderId, type OrderState, type ProductId, type SellerId, type ShoppablePostId, type Timestamp,
+  paymentReference, postsNeedingAttentionAt, preparationAt, prepublicationCards, prepublicationSnapshotFor, productPerformance, productQualityAt, relationshipHistoryAt,
+  relationshipStatusAt, restrictionAt, reviewsAt, roleInfo, scenePerformance, sceneStatusAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerReputationAt, sellerServiceAt,
+  sellerTeam, sessionStaffOn, shortName, showcaseSellers, stateTime, trustAt,
+  type AccessArea, type Capability, type ClaimId, type ClaimState, type ConversationId, type CourierAvailability, type CourierId, type MemberStatus, type MessageContext, type MessageRecord, type Moment,
+  type OrderId, type OrderState, type ProductId, type SceneStatus, type SellerId, type SellerRole, type ShoppablePostId, type StaffId, type TeamMember, type TeamRole, type Timestamp,
 } from '../demo-data'
 
 type NavKey = 'home' | 'orders' | 'products' | 'content' | 'inbox' | 'claims' | 'reviews' | 'trust' | 'insights' | 'store' | 'couriers' | 'automation' | 'settings'
@@ -140,6 +140,9 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState<OrderId | null>(null)
+  // Team changes made in Settings (PR-007): each member's new role set or standing, for this session only. DEMO_DATA's
+  // team never changes, and a reset removes them.
+  const [teamChanges, setTeamChanges] = useState<TeamChanges>({})
   // The top bar's menu button opens the navigation as a drawer: on a phone the only navigation, on a tablet the full,
   // labelled navigation beside the icon rail (index.css; spec §4).
   const drawer = useDrawer()
@@ -196,7 +199,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
           {activeNav === 'store' && <StorePanel sellerId={sellerId} at={at} onOpenCouriers={() => navigate('couriers')} />}
           {activeNav === 'couriers' && <CouriersPanel sellerId={sellerId} at={at} advanceTo={advanceTo} />}
           {activeNav === 'automation' && <AutomationPanel sellerId={sellerId} at={at} />}
-          {activeNav === 'settings' && <SettingsPanel sellerId={sellerId} at={at} />}
+          {activeNav === 'settings' && <SettingsPanel sellerId={sellerId} at={at} team={teamWith(sellerId, teamChanges)} onTeamChange={(staff, change) => setTeamChanges(changes => ({ ...changes, [staff]: { ...changes[staff], ...change } }))} />}
         </div>
       </div>
     </div>
@@ -861,8 +864,26 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   )
 }
 
+type InsightsTab = 'overview' | 'scenes' | 'products' | 'reputation'
+
+// Each Insights view and the Analytics capability that gives access to it (PR-007): who sees a view comes from the
+// role model, never from a separate list.
+const INSIGHTS_TABS: { key: InsightsTab; label: string; capability: string }[] = [
+  { key: 'overview', label: 'Overview', capability: 'Seller performance overview' },
+  { key: 'scenes', label: 'Scene Performance', capability: 'Scene performance and content-to-commerce' },
+  { key: 'products', label: 'Product Performance', capability: 'Product performance' },
+  { key: 'reputation', label: 'Seller Reputation', capability: 'Claim, cancellation and response-quality summaries' },
+]
+
+/** 'Owner, Admin, Analyst and Campaign Manager': the roles a capability belongs to, in catalogue order. */
+function rolesWith(label: string) {
+  const roles = CAPABILITIES.find(capability => capability.label === label)?.roles ?? []
+  const names = SELLER_ROLES.filter(info => roles.includes(info.role)).map(info => info.label)
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names.join('')
+}
+
 function InsightsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
-  const [tab, setTab] = useState<'overview' | 'content'>('overview')
+  const [tab, setTab] = useState<InsightsTab>('overview')
   // DEMO_DATA's 7-day figures; it records no week-on-week changes.
   const i = INSIGHTS_7D[sellerId]
   const overview: [string, string, string][] = i ? [
@@ -871,29 +892,181 @@ function InsightsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
     ['Storefront visits', i.storefrontVisits.toLocaleString('en-US'), '—'], ['Claims', String(i.claims), '—'], ['Cancellation', `${i.cancellationRatePercent}%`, '—'],
     ['Response reliability', `${i.responseReliabilityPercent}%`, '—'], ['Fulfilment reliability', `${i.fulfilmentReliabilityPercent}%`, '—'],
   ] : []
+  const current = INSIGHTS_TABS.find(item => item.key === tab)!
   return (
     <div className="mx-auto max-w-7xl p-8">
-      <ModuleHeader title="Insights" description="Store, content and fulfilment performance." trailing={<Segmented options={[['overview', 'Overview'], ['content', 'Content Performance']]} active={tab} onChange={value => setTab(value as 'overview' | 'content')} />} />
-      {tab === 'overview' ? (
+      <ModuleHeader title="Insights" description="Store, Scene, Product and reputation performance." />
+      <div className="mb-5"><Segmented options={INSIGHTS_TABS.map(item => [item.key, item.label])} active={tab} onChange={value => setTab(value as InsightsTab)} /></div>
+      {tab === 'overview' && (
         <>
           <div className="grid grid-cols-4 gap-4">{overview.map(([label, value, change]) => <InsightCard key={label} label={label} value={value} change={change} />)}</div>
           <div className="mt-5 grid grid-cols-[1.5fr_1fr] gap-5"><TrendPanel title="Paid Orders and GMV · 7 days" /><ReliabilityPanel sellerId={sellerId} /></div>
         </>
-      ) : <ContentPerformance sellerId={sellerId} at={at} />}
-      <div className="mt-5 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Insights report observable outcomes only. Recommendation algorithms, ranking weights and internal eligibility calculations are not exposed.</div>
+      )}
+      {tab === 'scenes' && <ScenePerformanceView sellerId={sellerId} at={at} />}
+      {tab === 'products' && <ProductPerformanceView sellerId={sellerId} at={at} />}
+      {tab === 'reputation' && <SellerReputationView sellerId={sellerId} at={at} />}
+      <p className="mt-5 text-xs text-text-muted">Who sees this view: {rolesWith(current.capability)}. Every Insights view is read-only.</p>
+      <div className="mt-3 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Insights report observable outcomes only. Recommendation algorithms, ranking weights and internal eligibility calculations are not exposed.</div>
     </div>
   )
 }
 
-function ContentPerformance({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
-  // DEMO_DATA's 7-day content performance for the Seller's posts that have figures.
-  const show = (value?: number) => (value === undefined ? '—' : value.toLocaleString('en-US'))
-  const rows = sellerPostsAt(sellerId, at).flatMap(id => { const figures = CONTENT_PERFORMANCE_7D[id]; return figures ? [{ id, figures }] : [] })
+const count = (value?: number) => (value === undefined ? '—' : value.toLocaleString('en-US'))
+
+// A Scene's status beside its figures. Private is a Buyer-visibility state: the Scene and its history stay.
+const SCENE_STATUS: Record<SceneStatus, { label: string; detail?: string; tone: string }> = {
+  'Public': { label: 'Public', tone: 'bg-success-bg text-success' },
+  'No Products tagged': { label: 'Public', detail: 'No Products tagged', tone: 'bg-success-bg text-success' },
+  'Private': { label: 'Private', detail: 'Its tagged Products are all unavailable, so Buyers don’t see it. Its history stays.', tone: 'bg-warning-bg text-warning' },
+  'Restricted': { label: 'Restricted', detail: 'Restricted after moderation', tone: 'bg-danger-bg text-danger' },
+  'Draft': { label: 'Draft', detail: 'Not yet published', tone: 'bg-surface-raised text-text-secondary' },
+}
+
+/** The 7-day window's label: 'DEMO data · 7 days to 2 Oct, 10:25'. */
+const WINDOW_LABEL = `DEMO data · 7 days to ${formatDayMonth(DEFAULT_SNAPSHOT.at)}, ${formatClock(DEFAULT_SNAPSHOT.at)}`
+
+/**
+ * Scene Performance (PR-007): what each of the Seller's Scenes led to. Commerce and discovery outcomes lead; views,
+ * hotspot taps, Likes, Saves and Shares are supporting signals. A Private Scene keeps its history, with its status.
+ */
+function ScenePerformanceView({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+  const scenes = sellerPostsAt(sellerId, at)
   return (
-    <div className="rtable overflow-hidden rounded-2xl border border-border bg-surface">
-      <div className="rtable-head grid grid-cols-[1.6fr_130px_repeat(6,1fr)] gap-3 bg-surface-raised px-5 py-3 text-[9px] font-semibold uppercase tracking-wider text-text-muted"><span>Shoppable Post</span><span>Eligibility</span><span>Impressions</span><span>Saves</span><span>Tag clicks</span><span>Product views</span><span>Checkout starts</span><span>Paid Orders influenced</span></div>
-      {rows.map(({ id, figures }) => <div key={id} className="rtable-row grid grid-cols-[1.6fr_130px_repeat(6,1fr)] items-center gap-3 border-t border-border px-5 py-4 text-xs"><span className="rtable-primary font-semibold">{SHOPPABLE_POSTS[id].title}</span><span className="rtable-cell" data-label="Eligibility"><EligibilityBadge eligible={isForYouEligibleAt(id, at)} /></span><span data-label="Impressions">{show(figures.impressions)}</span><span data-label="Saves">{show(figures.saves)}</span><span data-label="Tag clicks">{show(figures.tagClicks)}</span><span data-label="Product views">{show(figures.productViews)}</span><span data-label="Checkout starts">{show(figures.checkoutStarts)}</span><span data-label="Paid Orders influenced" className="font-semibold text-brand">{show(figures.paidOrdersInfluenced)}</span></div>)}
-    </div>
+    <section aria-label="Scene Performance">
+      <p className="mb-4 text-sm text-text-secondary">What each Scene led to: Explore the Scene, Product visits, questions and Orders. Likes, Saves and Shares support the picture; they aren’t the measure. <span className="text-text-muted">{WINDOW_LABEL}.</span></p>
+      <div className="space-y-4">
+        {scenes.map(id => {
+          const figures = scenePerformance(id)
+          const status = SCENE_STATUS[sceneStatusAt(id, at)]
+          const tags = SHOPPABLE_POSTS[id].tags.length
+          return (
+            <article key={id} aria-label={SHOPPABLE_POSTS[id].title} className="rounded-2xl border border-border bg-surface p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="font-display text-lg font-semibold">{SHOPPABLE_POSTS[id].title}</h2>
+                  <p className="text-xs text-text-muted">{tags ? `${tags} tagged Product${tags === 1 ? '' : 's'}` : 'No Products tagged'}</p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${status.tone}`}>{status.label}</span>
+              </div>
+              {status.detail && status.label !== 'Public' && <p className="mt-2 text-xs text-text-secondary">{status.detail}</p>}
+              {figures ? (
+                <>
+                  <div className="mt-4 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Outcomes</div>
+                  <dl className="mt-2 flex flex-wrap gap-3">
+                    <Outcome label="Explore the Scene opens" value={count(figures.exploreOpens)} />
+                    <Outcome label="Product detail visits" value={count(figures.productDetailVisits)} />
+                    <Outcome label="Seller inquiries" value={count(figures.sellerInquiries)} />
+                    <Outcome label="Orders initiated" value={count(figures.ordersInitiated)} />
+                    <Outcome label="Verified completed Orders" value={count(figures.completedOrders)} strong />
+                  </dl>
+                  <div className="mt-4 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Discovery and engagement</div>
+                  <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-text-secondary">
+                    <Signal label="Qualified views" value={count(figures.qualifiedViews)} />
+                    <Signal label="Hotspot taps" value={count(figures.hotspotTaps)} />
+                    <Signal label="Likes" value={count(figures.likes)} />
+                    <Signal label="Saves" value={count(figures.saves)} />
+                    <Signal label="Shares initiated" value={count(figures.sharesInitiated)} />
+                  </dl>
+                </>
+              ) : <p className="mt-4 text-sm text-text-muted">No activity in this period.</p>}
+            </article>
+          )
+        })}
+      </div>
+      <p className="mt-4 text-xs leading-relaxed text-text-muted">Attributed to the Scene: inquiries and Orders that started from it. Verified completed Orders are those a verified final handoff completed. Buyers never see Like counts.</p>
+    </section>
+  )
+}
+
+function Outcome({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return <div className="min-w-[8.5rem] flex-1 rounded-xl bg-surface-raised p-3"><dd className={`font-display text-2xl font-semibold ${strong ? 'text-brand' : ''}`}>{value}</dd><dt className="mt-1 text-[11px] text-text-muted">{label}</dt></div>
+}
+
+function Signal({ label, value }: { label: string; value: string }) {
+  return <div className="flex gap-1.5"><dt>{label}</dt><dd className="font-semibold text-text-primary">{value}</dd></div>
+}
+
+/**
+ * Product Performance (PR-007): each Product's views and Saves, its own Product rating, and what it led to. The Product
+ * rating is the Product's, never the Seller's.
+ */
+function ProductPerformanceView({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+  const products = sellerProductsAt(sellerId, at)
+  const cols = 'grid-cols-[1.7fr_repeat(4,1fr)_1.1fr_1.1fr]'
+  return (
+    <section aria-label="Product Performance">
+      <p className="mb-4 text-sm text-text-secondary">Each Product’s views and Saves, its Product rating, and the questions and Orders it led to. <span className="text-text-muted">{WINDOW_LABEL}; ratings are all-time.</span></p>
+      <div className="rtable rtable-scroll overflow-hidden rounded-2xl border border-border bg-surface" style={{ '--rtable-min': '820px' } as CSSProperties}>
+        <div className={`rtable-head grid ${cols} gap-3 bg-surface-raised px-5 py-3 text-[9px] font-semibold uppercase tracking-wider text-text-muted`}><span>Product</span><span>Product views</span><span>Saves</span><span>Product rating</span><span>Seller inquiries</span><span>Orders initiated</span><span>Verified completed Orders</span></div>
+        {products.map(id => {
+          const figures = productPerformance(id, at)
+          const rating = figures?.rating
+          return (
+            <div key={id} className={`rtable-row grid ${cols} items-center gap-3 border-t border-border px-5 py-4 text-xs`}>
+              <span className="rtable-primary"><span className="block font-semibold">{PRODUCTS[id].name}</span><span className="text-text-muted">{availabilityLabel(id)}</span></span>
+              <span data-label="Product views">{count(figures?.views)}</span>
+              <span data-label="Saves">{count(figures?.saves)}</span>
+              <span data-label="Product rating">{rating ? `${rating.average} ★ · ${rating.ratings} review${rating.ratings === 1 ? '' : 's'}` : rating === null ? 'No ratings yet' : '—'}</span>
+              <span data-label="Seller inquiries">{count(figures?.sellerInquiries)}</span>
+              <span data-label="Orders initiated" className="font-semibold">{count(figures?.ordersInitiated)}</span>
+              <span data-label="Verified completed Orders" className="font-semibold text-brand">{count(figures?.completedOrders)}</span>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Seller Reputation (PR-007): the Seller rating, each Product's rating, verified completed Orders, service quality and
+ * Trust, each on its own. Nothing combines them, and Likes play no part.
+ */
+function SellerReputationView({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+  const reputation = sellerReputationAt(sellerId, at)
+  const service = reputation.serviceQuality
+  return (
+    <section aria-label="Seller Reputation" className="space-y-5">
+      <p className="text-sm text-text-secondary">Each measure stands on its own: the Seller rating is about your service, each Product rating is about that Product, and Trust is set by Adulis. No score combines them.</p>
+      {/* Three cards that wrap rather than squeeze: "ESTABLISHED" needs a wider card than a third of a tablet's width. */}
+      <div className="flex flex-wrap gap-4 [&>*]:min-w-[16rem] [&>*]:flex-1">
+        <div className="rounded-2xl border border-border bg-surface p-5">
+          <div className="text-xs font-semibold text-text-muted">Seller rating</div>
+          <div className="mt-3 font-display text-3xl font-semibold">{reputation.sellerRating ? `${reputation.sellerRating.average} ★` : '—'}</div>
+          <div className="mt-2 text-xs text-text-muted">{reputation.sellerRating ? `From ${reputation.sellerRating.ratings} Seller Reviews by verified Buyers` : '—'}</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-surface p-5">
+          <div className="text-xs font-semibold text-text-muted">Verified completed Orders</div>
+          <div className="mt-3 font-display text-3xl font-semibold">{count(reputation.completedOrders)}</div>
+          <div className="mt-2 text-xs text-text-muted">All time, each completed by a verified final handoff</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-surface p-5">
+          <div className="text-xs font-semibold text-text-muted">Trust level</div>
+          <div className="mt-3 font-display text-3xl font-semibold">{reputation.trust ?? '—'}</div>
+          <div className="mt-2 text-xs text-text-muted">Read-only. Set by Adulis from platform evidence</div>
+        </div>
+      </div>
+      <div className="grid grid-cols-[1.4fr_1fr] gap-5">
+        <DetailCard title="Product ratings">
+          <ul aria-label="Product ratings" className="divide-y divide-border">
+            {reputation.productRatings.map(({ product, rating }) => (
+              <li key={product} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <span className="min-w-0">{PRODUCTS[product].name}</span>
+                <span className="flex-shrink-0 text-xs text-text-secondary">{rating ? `${rating.average} ★ · ${rating.ratings} review${rating.ratings === 1 ? '' : 's'}` : rating === null ? 'No ratings yet' : '—'}</span>
+              </li>
+            ))}
+          </ul>
+        </DetailCard>
+        <DetailCard title="Service quality · 7 days">
+          <div className="space-y-4">
+            <ReliabilityBar label="Response reliability" value={service?.responseReliabilityPercent} />
+            <ReliabilityBar label="Fulfilment reliability" value={service?.fulfilmentReliabilityPercent} />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3"><MetricBlock label="Claims" value={count(service?.claims)} /><MetricBlock label="Cancellation rate" value={service ? `${service.cancellationRatePercent}%` : '—'} /></div>
+        </DetailCard>
+      </div>
+    </section>
   )
 }
 
@@ -1136,19 +1309,28 @@ function AutomationPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   )
 }
 
-// Settings show DEMO_DATA's prototype states for the Seller (specification §38). The Owner is the primary member;
-// no Seller-role rules, security policies, team emails or provider facts beyond DEMO_DATA are shown.
-function SettingsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+/** Session-local team changes (PR-007): a member's new role set or standing. DEMO_DATA's team never changes. */
+type TeamChanges = Partial<Record<StaffId, { roles?: readonly TeamRole[]; status?: MemberStatus }>>
+
+/** The Seller's team with this session's changes. The Owner's ownership never changes here. */
+function teamWith(sellerId: SellerId, changes: TeamChanges): TeamMember[] {
+  return sellerTeam(sellerId).map(member => (member.owner ? member : { ...member, roles: changes[member.staff]?.roles ?? member.roles, status: changes[member.staff]?.status ?? member.status }))
+}
+
+// Settings show DEMO_DATA's prototype states for the Seller (specification §38), and the Seller team's six canonical
+// roles (PR-007). The Owner is the primary member; no security policies, team emails or provider facts beyond DEMO_DATA
+// are shown.
+function SettingsPanel({ sellerId, at, team, onTeamChange }: { sellerId: SellerId; at: Moment; team: readonly TeamMember[]; onTeamChange: (staff: StaffId, change: TeamChanges[StaffId]) => void }) {
   const [tab, setTab] = useState('team')
   const tabs = [['team', 'Team'], ['roles', 'Roles & Permissions'], ['sessions', 'Sessions'], ['security', 'Security'], ['ownership', 'Ownership'], ['lifecycle', 'Account lifecycle'], ['notifications', 'Notifications'], ['provider', 'Provider status']]
   return (
     <div className="mx-auto max-w-7xl p-8">
       <ModuleHeader title="Settings" description="People, access, security and account administration." />
       <div className="grid grid-cols-[240px_1fr] gap-5">
-        <div className="h-fit rounded-2xl border border-border bg-surface p-2">{tabs.map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`w-full rounded-lg px-3 py-2.5 text-left text-xs font-semibold ${tab === key ? 'bg-brand-muted text-brand-dark' : 'text-text-secondary'}`}>{label}</button>)}</div>
-        <div>
-          {tab === 'team' && <TeamSettings sellerId={sellerId} />}
-          {tab === 'roles' && <RolesSettings sellerId={sellerId} />}
+        <div className="h-fit rounded-2xl border border-border bg-surface p-2">{tabs.map(([key, label]) => <button key={key} onClick={() => setTab(key)} aria-current={tab === key ? 'page' : undefined} className={`w-full rounded-lg px-3 py-2.5 text-left text-xs font-semibold ${tab === key ? 'bg-brand-muted text-brand-dark' : 'text-text-secondary'}`}>{label}</button>)}</div>
+        <div className="min-w-0">
+          {tab === 'team' && <TeamSettings sellerId={sellerId} team={team} onChange={onTeamChange} onOpenRoles={() => setTab('roles')} />}
+          {tab === 'roles' && <RolesSettings />}
           {tab === 'sessions' && <SessionsSettings sellerId={sellerId} />}
           {tab === 'security' && <SecuritySettings />}
           {tab === 'ownership' && <OwnershipSettings sellerId={sellerId} />}
@@ -1166,16 +1348,197 @@ function teamOf(sellerId: SellerId) {
   return (Object.keys(STAFF) as (keyof typeof STAFF)[]).filter(id => STAFF[id].seller === sellerId)
 }
 
-function TeamSettings({ sellerId }: { sellerId: SellerId }) {
+const ROLES_SENTENCE = 'A team member can have more than one role. Their access combines the permissions of those roles. Ownership remains separate.'
+const roleLabel = (role: SellerRole) => roleInfo(role).label
+
+/**
+ * Team (PR-007): each member, their standing and their roles. The Owner holds ownership, not a team role. Owner and
+ * Admin can give a member any set of team roles, never Owner; an active member keeps at least one role, and to take
+ * away all access the membership is suspended or removed instead. Changes are this session's only.
+ */
+function TeamSettings({ sellerId, team, onChange, onOpenRoles }: { sellerId: SellerId; team: readonly TeamMember[]; onChange: (staff: StaffId, change: TeamChanges[StaffId]) => void; onOpenRoles: () => void }) {
   const [invited, setInvited] = useState(false)
+  // The Console's signed-in team member (DEMO_DATA's Seller Console session). Managing roles needs Team & Security.
+  const you = team.find(member => member.staff === sessionStaffOn(sellerId, 'Seller Console'))
+  const canManage = !!you && areaAccess(memberRoles(you), 'Team & Security').level === 'manage'
   // DEMO_DATA records no team email addresses.
-  return <DetailCard title="Team"><div className="mb-4 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Every team member uses individual human credentials. Shared team passwords are not supported.</div>{teamOf(sellerId).map(id => <TeamRow key={id} name={STAFF[id].name} email="—" role={STAFF[id].role === 'Owner' ? 'Owner · Primary member' : STAFF[id].role} status="Active" />)}<Button onClick={() => setInvited(true)} style={{ marginTop: 16 }}>{invited ? 'Invitation Sent' : 'Invite Team Member'}</Button></DetailCard>
+  return (
+    <DetailCard title="Team" trailing={you && <span className="text-xs text-text-muted">Signed in as {you.name} · {you.owner ? 'Owner' : you.roles.map(roleLabel).join(' + ')}</span>}>
+      <div className="mb-4 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Every team member uses individual human credentials. Shared team passwords are not supported.</div>
+      <p className="mb-4 text-sm leading-relaxed text-text-secondary">{ROLES_SENTENCE}</p>
+      <div className="space-y-3">{team.map(member => <TeamMemberCard key={member.staff} member={member} you={member.staff === you?.staff} canManage={canManage} onChange={change => onChange(member.staff, change)} />)}</div>
+      {team.length === 1 && <p className="mt-4 text-sm text-text-secondary">Only the Owner is on this team so far. Every role, and what it can do, is in <button onClick={onOpenRoles} className="font-semibold text-brand underline">Roles &amp; Permissions</button>.</p>}
+      <Button onClick={() => setInvited(true)} style={{ marginTop: 16 }}>{invited ? 'Invitation Sent' : 'Invite Team Member'}</Button>
+    </DetailCard>
+  )
 }
 
-function RolesSettings({ sellerId }: { sellerId: SellerId }) {
-  // The team's roles, each with its default permission set: DEMO_DATA defines no Seller-role rules.
-  const roles = [...new Set(teamOf(sellerId).map(id => STAFF[id].role))]
-  return <DetailCard title="Roles & Permissions">{roles.map(role => <PermissionRow key={role} role={role} detail="Default permission set" />)}</DetailCard>
+function TeamMemberCard({ member, you, canManage, onChange }: { member: TeamMember; you: boolean; canManage: boolean; onChange: (change: TeamChanges[StaffId]) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<readonly TeamRole[]>(member.roles)
+  const legend = useId()
+  const toggle = (role: TeamRole) => setDraft(roles => (roles.includes(role) ? roles.filter(r => r !== role) : TEAM_ROLES.filter(r => r === role || roles.includes(r))))
+  const changed = draft.length !== member.roles.length || draft.some(role => !member.roles.includes(role))
+  const roles: readonly SellerRole[] = member.owner ? ['OWNER'] : editing ? draft : member.roles
+  return (
+    <article aria-label={member.name} className="rounded-2xl border border-border p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <AvatarText name={member.name} />
+        <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{member.name}{you && <span className="font-normal text-text-muted"> · You</span>}</span><span className="text-xs text-text-muted">{member.owner ? 'Primary member' : 'Team member'}</span></span>
+        <StatusBadge status={member.status === 'Active' ? 'active' : 'pending'} customLabel={member.status} size="sm" />
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {roles.length ? roles.map(role => <RoleChip key={role} role={role} />) : <span className="text-xs font-semibold text-danger">No roles selected</span>}
+        {member.owner && <span className="text-xs text-text-muted">From Seller ownership, not a team role</span>}
+      </div>
+      {member.owner && <p className="mt-2 text-xs leading-relaxed text-text-secondary">Ownership changes only through an ownership transfer, which only the Owner can start. It can’t be given as a team role.</p>}
+      {!member.owner && member.status !== 'Active' && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-raised p-3 text-xs text-text-secondary">
+          <span>{member.status === 'Suspended' ? 'Suspended: keeps their place on the team but has no access.' : 'Removed from the team: no access.'}</span>
+          {canManage && <Button size="sm" variant="tertiary" onClick={() => onChange({ status: 'Active' })}>{member.status === 'Suspended' ? 'Reactivate' : 'Undo removal'}</Button>}
+        </div>
+      )}
+      {!member.owner && member.status === 'Active' && canManage && !editing && <Button size="sm" variant="tertiary" onClick={() => { setDraft(member.roles); setEditing(true) }} style={{ marginTop: 12 }}>Edit roles</Button>}
+      {editing && (
+        <fieldset aria-labelledby={legend} className="mt-4 rounded-xl bg-surface-raised p-4">
+          <legend id={legend} className="sr-only">Roles for {member.name}</legend>
+          <div className="text-sm font-semibold">Roles for {member.name}</div>
+          <p className="mt-1 text-xs text-text-muted">Choose one or more. Owner isn’t a team role, so it isn’t offered.</p>
+          <div className="mt-3 space-y-2">
+            <RoleCheckbox role="ADMIN" checked={draft.includes('ADMIN')} onChange={() => toggle('ADMIN')} />
+            <div className="pt-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Specialist roles · peers</div>
+            <div className="grid grid-cols-2 gap-2">{TEAM_ROLES.filter(role => role !== 'ADMIN').map(role => <RoleCheckbox key={role} role={role} checked={draft.includes(role)} onChange={() => toggle(role)} />)}</div>
+          </div>
+          {!draft.length && <p role="alert" className="mt-3 rounded-lg bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">An active team member needs at least one role. To take away all of {firstName(member.name)}’s access, suspend or remove the membership instead.</p>}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button size="sm" disabled={!draft.length || !changed} onClick={() => { onChange({ roles: draft }); setEditing(false) }}>Save roles</Button>
+            <Button size="sm" variant="tertiary" onClick={() => setEditing(false)}>Cancel</Button>
+            <span className="flex-1" />
+            <Button size="sm" variant="tertiary" onClick={() => { onChange({ status: 'Suspended' }); setEditing(false) }}>Suspend membership</Button>
+            <Button size="sm" variant="tertiary" onClick={() => { onChange({ status: 'Removed' }); setEditing(false) }}>Remove team member</Button>
+          </div>
+        </fieldset>
+      )}
+      {!member.owner && member.status === 'Active' && <EffectiveAccess name={firstName(member.name)} roles={roles} preview={editing} />}
+    </article>
+  )
+}
+
+function RoleChip({ role }: { role: SellerRole }) {
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${role === 'OWNER' ? 'bg-warning-bg text-warning' : 'bg-brand-muted text-brand-dark'}`}>{roleLabel(role)}</span>
+}
+
+function RoleCheckbox({ role, checked, onChange }: { role: TeamRole; checked: boolean; onChange: () => void }) {
+  return (
+    <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface p-3">
+      <input type="checkbox" checked={checked} onChange={onChange} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[var(--color-brand)]" />
+      <span className="min-w-0"><span className="block text-sm font-semibold">{roleLabel(role)}</span><span className="block text-xs leading-relaxed text-text-muted">{roleInfo(role).summary}</span></span>
+    </label>
+  )
+}
+
+/**
+ * What a member's roles let them do: the union of their roles' capabilities, by business area, each capability tagged
+ * with the roles that give it. Owner-only authority never comes from team roles.
+ */
+function EffectiveAccess({ name, roles, preview }: { name: string; roles: readonly SellerRole[]; preview: boolean }) {
+  const held = capabilitiesOf(roles)
+  const areas = ACCESS_AREAS.filter(area => held.some(capability => capability.area === area))
+  const without = ACCESS_AREAS.filter(area => !areas.includes(area))
+  return (
+    <section aria-label={`What ${name} can do`} className="mt-4 border-t border-border pt-4">
+      <div className="text-sm font-semibold">What {name} can do{preview && <span className="font-normal text-text-muted"> · with the roles selected above</span>}</div>
+      {roles.length > 1 && <p className="mt-1 text-xs text-text-muted">Combined from {roles.map(roleLabel).join(' and ')}.</p>}
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        {areas.map(area => (
+          <div key={area} className="rounded-xl bg-surface-raised p-3">
+            <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold">{area}</span><AccessBadge roles={roles} area={area} /></div>
+            <ul className="mt-2 space-y-1">{held.filter(capability => capability.area === area).map(capability => <li key={capability.label} className="text-xs leading-relaxed text-text-secondary">{capability.label}{roles.length > 1 && <span className="text-text-muted"> · {grantedBy(capability, roles)}</span>}</li>)}</ul>
+          </div>
+        ))}
+      </div>
+      {without.length > 0 && <p className="mt-3 text-xs leading-relaxed text-text-muted">No access: {without.filter(area => area !== 'Seller Lifecycle').join(', ')}{without.includes('Seller Lifecycle') && <>. Seller Lifecycle: <span className="font-semibold">Owner only</span></>}.</p>}
+    </section>
+  )
+}
+
+/** 'Inventory' or 'Inventory, Sales Support': which of the member's roles give a capability. */
+function grantedBy(capability: Capability, roles: readonly SellerRole[]) {
+  return roles.filter(role => capability.roles.includes(role)).map(roleLabel).join(', ')
+}
+
+const ACCESS_TEXT = { 'manage': 'Manage', 'operate': 'Operate', 'read': 'Read', 'none': 'No access', 'owner-only': 'Owner only', 'not-permitted': 'Not permitted' } as const
+const ACCESS_TONE = { 'manage': 'bg-brand-muted text-brand-dark', 'operate': 'bg-info-bg text-info', 'read': 'bg-surface text-text-secondary border border-border', 'none': 'text-text-muted', 'owner-only': 'bg-warning-bg text-warning', 'not-permitted': 'text-text-muted' } as const
+
+/** A role set's access to an area as text, never colour alone: Manage, Operate, Read, No access, Owner only or Not permitted. */
+function AccessBadge({ roles, area }: { roles: readonly SellerRole[]; area: AccessArea }) {
+  const { level, scope } = areaAccess(roles, area)
+  return <span className={`inline-flex flex-col rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${ACCESS_TONE[level]}`}>{ACCESS_TEXT[level]}{scope && <span className="font-normal">{scope}</span>}</span>
+}
+
+/**
+ * Roles & Permissions (PR-007): the six roles (Owner from ownership, Admin, and four peer specialists), access by business
+ * area for each, what each role can do in detail, and what no role can do.
+ */
+function RolesSettings() {
+  const [focus, setFocus] = useState<SellerRole>('INVENTORY')
+  const info = roleInfo(focus)
+  const held = capabilitiesOf([focus])
+  const cols = 'grid-cols-[1.2fr_repeat(6,minmax(0,1fr))]'
+  return (
+    <div className="space-y-5">
+      <DetailCard title="Roles & Permissions">
+        <p className="text-sm leading-relaxed text-text-secondary">{ROLES_SENTENCE}</p>
+        <SectionLabelInline>Ownership and administration</SectionLabelInline>
+        <div className="grid grid-cols-2 gap-3">{SELLER_ROLES.filter(role => role.kind !== 'specialist').map(role => <RoleCard key={role.role} role={role.role} />)}</div>
+        <SectionLabelInline>Specialist roles · peers, listed alphabetically</SectionLabelInline>
+        <div className="grid grid-cols-2 gap-3">{SELLER_ROLES.filter(role => role.kind === 'specialist').map(role => <RoleCard key={role.role} role={role.role} />)}</div>
+      </DetailCard>
+      <DetailCard title="Access by business area">
+        <p className="mb-4 text-xs leading-relaxed text-text-muted"><span className="font-semibold text-text-secondary">Manage</span>: create, change and configure. <span className="font-semibold text-text-secondary">Operate</span>: carry out day-to-day work. <span className="font-semibold text-text-secondary">Read</span>: view only. A member with several roles gets the higher access in each area.</p>
+        <div role="table" aria-label="Access by business area" className="rtable rtable-scroll overflow-hidden rounded-xl border border-border" style={{ '--rtable-min': '520px' } as CSSProperties}>
+          <div role="row" className={`rtable-head grid ${cols} gap-1.5 bg-surface-raised px-3 py-3 text-[9px] font-semibold uppercase tracking-wider text-text-muted`}><span role="columnheader">Business area</span>{SELLER_ROLES.map(role => <span key={role.role} role="columnheader">{role.label}</span>)}</div>
+          {ACCESS_AREAS.map(area => (
+            <div key={area} role="row" className={`rtable-row grid ${cols} items-center gap-1.5 border-t border-border px-3 py-3 text-xs`}>
+              <span role="rowheader" className="rtable-primary font-semibold">{area}</span>
+              {SELLER_ROLES.map(role => <span key={role.role} role="cell" data-label={role.label}><AccessBadge roles={[role.role]} area={area} /></span>)}
+            </div>
+          ))}
+        </div>
+      </DetailCard>
+      <DetailCard title="What each role can do">
+        <Segmented small options={SELLER_ROLES.map(role => [role.role, role.label])} active={focus} onChange={value => setFocus(value as SellerRole)} />
+        <section aria-label={`What ${info.label} can do`} className="mt-4">
+          <p className="text-sm leading-relaxed text-text-secondary">{info.summary}</p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {ACCESS_AREAS.filter(area => held.some(capability => capability.area === area)).map(area => (
+              <div key={area} className="rounded-xl bg-surface-raised p-3">
+                <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold">{area}</span><AccessBadge roles={[focus]} area={area} /></div>
+                <ul className="mt-2 space-y-1">{held.filter(capability => capability.area === area).map(capability => <li key={capability.label} className="text-xs leading-relaxed text-text-secondary">{capability.label}{capability.ownerOnly && <span className="font-semibold text-warning"> · Owner only</span>}</li>)}</ul>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 rounded-xl border border-border p-3 text-xs leading-relaxed text-text-secondary"><span className="font-semibold text-text-primary">Limits.</span> {info.limits}</p>
+        </section>
+      </DetailCard>
+      <DetailCard title="What no role can do">
+        <p className="mb-3 text-xs text-text-muted">Not the Owner, not any combination of roles. These stay with the payment provider and Adulis.</p>
+        <ul className="space-y-2">{NO_ROLE_CAN.map(item => <li key={item} className="flex gap-2 text-sm text-text-secondary"><span aria-hidden="true" className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-text-muted" />{item}</li>)}</ul>
+      </DetailCard>
+    </div>
+  )
+}
+
+function RoleCard({ role }: { role: SellerRole }) {
+  const info = roleInfo(role)
+  return (
+    <article aria-label={info.label} className="rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold">{info.label}</span><span className="font-mono text-[10px] text-text-muted">{role}</span></div>
+      <div className="mt-1 text-[11px] font-semibold text-text-muted">{role === 'OWNER' ? 'From Seller ownership · not assignable' : 'Assignable team role'}</div>
+      <p className="mt-2 text-xs leading-relaxed text-text-secondary">{info.summary}</p>
+      <p className="mt-2 text-xs leading-relaxed text-text-muted"><span className="font-semibold">{role === 'OWNER' ? 'Owner only: ' : 'Limits: '}</span>{role === 'OWNER' ? 'transfer ownership and close the Seller.' : info.limits}</p>
+    </article>
+  )
 }
 
 function SessionsSettings({ sellerId }: { sellerId: SellerId }) {
@@ -1190,13 +1553,18 @@ function SecuritySettings() {
 
 function OwnershipSettings({ sellerId }: { sellerId: SellerId }) {
   const owner = teamOf(sellerId).find(id => STAFF[id].role === 'Owner')
-  return <DetailCard title="Store Ownership"><InfoGrid rows={[['Current Owner', owner ? STAFF[owner].name : '—'], ['Owner email', '—'], ['Store', SELLERS[sellerId].name], ['Ownership transfer', SELLER_SETTINGS.ownershipTransferPending ? 'Transfer pending' : 'No transfer pending']]} /><div className="mt-5 rounded-xl bg-warning-bg p-3 text-xs text-text-secondary">Ownership transfer requires acceptance by another individually authenticated human account.</div><Button variant="tertiary" style={{ marginTop: 16 }}>Start Ownership Transfer</Button></DetailCard>
+  return <DetailCard title="Store Ownership" trailing={<OwnerOnlyBadge />}><InfoGrid rows={[['Current Owner', owner ? STAFF[owner].name : '—'], ['Owner email', '—'], ['Store', SELLERS[sellerId].name], ['Ownership transfer', SELLER_SETTINGS.ownershipTransferPending ? 'Transfer pending' : 'No transfer pending']]} /><div className="mt-5 rounded-xl bg-warning-bg p-3 text-xs text-text-secondary">Ownership transfer requires acceptance by another individually authenticated human account. Only the Owner can start it; Admins and other team roles can’t.</div><Button variant="tertiary" style={{ marginTop: 16 }}>Start Ownership Transfer</Button></DetailCard>
 }
 
 function LifecycleSettings({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   // The Seller's lifecycle state: published and open, since the Seller joined Adulis.
   const seller = SELLERS[sellerId]
-  return <div className="space-y-5"><DetailCard title="Seller lifecycle"><InfoGrid rows={[['Status', trustAt(sellerId, at) && seller.storeOpen ? 'Published and open' : '—'], ['On Adulis since', formatCalendarDate(onAdulisSince(sellerId))]]} /></DetailCard><DetailCard title="Account lifecycle"><SettingRow title="Pause Store" detail="Stop new Orders while preserving Store data." action="Review pause" /><SettingRow title="Export Store data" detail="Request an export of Seller-controlled records." action="Request export" /></DetailCard><DetailCard title="Close Seller account"><p className="text-sm text-text-secondary">Closing requires all active Seller Orders, claims and fulfilment obligations to be resolved.</p><Button variant="destructive" style={{ marginTop: 16 }}>Review Account Closure</Button></DetailCard></div>
+  return <div className="space-y-5"><DetailCard title="Seller lifecycle"><InfoGrid rows={[['Status', trustAt(sellerId, at) && seller.storeOpen ? 'Published and open' : '—'], ['On Adulis since', formatCalendarDate(onAdulisSince(sellerId))]]} /></DetailCard><DetailCard title="Account lifecycle"><SettingRow title="Pause Store" detail="Stop new Orders while preserving Store data." action="Review pause" /><SettingRow title="Export Store data" detail="Request an export of Seller-controlled records." action="Request export" /></DetailCard><DetailCard title="Close Seller account" trailing={<OwnerOnlyBadge />}><p className="text-sm text-text-secondary">Closing requires all active Seller Orders, claims and fulfilment obligations to be resolved. Only the Owner can close the Seller; Admins and other team roles can’t.</p><Button variant="destructive" style={{ marginTop: 16 }}>Review Account Closure</Button></DetailCard></div>
+}
+
+/** Ownership transfer and Seller closure are the Owner's alone (PR-007). */
+function OwnerOnlyBadge() {
+  return <span className="rounded-full bg-warning-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-warning">Owner only</span>
 }
 
 function NotificationSettings() {
@@ -1284,14 +1652,6 @@ function AvailabilityStatus({ availability, className = '' }: { availability: Co
 
 function AnswerRow({ question, answer }: { question: string; answer: string }) {
   return <div className="border-b border-border py-4 first:pt-0 last:border-b-0 last:pb-0"><div className="text-sm font-semibold">{question}</div><div className="mt-1 text-xs leading-relaxed text-text-muted">{answer}</div></div>
-}
-
-function TeamRow({ name, email, role, status }: { name: string; email: string; role: string; status: string }) {
-  return <div className="grid grid-cols-[1.4fr_1.5fr_1fr_100px] items-center gap-4 border-b border-border py-4"><div className="flex items-center gap-3"><AvatarText name={name} /><span className="text-sm font-semibold">{name}</span></div><span className="text-xs text-text-secondary">{email}</span><span className="text-xs font-semibold">{role}</span><StatusBadge status={status === 'Active' ? 'active' : 'pending'} customLabel={status} size="sm" /></div>
-}
-
-function PermissionRow({ role, detail }: { role: string; detail: string }) {
-  return <div className="flex items-center justify-between border-b border-border py-4"><span><span className="block text-sm font-semibold">{role}</span><span className="text-xs text-text-muted">{detail}</span></span><Button variant="tertiary" size="sm">View permissions</Button></div>
 }
 
 function SessionRow({ device, person, detail, current }: { device: string; person: string; detail: string; current?: boolean }) {
