@@ -7,8 +7,8 @@ import {
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
   BUYERS, COURIERS, COURIER_RELATIONSHIPS, MARKET, ORDERS, ORDER_IDS, PRODUCTS, SELLERS, SURFACE_DEFAULTS,
-  activeDeliveryAt, completedForSellerAt, courierAvailabilityAt, courierCompensationAt, courierHistoryAt, formatClock, formatClockShort, formatDate, formatDayMonth,
-  formatEtb, happenedBefore, initials, minutesBetween, orderStateAt, orderTotals, paidAt, relationshipStatusAt, shortName, stateTime, totalCompletedAt,
+  activeDeliveryAt, completedForSellerAt, courierAvailabilityAt, courierHistoryAt, formatClock, formatClockShort, formatDate, formatDayMonth,
+  formatEtb, happenedBefore, initials, minutesBetween, orderCourierCompensation, orderStateAt, orderTotals, relationshipStatusAt, shortName, stateTime, totalCompletedAt,
   type CourierId, type Moment, type OrderId, type SellerId, type Timestamp,
 } from '../demo-data'
 
@@ -62,11 +62,9 @@ function orderItems(orderId: OrderId) {
   return ORDERS[orderId].lines.map(line => PRODUCTS[line.product].name).join(', ')
 }
 
-/** The compensation for this delivery: the Seller's terms when the Delivery Offer was made (rule 6.8). */
+/** The compensation for this delivery: the Order's, the Buyer-paid Courier Delivery charge fixed at Checkout (rule 6.8). */
 function compensationFor(orderId: OrderId) {
-  const order = ORDERS[orderId]
-  const when = order.offer?.offered ?? stateTime(orderId, 'Courier Assigned') ?? stateTime(orderId, 'Completed') ?? paidAt(orderId)
-  const amount = courierCompensationAt(order.seller, { at: when })
+  const amount = orderCourierCompensation(orderId)
   return amount === undefined ? '—' : formatEtb(amount)
 }
 

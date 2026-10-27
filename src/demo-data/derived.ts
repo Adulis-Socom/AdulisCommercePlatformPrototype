@@ -617,7 +617,16 @@ export function deliveryOfferAt(order: OrderId, at: Moment = DEFAULT_SNAPSHOT): 
   const assigned = stateTime(order, 'Courier Assigned')
   const accepted = assigned && happenedBefore(assigned, at) ? assigned : undefined
   const other = activeDeliveryAt(offer.courier, at)
-  return { courier: offer.courier, offered: offer.offered, compensation: relationshipCompensationAt(ORDERS[order].seller, offer.courier, { at: offer.offered }), accepted, busy: !accepted && other !== undefined && other !== order }
+  return { courier: offer.courier, offered: offer.offered, compensation: orderCourierCompensation(order), accepted, busy: !accepted && other !== undefined && other !== order }
+}
+
+/**
+ * A Courier Delivery Order's Courier compensation (rule 6.8; specification §52): the Buyer-paid Courier Delivery charge,
+ * the immutable snapshot of the Seller's terms at Checkout. Every Courier offered the Order sees this amount, whoever
+ * is chosen; a later change to the Seller's terms applies only to future Checkouts. Undefined for other modes.
+ */
+export function orderCourierCompensation(order: OrderId): Santim | undefined {
+  return ORDERS[order].fulfilment === 'Courier Delivery' ? orderTotals(order).delivery : undefined
 }
 
 export function courierAvailabilityAt(courier: CourierId, at: Moment = DEFAULT_SNAPSHOT): CourierAvailability {
@@ -650,14 +659,6 @@ export function relationshipHistoryAt(relationship: CourierRelationship, at: Mom
   return events.flatMap(([event, when]) => (when !== undefined && happenedBefore(when, at) ? [{ event, at: when }] : []))
 }
 
-/**
- * The relationship's compensation per delivery at `at` (rule 6.8; PR-008 sets it per relationship): its own amount, or
- * the Seller's current Courier compensation where it has none, as for Daniel K. Undefined without either.
- */
-export function relationshipCompensationAt(seller: SellerId, courier: CourierId, at: Moment = DEFAULT_SNAPSHOT): Santim | undefined {
-  return courierRelationship(seller, courier)?.compensation ?? courierCompensationAt(seller, at)
-}
-
 /** Completed for this Seller (rule 7.1): the 10:25 figure plus this Seller's Orders the Courier completed since. */
 export function completedForSellerAt(courier: CourierId, seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): number {
   const base = courierRelationship(seller, courier)?.completedAt1025 ?? 0
@@ -677,9 +678,10 @@ export function courierHistoryAt(courier: CourierId, at: Moment = DEFAULT_SNAPSH
 
 /**
  * A Seller-facing Courier card (specification §23; rules 7.1–7.4; PR-008): completed for this Seller first, the total
- * across Sellers second, and this relationship's compensation; the Courier's global profile (vehicle, service areas,
- * verification, availability); and whether the Seller can send a Delivery Offer now, and if not, why. It names no
- * other Seller and none of the Courier's other relationships. `session` is a Seller's change made in this session.
+ * across Sellers second, and the Seller's current Courier compensation (its terms for future Checkouts; a paid Order
+ * keeps its own, orderCourierCompensation); the Courier's global profile (vehicle, service areas, verification,
+ * availability); and whether the Seller can send a Delivery Offer now, and if not, why. It names no other Seller and
+ * none of the Courier's other relationships. `session` is a Seller's change made in this session.
  */
 export interface CourierCard {
   readonly courier: CourierId
@@ -695,17 +697,20 @@ export interface CourierCard {
   readonly since?: CalendarDate | Moment
   readonly completedForSeller: number
   readonly totalCompleted: number
+  /** The Seller's current Courier compensation: the same for every Courier in its pool. */
   readonly compensation: Santim | undefined
-  /** An Approved, platform-verified Courier who isn't Unavailable. A Busy one can accept once their delivery is done. */
+  /**
+   * Whether the Seller can send this Courier a direct Delivery Offer now: Approved, verified by Adulis, and Available,
+   * so with no active accepted delivery (rule 6.3). A Busy Courier can be chosen once Available again.
+   */
   readonly selectable: boolean
-  /** Why the Courier can't receive an offer now, or what being Busy means for it. */
+  /** Why the Courier can't receive an offer now. */
   readonly note?: string
 }
 
 /** A Seller's change to a Courier relationship in this session (PR-008): never a DEMO_DATA record. */
 export interface CourierRelationshipChange {
   readonly status?: CourierRelationshipStatus
-  readonly compensation?: Santim
   /** When the Seller approved the Courier in this session. */
   readonly since?: Moment
 }
@@ -721,7 +726,7 @@ export function courierCardAt(seller: SellerId, courier: CourierId, at: Moment =
     : verification === 'Blocked' ? 'Blocked by Adulis: can’t receive Delivery Offers from any Seller'
     : verification === 'Pending' ? 'Verification with Adulis pending: can’t receive Delivery Offers yet'
     : availability === 'Unavailable' ? 'Unavailable: can’t take a delivery now'
-    : availability === 'Busy' ? 'Busy on an active delivery: can accept once it’s complete'
+    : availability === 'Busy' ? 'Busy — currently on another delivery'
     : undefined
   return {
     courier,
@@ -735,19 +740,19 @@ export function courierCardAt(seller: SellerId, courier: CourierId, at: Moment =
     since: status === 'Approved' ? session.since ?? relationship?.approved : undefined,
     completedForSeller: completedForSellerAt(courier, seller, at),
     totalCompleted: totalCompletedAt(courier, at),
-    compensation: session.compensation ?? relationshipCompensationAt(seller, courier, at),
-    selectable: status === 'Approved' && verification === 'Verified' && availability !== 'Unavailable',
+    compensation: courierCompensationAt(seller, at),
+    selectable: status === 'Approved' && verification === 'Verified' && availability === 'Available',
     note,
   }
 }
 
 /**
- * The order a Seller's Couriers are listed in (PR-008): those who can receive an offer now (Available, then Busy),
- * other approved ones, then applications, invitations, suspended and removed relationships; by name within each.
+ * The order a Seller's Couriers are listed in (PR-008): those who can receive an offer now, then approved ones who are
+ * Busy, other approved ones, then applications, invitations, suspended and removed relationships; by name within each.
  * A fixed rule, never a score or a "best" Courier.
  */
 export function courierListOrder(a: CourierCard, b: CourierCard): number {
-  const group = (card: CourierCard) => (card.selectable ? (card.availability === 'Available' ? 0 : 1) : ['Approved', 'Application pending', 'Invited', 'Suspended', 'Removed', 'Rejected'].indexOf(card.status ?? 'Removed') + 2)
+  const group = (card: CourierCard) => (card.selectable ? 0 : card.status === 'Approved' && card.availability === 'Busy' ? 1 : ['Approved', 'Application pending', 'Invited', 'Suspended', 'Removed', 'Rejected'].indexOf(card.status ?? 'Removed') + 2)
   return group(a) - group(b) || a.name.localeCompare(b.name)
 }
 

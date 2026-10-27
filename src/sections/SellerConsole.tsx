@@ -16,9 +16,9 @@ import {
   GENERAL_CONTEXT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET, NO_ROLE_CAN, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS,
   SELLER_ROLES, SELLER_SESSIONS, SELLER_SETTINGS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, TEAM_ROLES, VOLT_HOUSE_PREPUBLICATION,
   activeDiscount, areaAccess, awaitingSellerReplyAt, byMessageTime, capabilitiesOf, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt, contextKey,
-  contextSubject, courierCardAt, courierHistoryAt, courierListOrder, courierRelationship, currentPrice, deliveryOfferAt, effectiveMessagesAt, firstName, formatAge, formatCalendarDate, formatClock, formatDate, formatMonthShortYear,
+  contextSubject, courierCardAt, courierCompensationAt, courierHistoryAt, courierListOrder, courierRelationship, currentPrice, deliveryOfferAt, effectiveMessagesAt, firstName, formatAge, formatCalendarDate, formatClock, formatDate, formatMonthShortYear,
   formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, hasAvailableProductAt, isForYouEligibleAt, lineOptions, memberRoles, messagesAt,
-  moderationIssuesAt, onAdulisSince, orderStateAt, orderTotals, ordersAt, ordersRequiringPreparationAt, paidAt,
+  moderationIssuesAt, onAdulisSince, orderCourierCompensation, orderStateAt, orderTotals, ordersAt, ordersRequiringPreparationAt, paidAt,
   paymentReference, postsNeedingAttentionAt, preparationAt, prepublicationCards, prepublicationSnapshotFor, productPerformance, productQualityAt, relationshipHistoryAt,
   restrictionAt, reviewsAt, roleInfo, scenePerformance, sceneStatusAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerReputationAt, sellerServiceAt,
   sellerTeam, sessionStaffOn, shortName, showcaseSellers, stateTime, trustAt,
@@ -394,7 +394,10 @@ function OrderDetail({ orderId, at, courierChanges, onBack }: { orderId: OrderId
   const pool = courierMode ? COURIER_RELATIONSHIPS.filter(r => r.seller === order.seller).map(r => courierCardAt(order.seller, r.courier, at, courierChanges[courierKey(order.seller, r.courier)])).filter(card => card.status === 'Approved').sort(courierListOrder) : []
   const chosen = pool.find(card => card.courier === offerTo)
   const recorded = courierMode && override === null ? deliveryOfferAt(orderId, at) : undefined
-  const offer = recorded ?? (courierMode && current === 2 && chosen ? { courier: chosen.courier, compensation: chosen.compensation, busy: chosen.availability === 'Busy' } : undefined)
+  // The Order's Courier compensation is the Buyer-paid Courier Delivery charge, fixed at Checkout: every Courier is offered
+  // this amount, whoever is chosen (specification §52).
+  const compensation = courierMode ? orderCourierCompensation(orderId) : undefined
+  const offer = recorded ?? (courierMode && current === 2 && chosen ? { courier: chosen.courier, compensation, busy: chosen.availability === 'Busy' } : undefined)
   const step = (index: number) => { setOverride(index); if (index < 2) { setOfferTo(null); setChoice(null) } }
   const toSelection = () => (selectionRef.current?.querySelector<HTMLElement>('[role="radio"]') ?? selectionRef.current)?.focus()
   const buyer = BUYERS[order.buyer]
@@ -441,14 +444,15 @@ function OrderDetail({ orderId, at, courierChanges, onBack }: { orderId: OrderId
                 <div ref={selectionRef} tabIndex={-1} className="mb-4 rounded-xl border border-border p-4">
                   <div className="text-sm font-semibold">Send a Delivery Offer</div>
                   <p className="mt-1 text-xs leading-relaxed text-text-muted">Choose one of {SELLERS[order.seller].name}'s approved Couriers. The Courier accepts or declines; the Order is Courier Assigned only when they accept.</p>
-                  {pool.length > 0 && <p className="mt-2 text-xs text-text-secondary">{pool.filter(card => card.selectable).length} of {pool.length} approved Couriers can receive this offer now. The Buyer paid {formatEtb(totals.delivery)} for Courier Delivery.</p>}
+                  <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2 rounded-xl bg-surface-raised p-3"><span className="text-xs font-semibold">Courier compensation for this Order</span><span className="text-sm font-bold">{compensation === undefined ? '—' : formatEtb(compensation)}</span><span className="w-full text-xs text-text-muted">The Courier Delivery charge the Buyer paid. It’s the same whichever Courier you choose.</span></div>
+                  {pool.length > 0 && <p className="mt-2 text-xs text-text-secondary">{pool.filter(card => card.selectable).length} of {pool.length} approved Couriers are available for a Delivery Offer now.</p>}
                   {pool.length ? <div role="radiogroup" aria-label="Approved Couriers" className="mt-3 flex flex-col gap-2">{pool.map(card => (
                     <button key={card.courier} role="radio" aria-checked={choice === card.courier} disabled={!card.selectable} onClick={() => setChoice(card.courier)} className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left disabled:cursor-not-allowed disabled:bg-surface-raised ${choice === card.courier ? 'border-brand bg-brand-muted' : 'border-border'}`}>
                       <AvatarText name={card.name} />
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold">{card.name}</span><AvailabilityStatus availability={card.availability} className="text-xs font-semibold" /></span>
-                        <CourierFacts card={card} sellerId={order.seller} terms="for this delivery" />
-                        {card.note && <span className={`mt-1.5 block text-xs font-semibold ${card.selectable ? 'text-warning' : 'text-text-secondary'}`}>{card.selectable ? card.note : `Can’t receive this offer · ${card.note}`}</span>}
+                        <CourierFacts card={card} sellerId={order.seller} />
+                        {card.note && <span className="mt-1.5 block text-xs font-semibold text-text-secondary">Can’t receive this offer · {card.note}</span>}
                       </span>
                     </button>
                   ))}</div> : <div className="mt-3 rounded-xl bg-surface-raised p-3 text-xs text-text-muted">No approved Couriers yet. Approve a Courier in Couriers to send a Delivery Offer.</div>}
@@ -1236,16 +1240,17 @@ const whenOf = (value: CalendarDate | Moment) => (typeof value === 'string' ? va
 /**
  * A Courier's comparison facts (PR-008), in the same order on every Seller-facing card: vehicle and service areas
  * (whether they cover the Seller's area), completed for this Seller (primary, rule 7.4), the total across Sellers
- * (secondary), compensation, and how long the Courier has worked with the Seller. Nothing about other Sellers.
+ * (secondary), and how long the Courier has worked with the Seller. Nothing about other Sellers. Compensation is the
+ * Seller's or the Order's, the same for every Courier, so it's shown once, not on each card.
  */
-function CourierFacts({ card, sellerId, terms }: { card: CourierCard; sellerId: SellerId; terms: 'for this delivery' | 'per delivery' }) {
+function CourierFacts({ card, sellerId }: { card: CourierCard; sellerId: SellerId }) {
   const area = SELLERS[sellerId].area
   return (
     <span className="mt-1 block text-xs">
       <span className="block text-text-secondary">{card.vehicle} · {card.areas.join(', ')} · <span className={`font-semibold ${card.coversSellerArea ? 'text-success' : 'text-warning'}`}>{card.coversSellerArea ? `covers ${area}` : `outside ${area}`}</span></span>
       <span className="mt-1.5 block text-sm font-semibold text-text-primary">{card.completedForSeller} completed for your store</span>
       <span className="block text-text-muted">{card.totalCompleted} total completed deliveries</span>
-      <span className="mt-1 block text-text-secondary">{card.compensation === undefined ? 'Compensation —' : `${formatEtb(card.compensation)} ${terms}`}{card.since && ` · With you since ${formatMonthShortYear(whenOf(card.since))}`}</span>
+      {card.since && <span className="mt-1 block text-text-secondary">With you since {formatMonthShortYear(whenOf(card.since))}</span>}
     </span>
   )
 }
@@ -1281,9 +1286,13 @@ function CouriersPanel({ sellerId, at, advanceTo, changes, onChange }: {
   const card = list.find(item => item.courier === selected) ?? list[0]
   const relationship = card && courierRelationship(sellerId, card.courier)
   const key = card && courierKey(sellerId, card.courier)
-  // The field shows the relationship's terms until the Seller edits it.
-  const [edited, setEdited] = useState<Partial<Record<CourierId, string>>>({})
-  const compensation = card ? edited[card.courier] ?? (card.compensation === undefined ? '' : String(card.compensation / 100)) : ''
+  // The Seller's Courier Delivery terms (rule 6.8; specification §52): one amount for every Courier, the Courier
+  // Delivery charge for future Checkouts. A change here is this session's, and paid Orders keep the amount they were paid
+  // with. The field shows the current terms until the Seller edits it.
+  const terms = courierCompensationAt(sellerId, at)
+  const [future, setFuture] = useState<number>()
+  const [edited, setEdited] = useState<string>()
+  const compensation = edited ?? (terms === undefined ? '' : String(terms / 100))
   const approved = inTab('approved')
   const openTab = (next: CourierTab) => { setTab(next); setSelected(undefined) }
   const act = (change: CourierRelationshipChange, message: string, next?: CourierTab) => {
@@ -1306,7 +1315,16 @@ function CouriersPanel({ sellerId, at, advanceTo, changes, onChange }: {
     <div className="couriers-panel mx-auto max-w-7xl p-8">
       <ModuleHeader title="Couriers" description={`Private courier relationships for ${seller} only.`} trailing={<Button onClick={() => { openTab('invitations'); setAction('Invitation composer opened') }}>Invite Courier</Button>} />
       <div className="mb-3 flex flex-wrap gap-2">{COURIER_TABS.map(t => <Pill key={t.key} active={tab === t.key} onClick={() => openTab(t.key)}>{t.label} · {inTab(t.key).length}</Pill>)}</div>
-      {tab === 'approved' && approved.length > 0 && <p className="mb-4 text-xs text-text-secondary">{approved.filter(c => c.selectable && c.availability === 'Available').length} available now · {approved.filter(c => c.selectable && c.availability === 'Busy').length} busy · {approved.filter(c => !c.selectable).length} can’t receive offers now. Listed by who can take a delivery now, then by name.</p>}
+      {/* The Seller's Courier Delivery terms: one amount for every Courier, used for future Checkouts only. */}
+      <section aria-label="Courier Delivery compensation" className="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-border bg-surface p-4">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-text-muted">Current Courier Delivery compensation</div>
+          <div className="mt-1 font-display text-xl font-semibold">{terms === undefined ? 'Not set yet' : `${formatEtb(terms)} per Courier Delivery Order`}</div>
+          <p className="mt-1 text-xs leading-relaxed text-text-secondary">The same for every Courier. It’s the Courier Delivery charge at Checkout, and paid Orders keep the amount they were paid with.{future !== undefined && ` Future Checkouts: ${formatEtb(future)} (this session).`}</p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3"><div className="w-56"><TextInput label="Future Courier Delivery compensation (ETB)" value={compensation} onChange={event => setEdited(event.target.value)} hint="Applies only to future Checkout." /></div><Button variant="tertiary" onClick={() => { const amount = Math.round(Number(compensation) * 100); if (amount > 0) { setFuture(amount); setAction(`Future Courier Delivery compensation set to ${formatEtb(amount)}. Paid Orders keep the amount they were paid with.`) } }}>Update Future Compensation</Button></div>
+      </section>
+      {tab === 'approved' && approved.length > 0 && <p className="mb-4 text-xs text-text-secondary">{approved.filter(c => c.selectable).length} available for a Delivery Offer now · {approved.filter(c => c.availability === 'Busy').length} busy · {approved.filter(c => !c.selectable && c.availability !== 'Busy').length} unavailable or restricted. Listed by who can take a delivery now, then by name.</p>}
       {action && <div role="status" className="mb-4 rounded-xl bg-info-bg p-3 text-xs font-semibold text-info">{action}</div>}
       {!card && <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-text-muted">No Couriers in this list</div>}
       {card && relationship && <div className="grid grid-cols-[360px_1fr] gap-5">
@@ -1315,8 +1333,8 @@ function CouriersPanel({ sellerId, at, advanceTo, changes, onChange }: {
             <AvatarText name={item.name} />
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold">{item.name}</span><AvailabilityStatus availability={item.availability} className="text-xs font-semibold" /></span>
-              <CourierFacts card={item} sellerId={sellerId} terms="per delivery" />
-              {item.note && item.status === 'Approved' && <span className={`mt-1.5 block text-xs font-semibold ${item.selectable ? 'text-warning' : 'text-text-secondary'}`}>{item.note}</span>}
+              <CourierFacts card={item} sellerId={sellerId} />
+              {item.note && item.status === 'Approved' && <span className="mt-1.5 block text-xs font-semibold text-text-secondary">{item.note}</span>}
               {item.status !== 'Approved' && <span className="mt-1.5 block text-xs font-semibold text-text-secondary">{item.status}</span>}
             </span>
           </button>
@@ -1331,14 +1349,9 @@ function CouriersPanel({ sellerId, at, advanceTo, changes, onChange }: {
             <Field label="Vehicle" value={card.vehicle} />
             <Field label="Service areas" value={`${card.areas.join(', ')} (${card.coversSellerArea ? 'covers' : 'outside'} ${SELLERS[sellerId].area})`} />
             <Field label="Seller relationship" value={card.status === 'Approved' && card.since ? `Approved · ${formatDate(whenOf(card.since))}` : card.status ?? '—'} />
-            <Field label="Current terms" value={card.compensation === undefined ? '—' : `${formatEtb(card.compensation)} per delivery`} />
-            <Field label="Delivery Offers" value={card.selectable ? (card.availability === 'Busy' ? 'Can receive; accepts once free' : 'Can receive now') : 'Can’t receive now'} />
+            <Field label="Delivery Offers" value={card.selectable ? 'Can receive now' : 'Can’t receive now'} />
           </div>
           {card.note && <p className="mt-3 rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary">{card.note}.{card.verification !== 'Verified' && ' Adulis’s verification applies across every Seller; an approval here doesn’t override it.'}</p>}
-          {(card.status === 'Approved' || card.status === 'Invited' || card.status === 'Application pending') && <>
-            <SectionLabelInline>Compensation</SectionLabelInline>
-            <div className="flex flex-wrap items-end gap-3"><div className="w-56"><TextInput label="Future delivery compensation (ETB)" value={compensation} onChange={event => setEdited(all => ({ ...all, [card.courier]: event.target.value }))} hint="Applies only to future offers." /></div><Button variant="tertiary" onClick={() => { const amount = Math.round(Number(compensation) * 100); if (amount > 0) act({ compensation: amount }, `Future compensation for ${card.name} updated to ${formatEtb(amount)}`) }}>Update Future Compensation</Button></div>
-          </>}
           <SectionLabelInline>Seller-relevant history</SectionLabelInline>
           {/* Completed for this Seller is the primary figure; the total across Sellers is secondary context beside it. */}
           <div className="grid grid-cols-2 gap-3"><MetricBlock label={`Completed for ${seller}`} value={String(card.completedForSeller)} /><MetricBlock label="Total completed deliveries across Sellers" value={String(card.totalCompleted)} secondary /></div>
