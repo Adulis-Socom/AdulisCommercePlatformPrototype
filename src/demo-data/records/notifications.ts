@@ -57,9 +57,8 @@ export const NOTIFICATIONS: readonly NotificationRecord[] = [
   { recipient: 'SEL-ADDIS-ATELIER', event: { kind: 'Low stock', product: 'PRD-AA-003' } },
   { recipient: 'SEL-ADDIS-ATELIER', event: { kind: 'Pickup verified', order: 'ADU-24091' } },
   { recipient: 'SEL-ADDIS-ATELIER', event: { kind: 'New Paid Order', order: 'ADU-24094' } },
-  // Nura Glow
+  // Nura Glow. Its offer to Daniel K. waits until he's Available (14:53), so there's no Courier offer issue (PR-008).
   { recipient: 'SEL-NURA-GLOW', event: { kind: 'New Paid Order', order: 'ADU-24092' } },
-  { recipient: 'SEL-NURA-GLOW', event: { kind: 'Courier offer issue', order: 'ADU-24092' } },
   { recipient: 'SEL-NURA-GLOW', event: { kind: 'Pickup verified', order: 'ADU-24092' } },
   // Volt House
   { recipient: 'SEL-VOLT-HOUSE', event: { kind: 'New Paid Order', order: 'ADU-24093' } },

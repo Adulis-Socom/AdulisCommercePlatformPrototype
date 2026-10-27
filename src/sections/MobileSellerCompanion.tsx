@@ -510,8 +510,8 @@ function DeliveryOffer({ orderId, courierId, at, onBack, assigned, onAssigned, o
   const firstName = courier.split(' ')[0]
   // The Order's compensation: the Buyer-paid Courier Delivery charge, whichever Courier is offered it (specification §52).
   const compensation = orderCourierCompensation(orderId)
-  // On another active delivery the Courier can't accept the offer yet (rule 6.3; DEMO_DATA's 13:50 offer). That
-  // delivery isn't named: it may be another Seller's (rule 7.3).
+  // On another active delivery the Courier can't accept the offer yet (rule 6.3). That delivery isn't named: it may be
+  // another Seller's (rule 7.3).
   const busy = !assigned && courierAvailabilityAt(courierId, at) === 'Busy'
   // Only DEMO_DATA's offer continues the story: an offer to another Courier stays awaiting acceptance (PR-008).
   const canonical = ORDERS[orderId].offer?.courier === courierId

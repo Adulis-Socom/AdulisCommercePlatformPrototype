@@ -178,11 +178,13 @@ const ORDER_RECORDS = {
     pickup: { method: 'QR', location: 'recorded' },
     finalHandoff: { method: 'QR', location: 'recorded' },
   },
-  // Flow D's second Seller Order; Flow H's delegated delivery.
+  // Flow D's second Seller Order; Flow H's delegated delivery. Nura Glow offers it to Daniel K. at 14:53, the first moment
+  // he is Available after completing ADU-24091 at 14:52: a direct offer goes only to an Available Courier (rule 6.3;
+  // refinement PR-008). DEMO_DATA's 13:50, while he was busy, is the pre-refinement timeline; PR-010 reconciles it.
   'ADU-24092': {
     buyer: 'BUY-MAYA-TESFAYE', seller: 'SEL-NURA-GLOW', fulfilment: 'Courier Delivery', courier: 'COU-DANIEL-K',
     lines: [{ product: 'PRD-NG-001', options: ['50 ml'], quantity: 1 }],
-    offer: { courier: 'COU-DANIEL-K', offered: '2026-10-02T13:50:00+03:00' },
+    offer: { courier: 'COU-DANIEL-K', offered: '2026-10-02T14:53:00+03:00' },
     payments: [{ status: 'Failed', at: '2026-10-02T10:06:00+03:00', failure: 'transient' }, { status: 'Paid' }],
     history: [
       { state: 'Paid', at: '2026-10-02T10:07:00+03:00' }, { state: 'Preparing', at: '2026-10-02T10:20:00+03:00' },
