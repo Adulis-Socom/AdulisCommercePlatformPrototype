@@ -5,7 +5,7 @@
  */
 
 import { createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
-import { BASELINE_ID, paletteById, type ThemeMode } from './palettes'
+import { BASELINE_ID, isCandidate, paletteById, type ThemeMode } from './palettes'
 import { themeTokens } from './tokens'
 
 export type ModeChoice = ThemeMode | 'system'
@@ -45,23 +45,27 @@ const systemMode = (): ThemeMode => (window.matchMedia?.(DARK_QUERY).matches ? '
 
 export const resolveMode = (mode: ModeChoice, system: ThemeMode = systemMode()): ThemeMode => (mode === 'system' ? system : mode)
 
-/** Marks <html> with the choice and writes its tokens. Baseline Light writes none, so index.css applies unchanged. */
+/**
+ * Marks <html> with the choice and writes its tokens. Baseline writes none, in any mode: it has no approved dark
+ * design, so index.css applies unchanged and <html> is marked Light.
+ */
 export function applyTheme(paletteId: string, mode: ThemeMode) {
   const palette = paletteById(paletteId) ?? paletteById(BASELINE_ID)!
   const root = document.documentElement
   const previous: string[] = []
   for (let i = 0; i < root.style.length; i++) if (root.style[i].startsWith('--adulis-')) previous.push(root.style[i])
   for (const name of previous) root.style.removeProperty(name)
-  if (!(palette.id === BASELINE_ID && mode === 'light')) {
-    for (const [name, value] of Object.entries(themeTokens(palette, mode))) root.style.setProperty(name, value)
+  const effective = isCandidate(palette) ? mode : 'light'
+  if (isCandidate(palette)) {
+    for (const [name, value] of Object.entries(themeTokens(palette, effective))) root.style.setProperty(name, value)
   }
   root.dataset.adulisTheme = palette.id
-  root.dataset.adulisMode = mode
+  root.dataset.adulisMode = effective
 }
 
 interface ThemeLabState {
   choice: ThemeChoice
-  /** The mode in effect: the chosen one, or the device's for System. */
+  /** The mode in effect: the chosen one, or the device's for System; always Light for Baseline. */
   mode: ThemeMode
   choose: (change: Partial<ThemeChoice>) => void
 }
@@ -71,16 +75,18 @@ const ThemeLabContext = createContext<ThemeLabState | null>(null)
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [choice, setChoice] = useState(readStoredChoice)
   const [system, setSystem] = useState(systemMode)
-  const mode = resolveMode(choice.mode, system)
+  const candidate = isCandidate(paletteById(choice.palette) ?? paletteById(BASELINE_ID)!)
+  // The chosen mode is kept while Baseline is showing, and applies again on moving to a candidate.
+  const mode = candidate ? resolveMode(choice.mode, system) : 'light'
 
   useEffect(() => {
-    if (choice.mode !== 'system' || !window.matchMedia) return
+    if (!candidate || choice.mode !== 'system' || !window.matchMedia) return
     const query = window.matchMedia(DARK_QUERY)
     const follow = () => setSystem(query.matches ? 'dark' : 'light')
     follow()
     query.addEventListener('change', follow)
     return () => query.removeEventListener('change', follow)
-  }, [choice.mode])
+  }, [candidate, choice.mode])
 
   useLayoutEffect(() => applyTheme(choice.palette, mode), [choice.palette, mode])
 

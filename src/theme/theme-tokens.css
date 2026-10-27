@@ -1,13 +1,14 @@
 /* Theme Lab (prototype design evaluation): the one colour authority every surface reads.
 
-   ThemeProvider marks <html> with data-adulis-theme (a palette id) and data-adulis-mode (light or dark). For every
-   choice except Baseline Light it also writes the --adulis-* tokens, derived in tokens.ts from the palette registry in
-   palettes.ts, as inline custom properties. The rules below map the prototype's existing colour tokens onto them, so
-   the surfaces follow without any palette-specific styling. Baseline Light writes nothing: index.css's own colours
-   apply, exactly as approved. Functional colours (success, warning, danger, info, Courier) keep their meaning; only
-   Dark mode restates them, lighter within the same hue, so they read on dark surfaces. */
+   ThemeProvider marks <html> with data-adulis-theme (a palette id) and data-adulis-mode (light or dark). For a
+   candidate system it also writes the --adulis-* tokens, derived in tokens.ts from the palette registry in
+   palettes.ts, as inline custom properties, in the mode chosen. The rules below map the prototype's existing colour
+   tokens onto them, so every surface, the Operator Console included, follows without any palette-specific styling.
+   Baseline writes nothing, in any mode: index.css's own colours apply, exactly as approved, and <html> is marked
+   Light. Functional colours (success, warning, danger, info, Courier availability) keep their meaning; only Dark mode
+   restates them, lighter within the same hue, so they read on dark surfaces. */
 
-/* The semantic tokens always exist. Under Baseline Light they name the index.css colours. */
+/* The semantic tokens always exist. Under Baseline they name the index.css colours. */
 :root {
   --adulis-primary: var(--color-brand);
   --adulis-secondary: var(--color-text-secondary);
@@ -43,7 +44,6 @@
   --adulis-operator-text: var(--color-operator-text);
   --adulis-operator-muted: var(--color-operator-muted);
   --adulis-operator-accent: var(--color-operator-accent);
-  --adulis-operator-warning: var(--color-operator-warning);
 
   /* Component and presentation tokens: approved Baseline colours that aren't index.css tokens, given a role here so
      the candidate systems can restate them. */
@@ -54,12 +54,17 @@
   --adulis-tint-mint: #EAF5EE;
   /* Brand-coloured text on a fixed dark band (the Guide's header). */
   --adulis-accent-on-dark: var(--color-brand-light);
+  /* The Operator Console's keyboard focus ring: the light inverse on its dark Baseline surfaces. */
+  --adulis-operator-focus: var(--color-text-inverse);
+  /* The Buyer's Appearance previews of Light and Dark. */
+  --adulis-preview-light: var(--color-background);
+  --adulis-preview-dark: var(--color-operator-bg);
   /* How far fixed categorical colours used as text are lifted toward the text colour: none in Light. */
   --adulis-dark-lift: 0%;
 }
 
-/* Every system and mode except Baseline Light. */
-:root[data-adulis-theme]:not([data-adulis-theme='baseline'][data-adulis-mode='light']) {
+/* Every candidate system, in either mode. */
+:root[data-adulis-theme]:not([data-adulis-theme='baseline']) {
   --color-brand: var(--adulis-primary);
   --color-brand-text: var(--adulis-primary-text);
   --color-brand-dark: var(--adulis-primary-strong);
@@ -81,6 +86,7 @@
   --color-border: var(--adulis-border);
   --color-border-strong: var(--adulis-border-strong);
 
+  /* The Operator Console follows the mode like every other surface, and its cautions take the warning colour. */
   --color-operator-bg: var(--adulis-operator-bg);
   --color-operator-surface: var(--adulis-operator-surface);
   --color-operator-raised: var(--adulis-operator-raised);
@@ -88,30 +94,21 @@
   --color-operator-text: var(--adulis-operator-text);
   --color-operator-muted: var(--adulis-operator-muted);
   --color-operator-accent: var(--adulis-operator-accent);
-  --color-operator-warning: var(--adulis-operator-warning);
+  --color-operator-warning: var(--color-warning);
+  --adulis-operator-focus: var(--adulis-focus-ring);
+
+  /* The Courier app's navigation and interaction colour follows the system; its availability and delivery status
+     keep --color-courier. */
+  --color-courier-brand: var(--adulis-primary-text);
+  --color-courier-brand-muted: var(--adulis-primary-soft);
+  --color-on-courier-brand: var(--adulis-on-primary);
+  --color-courier-brand-on-dark: var(--adulis-accent-on-dark);
 
   --adulis-button-label: var(--adulis-on-primary);
   --adulis-story-ring: var(--adulis-accent);
   --adulis-tint-warm: var(--adulis-accent-soft);
   --adulis-tint-sage: var(--adulis-primary-soft);
   --adulis-tint-mint: var(--adulis-primary-soft);
-  --adulis-accent-on-dark: var(--adulis-operator-accent);
-}
-
-/* The Operator Console is dark under every system, so there its functional colours take their dark-surface forms in
-   both modes. */
-:root[data-adulis-theme]:not([data-adulis-theme='baseline'][data-adulis-mode='light']) .operator-console {
-  --color-success: var(--adulis-operator-success);
-  --color-success-bg: var(--adulis-operator-success-soft);
-  --color-warning: var(--adulis-operator-warning);
-  --color-warning-bg: var(--adulis-operator-warning-soft);
-  --color-danger: var(--adulis-operator-danger);
-  --color-danger-bg: var(--adulis-operator-danger-soft);
-  --color-info: var(--adulis-operator-info);
-  --color-info-bg: var(--adulis-operator-info-soft);
-  --color-courier: var(--adulis-operator-courier);
-  --color-courier-muted: var(--adulis-operator-courier-soft);
-  --color-on-status: var(--adulis-operator-on-status);
 }
 
 /* Dark mode: native controls and scrollbars follow, and the functional colours take their dark-surface forms. */

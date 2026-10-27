@@ -1341,9 +1341,9 @@ function PrototypeNote({ children }: { children: ReactNode }) {
 // Appearance (PR-006). The design system has a light appearance only, so Light is the one mode this prototype can
 // apply; System and Dark are shown, unavailable, rather than rewriting the design tokens.
 const APPEARANCES = [
-  { label: 'System', detail: "Matches your device's setting", available: false, swatch: { background: 'linear-gradient(135deg, var(--color-background) 50%, var(--color-operator-bg) 50%)' } },
-  { label: 'Light', detail: 'Light backgrounds with dark text', available: true, swatch: { background: 'var(--color-background)' } },
-  { label: 'Dark', detail: 'Dark backgrounds with light text', available: false, swatch: { background: 'var(--color-operator-bg)' } },
+  { label: 'System', detail: "Matches your device's setting", available: false, swatch: { background: 'linear-gradient(135deg, var(--adulis-preview-light) 50%, var(--adulis-preview-dark) 50%)' } },
+  { label: 'Light', detail: 'Light backgrounds with dark text', available: true, swatch: { background: 'var(--adulis-preview-light)' } },
+  { label: 'Dark', detail: 'Dark backgrounds with light text', available: false, swatch: { background: 'var(--adulis-preview-dark)' } },
 ]
 
 function AppearanceSettings({ onBack }: { onBack: () => void }) {

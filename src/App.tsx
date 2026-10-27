@@ -168,14 +168,14 @@ export default function App() {
         )}
       </aside>
 
-      {/* Theme Lab, the prototype's colour-system comparison (design evaluation), mounted once for every section. From
-          tablet widths up it has a bar of its own above main, so it never covers a surface's top bar; on a phone
-          index.css places it at the end of the section bar. */}
-      <div className="app-topbar">
+      {/* Theme Lab, the prototype's colour-system comparison (design evaluation), mounted once for every section. It
+          floats at the top right, outside every surface's layout; `data-section` lets index.css place it beside a
+          section's own top-right controls rather than over them. On a phone it sits at the end of the section bar. */}
+      <div className="app-topbar" data-section={active}>
         <ThemeLab />
       </div>
 
-      {/* Main content.`data-section` lets index.css's responsive rules address a section without changing it. */}
+      {/* Main content. `data-section` lets index.css's responsive rules address a section without changing it. */}
       <main data-section={active} className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}`}>
         <StoryProvider stage={stageFor(journey?.id, journey?.stage ?? 0)}>
           <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} />

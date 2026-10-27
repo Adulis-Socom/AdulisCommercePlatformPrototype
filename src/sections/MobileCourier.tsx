@@ -119,7 +119,7 @@ export default function MobileCourier({ demoTarget }: { demoTarget?: string }) {
               {activeTab === 'history' && <HistoryTab courierId={courierId} at={at} />}
               {activeTab === 'account' && <AccountTab courierId={courierId} at={at} availability={availability} onAvailability={setAvailability} onRelationships={() => setScreen('relationships')} opportunity={opportunities[0]} onOpportunity={openOpportunity} />}
             </div>
-            <BottomNav items={TABS.map(tab => (tab.key === 'assignments' ? { ...tab, badge: offers.length } : tab))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-courier)" onAccent="var(--color-on-status)" />
+            <BottomNav items={TABS.map(tab => (tab.key === 'assignments' ? { ...tab, badge: offers.length } : tab))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-courier-brand)" onAccent="var(--color-on-courier-brand)" />
           </>
         )}
         {screen === 'offer' && offerId && <OfferDetail orderId={offerId} hasActive={stage !== 'none' && stage !== 'verified'} onBack={() => setScreen('tabs')} onAccept={() => { setOrderId(offerId); setStage('accepted'); setActiveTab('active'); setScreen('tabs') }} />}
@@ -185,7 +185,7 @@ function CourierHome({ activeOrder, offers, opportunities, availability, onOffer
       {offers.map(id => <OfferCard key={id} seller={SELLERS[ORDERS[id].seller].name} item={orderItems(id)} pickup={SELLERS[ORDERS[id].seller].area} delivery={BUYERS[ORDERS[id].buyer].deliveryArea ?? '—'} compensation={compensationFor(id)} disabled={!!activeOrder || availability !== 'available'} onClick={() => onOffer(id)} />)}
       <SectionTitle>Seller opportunities</SectionTitle>
       {opportunities.length === 0 && <p className="text-sm text-text-muted">No seller opportunities</p>}
-      {opportunities.map((seller, index) => <button key={seller} onClick={() => onOpportunity(seller)} className={`${index ? 'mt-2 ' : ''}flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left`}><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-courier-muted text-xs font-bold text-courier">OP</span><span className="flex-1"><span className="block text-sm font-semibold">Courier opportunity</span><span className="text-xs text-text-muted">Apply to deliver for {SELLERS[seller].name}</span></span><IconChevronRight size={16} /></button>)}
+      {opportunities.map((seller, index) => <button key={seller} onClick={() => onOpportunity(seller)} className={`${index ? 'mt-2 ' : ''}flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left`}><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-courier-brand-muted text-xs font-bold text-courier-brand">OP</span><span className="flex-1"><span className="block text-sm font-semibold">Courier opportunity</span><span className="text-xs text-text-muted">Apply to deliver for {SELLERS[seller].name}</span></span><IconChevronRight size={16} /></button>)}
     </div>
   )
 }
@@ -195,7 +195,7 @@ function OfferCard({ seller, item, pickup, delivery, compensation, disabled, onC
 }) {
   return (
     <button onClick={onClick} disabled={disabled} className={`mb-3 w-full rounded-2xl border border-border p-4 text-left ${disabled ? 'opacity-50' : ''}`}>
-      <div className="flex items-start justify-between"><span><span className="block text-sm font-semibold">{seller}</span><span className="text-xs text-text-muted">{item} · 1 package</span></span><span className="text-sm font-bold text-courier">{compensation}</span></div>
+      <div className="flex items-start justify-between"><span><span className="block text-sm font-semibold">{seller}</span><span className="text-xs text-text-muted">{item} · 1 package</span></span><span className="text-sm font-bold text-courier-brand">{compensation}</span></div>
       <div className="mt-4 flex items-center gap-2 text-xs text-text-secondary"><span className="h-2 w-2 rounded-full bg-brand" />Pickup · {pickup}<span className="h-px flex-1 bg-border-strong" /><span className="h-2 w-2 rounded-full bg-courier" />Deliver · {delivery}</div>
       <div className="mt-3 flex justify-between border-t border-border pt-3 text-xs"><span className="text-text-muted">{disabled ? 'Unavailable while another delivery is active' : 'Review offer details'}</span><IconChevronRight size={14} /></div>
     </button>
@@ -208,7 +208,7 @@ function OfferDetail({ orderId, hasActive, onBack, onAccept }: { orderId: OrderI
     <>
       <ScreenHeader title="Delivery Offer" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="rounded-2xl bg-courier-muted p-4"><div className="text-xs font-semibold uppercase tracking-wider text-courier">Compensation</div><div className="mt-1 font-display text-3xl font-semibold">{compensationFor(orderId)}</div><div className="mt-1 text-xs text-text-secondary">Fixed for this delivery</div></div>
+        <div className="rounded-2xl bg-courier-brand-muted p-4"><div className="text-xs font-semibold uppercase tracking-wider text-courier-brand">Compensation</div><div className="mt-1 font-display text-3xl font-semibold">{compensationFor(orderId)}</div><div className="mt-1 text-xs text-text-secondary">Fixed for this delivery</div></div>
         <SectionTitle>Assignment</SectionTitle>
         <InfoCard rows={[['Seller Order', orderId], ['Payment status', 'Paid · provider confirmed'], ['Seller', SELLERS[ORDERS[orderId].seller].name], ['Package', `${orderItems(orderId)} · sealed`], ['Delivery area', BUYERS[ORDERS[orderId].buyer].deliveryArea ?? '—'], ['Expected work', 'One pickup · one handoff']]} />
         <SectionTitle>Pickup instructions</SectionTitle>
@@ -256,7 +256,7 @@ function ActiveAssignment({ orderId, at, stage, onAssignments, onScan, onDeliver
 function EmptyActive({ onAssignments, completed }: { onAssignments: () => void; completed: boolean }) {
   return (
     <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-courier-muted text-courier"><IconTruck size={26} /></span>
+      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-courier-brand-muted text-courier-brand"><IconTruck size={26} /></span>
       <div className="mt-4 font-display text-xl font-semibold">{completed ? 'Delivery completed' : 'No active delivery'}</div>
       <p className="mt-2 text-sm text-text-muted">{completed ? 'The verified delivery has moved to History.' : 'Accept one delivery offer to begin.'}</p>
       <Button variant="secondary" onClick={onAssignments} style={{ marginTop: 20 }}>View Assignments</Button>
@@ -436,7 +436,7 @@ function HistoryTab({ courierId, at }: { courierId: CourierId; at: Moment }) {
 }
 
 function HistoryRow({ id, seller, date, amount }: { id: string; seller: string; date: string; amount: string }) {
-  return <div className="flex items-center justify-between border-b border-border py-4"><span><span className="block text-sm font-semibold">{seller}</span><span className="text-xs text-text-muted">{id} · {date}</span></span><span className="text-sm font-bold text-courier">{amount}</span></div>
+  return <div className="flex items-center justify-between border-b border-border py-4"><span><span className="block text-sm font-semibold">{seller}</span><span className="text-xs text-text-muted">{id} · {date}</span></span><span className="text-sm font-bold text-courier-brand">{amount}</span></div>
 }
 
 function AccountTab({ courierId, at, availability, onAvailability, onRelationships, opportunity, onOpportunity }: {
@@ -449,7 +449,7 @@ function AccountTab({ courierId, at, availability, onAvailability, onRelationshi
   const pools = approvedRelationships(courierId, at).length
   return (
     <div className="p-4">
-      <div className="flex items-center gap-3"><span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-courier-muted font-display text-xl font-bold text-courier">{initials(courier.name)}</span><span><span className="block font-display text-xl font-semibold">{courier.name}</span><span className="text-xs text-text-muted">Courier profile · {MARKET.city}</span></span></div>
+      <div className="flex items-center gap-3"><span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-courier-brand-muted font-display text-xl font-bold text-courier-brand">{initials(courier.name)}</span><span><span className="block font-display text-xl font-semibold">{courier.name}</span><span className="text-xs text-text-muted">Courier profile · {MARKET.city}</span></span></div>
       <SectionTitle>Availability</SectionTitle>
       <div className="grid grid-cols-3 gap-2">{(['available', 'busy', 'unavailable'] as Availability[]).map(value => <button key={value} onClick={() => onAvailability(value)} className={`rounded-xl border px-2 py-3 text-xs font-semibold ${availability === value ? 'border-courier bg-courier-muted text-courier' : 'border-border text-text-muted'}`}>{availabilityLabel(value)}</button>)}</div>
       <SectionTitle>Profile</SectionTitle>
@@ -482,7 +482,7 @@ function SectionTitle({ children }: { children: ReactNode }) {
 }
 
 function Pill({ children, active, onClick }: { children: ReactNode; active?: boolean; onClick?: () => void }) {
-  return <button onClick={onClick} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${active ? 'border-courier bg-courier-muted text-courier' : 'border-border bg-surface text-text-secondary'}`}>{children}</button>
+  return <button onClick={onClick} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${active ? 'border-courier-brand bg-courier-brand-muted text-courier-brand' : 'border-border bg-surface text-text-secondary'}`}>{children}</button>
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -490,7 +490,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ScanFrame() {
-  return <div className="relative h-60 w-60 rounded-3xl border-2 border-white/80"><span className="absolute left-3 right-3 top-1/2 h-0.5 bg-courier" /><span className="absolute inset-10 grid grid-cols-4 gap-2 opacity-30">{Array.from({ length: 16 }).map((_, index) => <span key={index} className={`${index % 3 === 0 ? 'bg-white' : 'border border-white'} rounded-sm`} />)}</span></div>
+  return <div className="relative h-60 w-60 rounded-3xl border-2 border-white/80"><span className="absolute left-3 right-3 top-1/2 h-0.5 bg-courier-brand-on-dark" /><span className="absolute inset-10 grid grid-cols-4 gap-2 opacity-30">{Array.from({ length: 16 }).map((_, index) => <span key={index} className={`${index % 3 === 0 ? 'bg-white' : 'border border-white'} rounded-sm`} />)}</span></div>
 }
 
 function QrPattern() {

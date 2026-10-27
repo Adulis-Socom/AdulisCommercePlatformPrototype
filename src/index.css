@@ -29,7 +29,7 @@
   /* Dark immersive surfaces (Story viewer, camera, toasts, QR modules): the text colour in the Baseline. */
   --color-ink:               var(--color-text-primary);
 
-  --color-border:           #E8E0D8;
+  --color-border:            #E8E0D8;
   --color-border-strong:     #C8BDB5;
 
   --color-success:           #2D7A4F;
@@ -43,6 +43,13 @@
 
   --color-courier:           #2D7A7A;
   --color-courier-muted:     #EAF5F5;
+  /* The Courier app's navigation and interaction colour (active tab, selections, identity tiles, amounts): the Courier
+     teal in the Baseline. Availability and delivery status use --color-courier itself. */
+  --color-courier-brand:     var(--color-courier);
+  --color-courier-brand-muted: var(--color-courier-muted);
+  --color-on-courier-brand:  var(--color-on-status);
+  /* On the dark camera view. */
+  --color-courier-brand-on-dark: var(--color-courier);
 
   /* Operator console — darker, more serious */
   --color-operator-bg:       #111418;
@@ -57,7 +64,7 @@
 }
 
 @theme inline {
-  --font-display:           'Fraunces', Georgia, serif;
+  --font-display:            'Fraunces', Georgia, serif;
   --font-body:               'Outfit', system-ui, sans-serif;
   --font-mono:               'DM Mono', 'Courier New', monospace;
 
@@ -117,9 +124,10 @@ textarea {
 }
 
 /* The Operator sidebar is dark, and the info blue lacks contrast on it: its controls' focus ring uses the light inverse
-   token instead, in every state, the drawer included (WO-009; spec §57: visible keyboard focus). */
+   token instead, in every state, the drawer included (WO-009; spec §57: visible keyboard focus). Under a Theme Lab
+   system the console follows the mode, and --adulis-operator-focus is that system's ring. */
 .operator-console-sidebar :focus-visible {
-  outline-color: var(--color-text-inverse);
+  outline-color: var(--adulis-operator-focus);
 }
 
 /* The rest of the Operator Console is dark too: the top bar, the main area's panels and its case workspaces. Their
@@ -127,11 +135,11 @@ textarea {
    fields there (components/ui/Input) set no outline of their own, so they are given the ring here; the search field's
    Clear button sits on the field's light surface and keeps the info ring. */
 .operator-console :focus-visible {
-  outline-color: var(--color-text-inverse);
+  outline-color: var(--adulis-operator-focus);
 }
 
 .operator-console :is(input, textarea):focus-visible {
-  outline: 3px solid var(--color-text-inverse) !important;
+  outline: 3px solid var(--adulis-operator-focus) !important;
   outline-offset: 2px;
 }
 
@@ -271,54 +279,65 @@ textarea {
   }
 }
 
-/* Theme Lab (src/theme/ThemeLab.tsx), the shell's top-right control. From tablet widths up the shell is a grid: the
-   sidebar beside a row for Theme Lab's bar above main, so the control never covers a surface's own top bar. On a
-   phone it sits at the end of the section bar (in the 640 px block below). */
+/* Theme Lab (src/theme/ThemeLab.tsx): the prototype's compact colour-system control. It is outside every surface's
+   layout, so no surface moves for it. From tablet widths up it floats on the top line, at the right of the window; a
+   section whose own top-right corner holds controls has it beside them instead (below). It sits under the surfaces'
+   own layers (sticky headers, menus, drawers, dialogs), so it never covers one, and rises above everything while its
+   panel is open. On a phone it is at the end of the section bar (in the 640 px block below). */
 .app-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  height: 44px;
-  padding-inline: 8px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  position: fixed;
+  z-index: 25;
+  top: var(--theme-lab-top, 6px);
+  right: var(--theme-lab-right, 8px);
 }
 
 @media (min-width: 641px) {
-  .app-shell {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+  /* Beside the Company Website's view toggle, centred on its toolbar. */
+  .app-topbar[data-section='03-website'] {
+    --theme-lab-top: 3px;
+    --theme-lab-right: 227px;
   }
 
-  .app-shell > .app-sidebar {
-    grid-column: 1;
-    grid-row: 1 / -1;
+  /* Beside the consoles' top-bar controls: Seller switcher, notifications, help and account. */
+  .app-topbar[data-section='08-seller-console'] {
+    --theme-lab-right: 285px;
   }
 
-  .app-shell > .app-topbar {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .app-shell > .app-main {
-    grid-column: 2;
-    grid-row: 2;
-    min-height: 0;
+  .app-topbar[data-section='09-operator-console'] {
+    --theme-lab-right: 136px;
   }
 }
 
+/* Up to 820 px the Storefront's entry links fill its first toolbar row, so Theme Lab sits at the end of the second. */
+@media (min-width: 641px) and (max-width: 820px) {
+  .app-topbar[data-section='04-storefront'] {
+    --theme-lab-top: 54px;
+  }
+}
+
+/* Once the Website's page scrolls, its sticky header holds the top line. Where the header leaves Theme Lab's place
+   free (up to 1200 px, and from 1420 px) Theme Lab stays above it. At 1201–1419 px the header's navigation reaches
+   that place, so the header covers Theme Lab until the page is back at the top. */
+@media (min-width: 641px) and (max-width: 1200px), (min-width: 1420px) {
+  .app-topbar[data-section='03-website'] {
+    z-index: 31;
+  }
+}
+
+.app-topbar:has(.theme-lab-panel) {
+  z-index: 900;
+}
+
 .theme-lab-trigger {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  max-width: min(420px, 100%);
-  padding-inline: 10px;
-  border-radius: var(--radius-md);
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  font-weight: 500;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
 }
 
 .theme-lab-trigger:hover,
@@ -326,7 +345,6 @@ textarea {
   background: var(--adulis-hover);
 }
 
-.theme-lab-tag,
 .theme-lab-legend {
   color: var(--color-text-muted);
   font-family: var(--font-mono);
@@ -334,17 +352,6 @@ textarea {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.theme-lab-current {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.theme-lab-chevron {
-  flex-shrink: 0;
-  color: var(--color-text-muted);
 }
 
 .theme-lab-swatch {
@@ -355,13 +362,14 @@ textarea {
   box-shadow: 0 0 0 1.5px var(--color-surface);
 }
 
+/* Opens under the trigger, right-aligned with it, and always inside the window. */
 .theme-lab-panel {
   position: fixed;
   z-index: 900;
-  top: 48px;
-  right: 8px;
+  top: calc(var(--theme-lab-top, 6px) + 52px);
+  right: min(var(--theme-lab-right, 8px), calc(100vw - 348px));
   width: 340px;
-  max-height: calc(100dvh - 56px);
+  max-height: calc(100dvh - var(--theme-lab-top, 6px) - 60px);
   overflow-y: auto;
   padding: 16px;
   border: 1px solid var(--color-border);
@@ -484,6 +492,13 @@ textarea {
   outline-offset: 2px;
 }
 
+/* Off while Baseline shows. */
+.theme-lab-mode:has(:disabled),
+.theme-lab-mode input:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
 /* Touch widths: every Theme Lab control is at least 44 px tall. */
 @media (max-width: 1200px) {
   .theme-lab-close {
@@ -500,28 +515,28 @@ textarea {
   }
 }
 
-/* Tablet: the shell's narrow rail spans every row; the card sits under main with its instruction beside its buttons. */
+/* Tablet: the shell's narrow rail spans both rows; the card sits under main with its instruction beside its buttons. */
 @media (max-width: 1200px) and (min-width: 641px) {
   .app-shell.flow-active {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   .app-shell.flow-active > .app-sidebar {
     grid-column: 1;
-    grid-row: 1 / -1;
+    grid-row: 1 / span 2;
   }
 
   .app-shell.flow-active > .app-main {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 1;
     min-height: 0;
   }
 
   .app-shell.flow-active > .flow-guide {
     grid-column: 2;
-    grid-row: 3;
+    grid-row: 2;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     column-gap: 24px;
@@ -774,25 +789,13 @@ textarea {
 
   .app-topbar {
     position: absolute;
-    z-index: 1;
     top: 4px;
     right: 4px;
-    height: 44px;
-    padding: 0;
-    border: 0;
-    background: transparent;
   }
 
+  /* Within the bar it needs no shadow, and none falls on the surface below. */
   .theme-lab-trigger {
-    width: 44px;
-    padding: 0;
-    justify-content: center;
-  }
-
-  .theme-lab-tag,
-  .theme-lab-current,
-  .theme-lab-chevron {
-    display: none;
+    box-shadow: none;
   }
 
   .theme-lab-panel {

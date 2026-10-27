@@ -21,25 +21,35 @@ export interface Palette {
   name: string
   personality?: string
   light: PaletteRoles
+  /** Absent for Baseline, which has no approved dark design. */
+  dark?: PaletteRoles
+}
+
+/** A candidate system: Light and Dark. */
+export interface CandidatePalette extends Palette {
+  personality: string
   dark: PaletteRoles
 }
 
 export const BASELINE_ID = 'baseline'
 
 /**
- * Baseline is the current prototype. Its Light roles are the existing index.css tokens (brand, text-secondary,
- * brand-light, background, surface, text-primary, border) and Light renders from index.css itself, unchanged. The
- * current prototype has no dark design of its own, so its Dark roles are the dark tokens it already has, the Operator
- * Console's (operator-accent, -muted, -bg, -surface, -text, -border), with brand-light as the accent.
+ * Baseline is the current approved prototype, as it stands. Its roles are the existing index.css tokens (brand,
+ * text-secondary, brand-light, background, surface, text-primary, border), and it renders from index.css itself,
+ * unchanged. There is no approved dark design for it, so it has no Dark roles and Theme Lab's mode doesn't apply to it.
  */
 export const BASELINE: Palette = {
   id: BASELINE_ID,
   name: 'Baseline — Current Adulis',
   light: { primary: '#A04720', secondary: '#5C4F45', accent: '#D97B45', background: '#FAF8F5', surface: '#FFFFFF', text: '#1A1512', border: '#E8E0D8' },
-  dark: { primary: '#E8874A', secondary: '#8C95A9', accent: '#D97B45', background: '#111418', surface: '#1C2028', text: '#E8EAF0', border: '#2E3540' },
 }
 
-export const CANDIDATES: readonly Palette[] = [
+export const isCandidate = (palette: Palette): palette is CandidatePalette => palette.dark !== undefined
+
+/** A system's roles in a mode; Baseline has Light only. */
+export const rolesIn = (palette: Palette, mode: ThemeMode): PaletteRoles => (mode === 'dark' && palette.dark) || palette.light
+
+export const CANDIDATES: readonly CandidatePalette[] = [
   {
     id: 'terracotta-ink',
     name: 'Terracotta & Ink',

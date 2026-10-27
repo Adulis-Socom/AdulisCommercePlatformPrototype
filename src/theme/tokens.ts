@@ -5,7 +5,7 @@
  * surfaces they sit on. theme-tokens.css maps the prototype's existing colour tokens onto these.
  */
 
-import type { Palette, PaletteRoles, ThemeMode } from './palettes'
+import type { CandidatePalette, PaletteRoles, ThemeMode } from './palettes'
 
 type Rgb = [number, number, number]
 
@@ -80,51 +80,32 @@ const inks = (roles: PaletteRoles, mode: ThemeMode): Inks =>
 export const foregroundOn = (fill: string, { preferred, other }: Inks): string =>
   contrast(preferred, fill) >= AA || contrast(preferred, fill) >= contrast(other, fill) ? preferred : other
 
-/** The Dark primary, readable on the console's surfaces and on its own 20% tint (the sidebar's count badges). */
-const operatorAccent = (dark: PaletteRoles, raised: string): string => {
+const raisedIn = ({ text, background, surface }: PaletteRoles, mode: ThemeMode): string => (mode === 'light' ? mix(text, background, 0.04) : mix(text, surface, 0.07))
+
+/** The primary, readable on the surfaces and on its own 20% tint (the Operator sidebar's count badges), with the
+ *  background readable on it as a fill (the Operator's primary buttons). */
+const consoleAccent = (roles: PaletteRoles, raised: string): string => {
   for (let step = 0; step <= 50; step++) {
-    const candidate = mix(dark.text, dark.primary, step / 50)
-    if ([dark.surface, raised, dark.background, mix(candidate, dark.surface, 0.2)].every(background => contrast(candidate, background) >= AA)) return candidate
+    const candidate = mix(roles.text, roles.primary, step / 50)
+    if ([roles.surface, raised, roles.background, mix(candidate, roles.surface, 0.2)].every(background => contrast(candidate, background) >= AA)) return candidate
   }
-  return dark.text
+  return roles.text
 }
 
-/** The Operator Console stays a dark console under every system, as it is in the Baseline; it takes the Dark roles, and
- *  its functional colours take their dark-surface forms in both modes. */
-const operatorTokens = (dark: PaletteRoles): Record<string, string> => {
-  const raised = mix(dark.text, dark.surface, 0.07)
-  // Its functional colours in their dark-surface forms. The Baseline shows Operator cautions in its orange accent; under
-  // a candidate, --adulis-operator-warning keeps them the warning amber.
-  const status: Record<string, string> = { '--adulis-operator-on-status': dark.background }
-  for (const [name, base] of Object.entries(STATUS)) {
-    const soft = mix(base, dark.surface, 0.2)
-    status[`--adulis-operator-${name}`] = readableOn(base, [soft, dark.surface, raised, dark.background], dark.text)
-    status[`--adulis-operator-${name}-soft`] = soft
-  }
-  return {
-    ...status,
-    '--adulis-operator-bg': dark.background,
-    '--adulis-operator-surface': dark.surface,
-    '--adulis-operator-raised': raised,
-    '--adulis-operator-border': dark.border,
-    '--adulis-operator-text': dark.text,
-    '--adulis-operator-muted': readableOn(dark.secondary, [dark.surface, raised, dark.background], dark.text),
-    '--adulis-operator-accent': operatorAccent(dark, raised),
-  }
-}
-
-/** Every --adulis-* token for `palette` in `mode`, as CSS custom properties. */
-export function themeTokens(palette: Palette, mode: ThemeMode): Record<string, string> {
+/** Every --adulis-* token for a candidate system in `mode`, as CSS custom properties. (Baseline writes none: it is
+ *  index.css as approved.) */
+export function themeTokens(palette: CandidatePalette, mode: ThemeMode): Record<string, string> {
   const roles = palette[mode]
   const { primary, secondary, accent, background, surface, text, border } = roles
   const ink = inks(roles, mode)
-  const raised = mode === 'light' ? mix(text, background, 0.04) : mix(text, surface, 0.07)
+  const raised = raisedIn(roles, mode)
   const primarySoft = mix(primary, surface, 0.14)
   const accentSoft = mix(accent, surface, 0.18)
   // Text reads on the surfaces and on the soft tints (selected rows, hero bands).
   const textBackgrounds = [surface, raised, background, primarySoft, accentSoft]
   const onPrimary = foregroundOn(primary, ink)
   const secondaryText = readableOn(secondary, textBackgrounds, text)
+  const mutedText = mutedOn(secondaryText, textBackgrounds, surface)
   const tokens: Record<string, string> = {
     '--adulis-primary': primary,
     '--adulis-secondary': secondary,
@@ -141,7 +122,7 @@ export function themeTokens(palette: Palette, mode: ThemeMode): Record<string, s
     '--adulis-accent-soft': accentSoft,
     '--adulis-surface-secondary': raised,
     '--adulis-secondary-text': secondaryText,
-    '--adulis-muted-text': mutedOn(secondaryText, textBackgrounds, surface),
+    '--adulis-muted-text': mutedText,
     '--adulis-border-strong': mix(text, border, 0.16),
     '--adulis-focus-ring': [background, surface].every(b => contrast(primary, b) >= 3) ? primary : readableOn(primary, [background, surface], text, 3),
     '--adulis-on-primary': onPrimary,
@@ -156,7 +137,19 @@ export function themeTokens(palette: Palette, mode: ThemeMode): Record<string, s
     '--adulis-ink': mode === 'light' ? text : background,
     '--adulis-inverse-text': mode === 'light' ? background : text,
     '--adulis-overlay': mode === 'light' ? alpha(text, 0.48) : alpha(background, 0.72),
-    ...operatorTokens(palette.dark),
+    // The Operator Console takes the mode's roles like every other surface: dense and restrained, its accent used sparingly.
+    '--adulis-operator-bg': background,
+    '--adulis-operator-surface': surface,
+    '--adulis-operator-raised': raised,
+    '--adulis-operator-border': border,
+    '--adulis-operator-text': text,
+    '--adulis-operator-muted': mutedText,
+    '--adulis-operator-accent': consoleAccent(roles, raised),
+    // Brand colour as text on the fixed dark bands (the Guide's header) in either mode: the Dark primary, made readable.
+    '--adulis-accent-on-dark': consoleAccent(palette.dark, raisedIn(palette.dark, 'dark')),
+    // The Buyer's Appearance setting previews Light and Dark with the system's two backgrounds, whichever mode is on.
+    '--adulis-preview-light': palette.light.background,
+    '--adulis-preview-dark': palette.dark.background,
   }
   if (mode === 'dark') {
     for (const [name, base] of Object.entries(STATUS)) {
