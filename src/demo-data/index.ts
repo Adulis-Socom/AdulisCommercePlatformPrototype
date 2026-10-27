@@ -3,6 +3,7 @@
 //   derived.ts values computed from the records at a point on the story timeline
 //   scenario/  prototype orchestration: guided-flow steps, surface defaults and Checkout test runs (not business data)
 //   stories.ts Seller Stories: their structure and a few prototype fixtures (PR-003), until the full dataset (PR-009)
+//   account-deletion.ts  Account Deletion's wording, shared by the Website's and the Buyer app's flows (PR-006)
 export * from './types.ts'
 export * from './time.ts'
 export * from './money.ts'
@@ -26,3 +27,4 @@ export * from './scenario/flows.ts'
 export * from './scenario/defaults.ts'
 export * from './scenario/checkout-tests.ts'
 export * from './stories.ts'
+export * from './account-deletion.ts'

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useRef, useState, FormEvent } from 'react'
 import { AdulisLogo } from '../App'
 import { useStory } from '../StoryClock'
-import { BUYERS, PRODUCTS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS, accountDeletionPreviewAt, formatClockShort, formatEtb, forYouAt, initials, issueAccountDeletionCapability, issueReportSubmissionCapability, requestAccountDeletionAt, sellerProductsAt, submitContentReport, trustAt, trustLabel, type AccountDeletionCapability, type DeletionBlocker, type ReportSubmissionCapability } from '../demo-data'
+import { BUYERS, DELETION_CONSEQUENCES, DELETION_REASONS, PRODUCTS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS, accountDeletionPreviewAt, formatClockShort, formatEtb, forYouAt, initials, issueAccountDeletionCapability, issueReportSubmissionCapability, requestAccountDeletionAt, sellerProductsAt, submitContentReport, trustAt, trustLabel, type AccountDeletionCapability, type DeletionBlocker, type ReportSubmissionCapability } from '../demo-data'
 
 /* ─── Page routing ─── */
 type PageKey =
@@ -1500,11 +1500,6 @@ type DeletionFlow =
   | { step: 'code'; phone: string }
   | { step: 'preview' | 'confirm'; capability: AccountDeletionCapability }
   | { step: 'result'; request: NonNullable<ReturnType<typeof requestAccountDeletionAt>> }
-
-// What deleting an account means, and the optional reasons. The Buyer app's Delete Account (refinement PR-006) shows the
-// same ones: one deletion policy, two ways in.
-export const DELETION_CONSEQUENCES = ['Any open orders will need to be resolved before deletion can proceed.', 'Your transaction history will be retained for 7 years as required by our data retention policy.', 'Your seller storefront, if active, will be unpublished immediately.', 'You will lose access to your order history, reviews, and saved content.']
-export const DELETION_REASONS = ["I'm not using the platform", 'I have privacy concerns', 'I had a bad experience', "I'm switching to another platform", 'Prefer not to say']
 
 function AccountDeletionPage() {
   const { moment } = useStory()

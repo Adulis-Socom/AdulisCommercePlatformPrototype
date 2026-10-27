@@ -8,9 +8,8 @@ import {
   IconSearch, IconChevronDown, IconChevronRight,
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
-import { DELETION_CONSEQUENCES, DELETION_REASONS } from './CompanyWebsite'
 import {
-  BUYERS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
+  BUYERS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DELETION_CONSEQUENCES, DELETION_REASONS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
   MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   accountDeletionPreviewAt, activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, claimStateAt, claimSubmitted, claimsForOrder,
   contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
@@ -1165,10 +1164,13 @@ function YouProfile({ at, name, area, follows, purchased, onSeller, onMenu, onPu
   )
 }
 
+// The account screens' rows keep a 44 px touch height at every width, not only where the phone-width rule applies.
+const ROW_TARGET = 'min-h-11'
+
 /** One labelled row leading to an account screen or action: text first, never an icon alone. */
 function MenuRow({ label, detail, danger, autoFocus, onClick }: { label: string; detail?: string; danger?: boolean; autoFocus?: boolean; onClick: () => void }) {
   return (
-    <button autoFocus={autoFocus} onClick={onClick} className="flex w-full items-center gap-3 rounded-xl bg-surface-raised px-4 py-3 text-left">
+    <button autoFocus={autoFocus} onClick={onClick} className={`flex w-full items-center gap-3 rounded-xl bg-surface-raised px-4 py-3 text-left ${ROW_TARGET}`}>
       <span className="min-w-0 flex-1">
         <span className={`block text-sm font-semibold ${danger ? 'text-danger' : 'text-text-primary'}`}>{label}</span>
         {detail && <span className="block text-xs text-text-muted">{detail}</span>}
@@ -1199,7 +1201,7 @@ function AccountMenu({ onClose, onOpen, onSignOut }: { onClose: () => void; onOp
               <div className="flex flex-col gap-1.5">
                 {items.map((item, i) => <MenuRow key={item.screen} label={item.label} detail={item.detail} danger={item.screen === 'delete-account'} autoFocus={g === 0 && i === 0} onClick={() => onOpen(item.screen)} />)}
                 {group === 'Account' && (
-                  <button onClick={onSignOut} className="w-full rounded-xl bg-surface-raised px-4 py-3 text-left"><span className="block text-sm font-semibold text-text-primary">Sign Out</span></button>
+                  <button onClick={onSignOut} className={`w-full rounded-xl bg-surface-raised px-4 py-3 text-left ${ROW_TARGET}`}><span className="block text-sm font-semibold text-text-primary">Sign Out</span></button>
                 )}
               </div>
             </div>
@@ -1397,7 +1399,7 @@ function NotificationSettings({ choices, onChange, onInbox, onBack }: {
           {NOTIFICATION_SETTINGS.map(setting => {
             const on = choices[setting.key] ?? true
             return (
-              <button key={setting.key} role="switch" aria-checked={on} onClick={() => onChange(setting.key, !on)} className="flex w-full items-center gap-3 rounded-xl bg-surface-raised px-4 py-3 text-left">
+              <button key={setting.key} role="switch" aria-checked={on} onClick={() => onChange(setting.key, !on)} className={`flex w-full items-center gap-3 rounded-xl bg-surface-raised px-4 py-3 text-left ${ROW_TARGET}`}>
                 <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-text-primary">{setting.label}</span><span className="block text-xs text-text-muted">{setting.detail}</span></span>
                 <span className="text-xs font-semibold text-text-secondary">{on ? 'On' : 'Off'}</span>
                 <span aria-hidden="true" className={`flex h-6 w-10 flex-shrink-0 items-center rounded-full p-0.5 transition-colors ${on ? 'justify-end bg-brand' : 'justify-start bg-border-strong'}`}><span className="h-5 w-5 rounded-full bg-surface shadow-sm" /></span>
