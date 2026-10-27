@@ -9,11 +9,11 @@ import { useStory, useStoryMoment } from '../StoryClock'
 import {
   BUYERS, CLAIMS, CLAIM_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, GENERAL_CONTEXT, MARKET, ORDERS, ORDER_TIMELINES,
   PRODUCTS, SELLERS, STAFF, SURFACE_DEFAULTS,
-  awaitingSellerReplyAt, byMessageTime, claimStateAt, contextChoicesAt, contextKey, contextSubject, courierAvailabilityAt, courierCardAt,
-  courierCompensationAt, effectiveMessagesAt, finalHandoffAt, formatAge, formatClock, formatClockShort, formatDate, formatDayMonth, formatEtb, happenedBefore, initials,
-  lineOptions, messagesAt, notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, preparationAt, readyStateFor, relationshipStatusAt,
+  awaitingSellerReplyAt, byMessageTime, claimStateAt, contextChoicesAt, contextKey, contextSubject, courierAvailabilityAt, courierCardAt, courierListOrder,
+  effectiveMessagesAt, finalHandoffAt, formatAge, formatClock, formatClockShort, formatDayMonth, formatEtb, formatMonthShortYear, happenedBefore, initials,
+  lineOptions, messagesAt, notificationTime, notificationsAt, ordersAt, orderStateAt, orderTotals, paidAt, preparationAt, readyStateFor, relationshipCompensationAt,
   sameContext, sellerProductsAt, sellerReplyDueAt, sessionStaffOn, shortName, showcaseSellers, stateTime,
-  type ClaimId, type ConversationId, type CourierAvailability, type CourierId, type MessageContext, type MessageRecord, type Moment, type NotificationRecord,
+  type ClaimId, type ConversationId, type CourierCard, type CourierId, type MessageContext, type MessageRecord, type Moment, type NotificationRecord,
   type OrderId, type OrderState, type SellerId, type Timestamp,
 } from '../demo-data'
 
@@ -209,7 +209,8 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
       {screen === 'collection-qr' && orderId && <CollectionQr orderId={orderId} at={at} onBack={backToOrder} />}
       {screen === 'handoff-verified' && orderId && <HandoffVerified orderId={orderId} at={at} method={handoffMethod} onContinue={() => { setNotice('Delivery verified · Order Completed'); setScreen('order') }} />}
       {screen === 'prepare' && orderId && <PrepareOrder orderId={orderId} onBack={backToOrder} onReady={markReady} />}
-      {screen === 'couriers' && orderId && <CourierSelection sellerId={sellerId} at={at} onBack={backToOrder} onSelect={id => { const offered = ORDERS[orderId].offer?.offered; if (offered) advanceTo(offered); setCourierId(id); setStage('offer'); setScreen('offer') }} />}
+      {/* Sending DEMO_DATA's offer moves the story to it; an offer to another Courier is this session's alone (PR-008). */}
+      {screen === 'couriers' && orderId && <CourierSelection sellerId={sellerId} at={at} onBack={backToOrder} onSelect={id => { const offer = ORDERS[orderId].offer; if (offer && offer.courier === id) advanceTo(offer.offered); setCourierId(id); setStage('offer'); setScreen('offer') }} />}
       {screen === 'offer' && orderId && <DeliveryOffer orderId={orderId} courierId={courierId} at={at} onBack={() => setScreen('couriers')} assigned={stage === 'assigned'} onAssigned={() => { advance('Courier Assigned'); setStage('assigned') }} onContinue={backToOrder} />}
       {screen === 'pickup-qr' && <SellerPickupQr courierId={courierId} onBack={backToOrder} onVerified={() => { advance('Pickup Verified'); setScreen('pickup-verified') }} />}
       {screen === 'pickup-verified' && orderId && <PickupVerified orderId={orderId} courierId={courierId} at={at} onContinue={() => { setStage('pickup'); setScreen('delivery') }} />}
@@ -471,37 +472,34 @@ function PrepareOrder({ orderId, onBack, onReady }: { orderId: OrderId; onBack: 
 }
 
 function CourierSelection({ sellerId, at, onBack, onSelect }: { sellerId: SellerId; at: Moment; onBack: () => void; onSelect: (id: CourierId) => void }) {
-  // The Seller's approved Couriers at the story moment (specification §23), each with completed for this Seller first
-  // and the total across Sellers second, as context (rules 7.1–7.4), and this Seller's compensation (rule 6.8); nothing
-  // about other Sellers (rule 7.3). A Busy Courier can still be sent an offer, which he can accept only once his
-  // active delivery is done (DEMO_DATA's 13:50 offer; rule 6.3). DEMO_DATA defines no on-time rate.
-  const pool = COURIER_RELATIONSHIPS.filter(r => r.seller === sellerId && relationshipStatusAt(r, at) === 'Approved')
+  // The Seller's approved Couriers at the story moment (specification §23), from the shared module's cards (PR-008),
+  // each with completed for this Seller first and the total across Sellers second, as context (rules 7.1–7.4), and
+  // this relationship's compensation (rule 6.8); nothing about other Sellers (rule 7.3). Those who can receive the offer
+  // come first. A Busy Courier can still be sent an offer, which he can accept only once his active delivery is done
+  // (DEMO_DATA's 13:50 offer; rule 6.3); an Unavailable or platform-restricted Courier can't be sent one.
+  const pool = COURIER_RELATIONSHIPS.filter(r => r.seller === sellerId).map(r => courierCardAt(sellerId, r.courier, at)).filter(card => card.status === 'Approved').sort(courierListOrder)
   return (
     <>
       <ScreenHeader title="Approved Courier Pool" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
-        <p className="text-sm leading-relaxed text-text-secondary">Select from couriers approved by {SELLERS[sellerId].name}. Compensation is visible before an offer is sent.</p>
-        {pool.map(r => {
-          const card = courierCardAt(sellerId, r.courier, at)
-          const approved = typeof r.approved === 'string' ? r.approved : r.approved.at
-          return <CourierCard key={r.courier} name={card.name} initials={initials(card.name)} availability={card.availability} relationship={`Approved · ${formatDate(approved)}`} compensation={card.compensation === undefined ? '—' : formatEtb(card.compensation)} completed={card.completedForSeller} total={card.totalCompleted} disabled={card.availability === 'Unavailable'} onSelect={() => onSelect(r.courier)} />
-        })}
+        <p className="text-sm leading-relaxed text-text-secondary">Select from couriers approved by {SELLERS[sellerId].name}. Compensation is visible before an offer is sent. {pool.filter(card => card.selectable).length} of {pool.length} can receive an offer now.</p>
+        {pool.map(card => <CourierCard key={card.courier} card={card} area={SELLERS[sellerId].area} onSelect={() => onSelect(card.courier)} />)}
       </div>
     </>
   )
 }
 
-function CourierCard({ name, initials, availability, relationship, compensation, completed, total, onSelect, disabled }: {
-  name: string; initials: string; availability: CourierAvailability; relationship: string; compensation: string; completed: number; total: number; onSelect: () => void; disabled?: boolean
-}) {
+function CourierCard({ card, area, onSelect }: { card: CourierCard; area: string; onSelect: () => void }) {
   // Availability as text plus icon (specification §57). Completed for this Seller is the primary figure and the total
-  // across Sellers secondary context (rule 7.4).
-  const tone = availability === 'Available' ? 'text-success' : availability === 'Busy' ? 'text-warning' : 'text-text-muted'
+  // across Sellers secondary context (rule 7.4); vehicle, service areas and time with the Seller follow (PR-008).
+  const tone = card.availability === 'Available' ? 'text-success' : card.availability === 'Busy' ? 'text-warning' : 'text-text-muted'
+  const since = card.since && (typeof card.since === 'string' ? card.since : card.since.at)
   return (
-    <div className={`mt-4 rounded-2xl border border-border p-4 ${disabled ? 'opacity-60' : ''}`}>
-      <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-info-bg font-bold text-info">{initials}</span><span className="flex-1"><span className="block text-sm font-semibold">{name}</span><span className={`inline-flex items-center gap-1 text-xs ${tone}`}>{availability === 'Available' ? <StatusCheckIcon /> : availability === 'Busy' ? <StatusClockIcon /> : null}{availability}</span></span><span className="text-right"><span className="block text-sm font-bold text-brand">{compensation}</span><span className="block text-[10px] text-text-muted">for this delivery</span></span></div>
-      <div className="mt-3 rounded-xl bg-surface-raised p-3 text-xs"><span className="block text-sm font-semibold">{completed} completed for your store</span><span className="block text-text-muted">{total} total completed deliveries</span><span className="mt-2 block border-t border-border pt-2"><span className="block text-text-muted">Relationship</span><span className="font-medium">{relationship}</span></span></div>
-      <Button size="sm" variant="secondary" disabled={disabled} onClick={onSelect} style={{ width: '100%', marginTop: 12 }}>Send Delivery Offer</Button>
+    <div className={`mt-4 rounded-2xl border border-border p-4 ${card.selectable ? '' : 'bg-surface-raised'}`}>
+      <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-info-bg font-bold text-info">{initials(card.name)}</span><span className="flex-1"><span className="block text-sm font-semibold">{card.name}</span><span className={`inline-flex items-center gap-1 text-xs ${tone}`}>{card.availability === 'Available' ? <StatusCheckIcon /> : card.availability === 'Busy' ? <StatusClockIcon /> : null}{card.availability}</span></span><span className="text-right"><span className="block text-sm font-bold text-brand">{card.compensation === undefined ? '—' : formatEtb(card.compensation)}</span><span className="block text-[10px] text-text-muted">for this delivery</span></span></div>
+      <div className="mt-3 rounded-xl bg-surface-raised p-3 text-xs"><span className="block text-sm font-semibold">{card.completedForSeller} completed for your store</span><span className="block text-text-muted">{card.totalCompleted} total completed deliveries</span><span className="mt-2 block border-t border-border pt-2 text-text-secondary">{card.vehicle} · {card.areas.join(', ')} · <span className={`font-semibold ${card.coversSellerArea ? 'text-success' : 'text-warning'}`}>{card.coversSellerArea ? `covers ${area}` : `outside ${area}`}</span></span>{since && <span className="mt-1 block text-text-muted">With you since {formatMonthShortYear(since)}</span>}</div>
+      {card.note && <p className={`mt-2 text-xs font-semibold ${card.selectable ? 'text-warning' : 'text-text-secondary'}`}>{card.selectable ? card.note : `Can’t receive an offer · ${card.note}`}</p>}
+      <Button size="sm" variant="secondary" disabled={!card.selectable} onClick={onSelect} style={{ width: '100%', marginTop: 12 }}>Send Delivery Offer</Button>
     </div>
   )
 }
@@ -509,10 +507,12 @@ function CourierCard({ name, initials, availability, relationship, compensation,
 function DeliveryOffer({ orderId, courierId, at, onBack, assigned, onAssigned, onContinue }: { orderId: OrderId; courierId: CourierId; at: Moment; onBack: () => void; assigned: boolean; onAssigned: () => void; onContinue: () => void }) {
   const courier = COURIERS[courierId].name
   const firstName = courier.split(' ')[0]
-  const compensation = courierCompensationAt(ORDERS[orderId].seller, at)
+  const compensation = relationshipCompensationAt(ORDERS[orderId].seller, courierId, at)
   // On another active delivery the Courier can't accept the offer yet (rule 6.3; DEMO_DATA's 13:50 offer). That
   // delivery isn't named: it may be another Seller's (rule 7.3).
   const busy = !assigned && courierAvailabilityAt(courierId, at) === 'Busy'
+  // Only DEMO_DATA's offer continues the story: an offer to another Courier stays awaiting acceptance (PR-008).
+  const canonical = ORDERS[orderId].offer?.courier === courierId
   return (
     <>
       <ScreenHeader title="Delivery Offer" onBack={onBack} />
@@ -521,7 +521,9 @@ function DeliveryOffer({ orderId, courierId, at, onBack, assigned, onAssigned, o
         <div className="mt-5 font-display text-2xl font-semibold">{assigned ? 'Courier Assigned' : `Offer sent to ${courier}`}</div>
         <p className="mt-2 text-sm leading-relaxed text-text-secondary">{assigned ? `${firstName} accepted the delivery. Prepare to display the Seller Pickup QR when they arrive.` : busy ? `${firstName} can't accept this offer while on an active delivery. The order remains Ready for Courier.` : `Waiting for ${firstName} to accept or decline. The order remains Ready for Courier.`}</p>
         <div className="mt-6 w-full rounded-xl bg-surface-raised p-4 text-left"><InfoRow label="Order" value={orderId} /><InfoRow label="Compensation" value={compensation === undefined ? '—' : formatEtb(compensation)} /><InfoRow label="Courier" value={courier} /></div>
-        {!assigned ? <Button onClick={onAssigned} style={{ width: '100%', marginTop: 24 }}>Simulate courier acceptance</Button> : <Button onClick={onContinue} style={{ width: '100%', marginTop: 24 }}>Continue to Order</Button>}
+        {assigned ? <Button onClick={onContinue} style={{ width: '100%', marginTop: 24 }}>Continue to Order</Button>
+          : canonical ? <Button onClick={onAssigned} style={{ width: '100%', marginTop: 24 }}>Simulate courier acceptance</Button>
+          : <><p className="mt-5 rounded-xl bg-surface-raised p-3 text-left text-xs leading-relaxed text-text-secondary"><span className="mb-1 block font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype</span>The demo story continues with {COURIERS[ORDERS[orderId].offer?.courier ?? courierId].name}’s offer. This offer stays awaiting {firstName}’s acceptance.</p><Button variant="tertiary" onClick={onBack} style={{ width: '100%', marginTop: 16 }}>Choose another Courier</Button></>}
       </div>
     </>
   )

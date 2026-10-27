@@ -16,13 +16,13 @@ import {
   GENERAL_CONTEXT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET, NO_ROLE_CAN, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS,
   SELLER_ROLES, SELLER_SESSIONS, SELLER_SETTINGS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, TEAM_ROLES, VOLT_HOUSE_PREPUBLICATION,
   activeDiscount, areaAccess, awaitingSellerReplyAt, byMessageTime, capabilitiesOf, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt, contextKey,
-  contextSubject, courierAvailabilityAt, courierCardAt, courierCompensationAt, currentPrice, deliveryOfferAt, effectiveMessagesAt, firstName, formatAge, formatCalendarDate, formatClock, formatDate,
+  contextSubject, courierCardAt, courierHistoryAt, courierListOrder, courierRelationship, currentPrice, deliveryOfferAt, effectiveMessagesAt, firstName, formatAge, formatCalendarDate, formatClock, formatDate, formatMonthShortYear,
   formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, hasAvailableProductAt, isForYouEligibleAt, lineOptions, memberRoles, messagesAt,
   moderationIssuesAt, onAdulisSince, orderStateAt, orderTotals, ordersAt, ordersRequiringPreparationAt, paidAt,
   paymentReference, postsNeedingAttentionAt, preparationAt, prepublicationCards, prepublicationSnapshotFor, productPerformance, productQualityAt, relationshipHistoryAt,
-  relationshipStatusAt, restrictionAt, reviewsAt, roleInfo, scenePerformance, sceneStatusAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerReputationAt, sellerServiceAt,
+  restrictionAt, reviewsAt, roleInfo, scenePerformance, sceneStatusAt, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerReputationAt, sellerServiceAt,
   sellerTeam, sessionStaffOn, shortName, showcaseSellers, stateTime, trustAt,
-  type AccessArea, type Capability, type ClaimId, type ClaimState, type ConversationId, type CourierAvailability, type CourierId, type MemberStatus, type MessageContext, type MessageRecord, type Moment,
+  type AccessArea, type CalendarDate, type Capability, type ClaimId, type CourierCard, type CourierRelationshipChange, type CourierRelationshipStatus, type ClaimState, type ConversationId, type CourierAvailability, type CourierId, type MemberStatus, type MessageContext, type MessageRecord, type Moment,
   type OrderId, type OrderState, type ProductId, type SceneStatus, type SellerId, type SellerRole, type ShoppablePostId, type StaffId, type TeamMember, type TeamRole, type Timestamp,
 } from '../demo-data'
 
@@ -143,6 +143,10 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
   // Team changes made in Settings (PR-007): each member's new role set or standing, for this session only. DEMO_DATA's
   // team never changes, and a reset removes them.
   const [teamChanges, setTeamChanges] = useState<TeamChanges>({})
+  // Courier relationship changes made in Couriers (PR-008): approvals, suspensions and future compensation, for this
+  // session only. The Order's Courier selection reads the same changes.
+  const [courierChanges, setCourierChanges] = useState<CourierChanges>({})
+  const changeCourier = (key: CourierKey, change: CourierRelationshipChange) => setCourierChanges(changes => ({ ...changes, [key]: { ...changes[key], ...change } }))
   // The top bar's menu button opens the navigation as a drawer: on a phone the only navigation, on a tablet the full,
   // labelled navigation beside the icon rail (index.css; spec §4).
   const drawer = useDrawer()
@@ -188,7 +192,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
         {/* Keyed by Seller: each panel starts again from the selected Seller's records. */}
         <div key={sellerId} className="seller-console-content flex-1 overflow-y-auto">
           {activeNav === 'home' && <HomePanel sellerId={sellerId} at={at} onOpenOrder={id => { setActiveNav('orders'); setSelectedOrder(id) }} onOpenOrders={() => navigate('orders')} onOpenContent={() => navigate('content')} />}
-          {activeNav === 'orders' && (selectedOrder ? <OrderDetail orderId={selectedOrder} at={at} onBack={() => setSelectedOrder(null)} /> : <OrdersPanel sellerId={sellerId} at={at} onOpenOrder={setSelectedOrder} />)}
+          {activeNav === 'orders' && (selectedOrder ? <OrderDetail orderId={selectedOrder} at={at} courierChanges={courierChanges} onBack={() => setSelectedOrder(null)} /> : <OrdersPanel sellerId={sellerId} at={at} onOpenOrder={setSelectedOrder} />)}
           {activeNav === 'products' && <ProductsPanel sellerId={sellerId} at={at} />}
           {activeNav === 'content' && <ContentPanel sellerId={sellerId} at={at} />}
           {activeNav === 'inbox' && <InboxPanel sellerId={sellerId} at={at} />}
@@ -197,7 +201,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
           {activeNav === 'reviews' && <ReviewsPanel sellerId={sellerId} at={at} />}
           {activeNav === 'trust' && <TrustPanel sellerId={sellerId} at={at} />}
           {activeNav === 'store' && <StorePanel sellerId={sellerId} at={at} onOpenCouriers={() => navigate('couriers')} />}
-          {activeNav === 'couriers' && <CouriersPanel sellerId={sellerId} at={at} advanceTo={advanceTo} />}
+          {activeNav === 'couriers' && <CouriersPanel sellerId={sellerId} at={at} advanceTo={advanceTo} changes={courierChanges} onChange={changeCourier} />}
           {activeNav === 'automation' && <AutomationPanel sellerId={sellerId} at={at} />}
           {activeNav === 'settings' && <SettingsPanel sellerId={sellerId} at={at} team={teamWith(sellerId, teamChanges)} onTeamChange={(staff, change) => setTeamChanges(changes => ({ ...changes, [staff]: { ...changes[staff], ...change } }))} />}
         </div>
@@ -362,7 +366,7 @@ function OrdersTable({ rows, at, onOpenOrder }: { rows: OrderId[]; at: Moment; o
   )
 }
 
-function OrderDetail({ orderId, at, onBack }: { orderId: OrderId; at: Moment; onBack: () => void }) {
+function OrderDetail({ orderId, at, courierChanges, onBack }: { orderId: OrderId; at: Moment; courierChanges: CourierChanges; onBack: () => void }) {
   // The Order's mode-specific timeline (rules 4.4–4.7) at the story moment. The prototype controls step through the
   // states the Seller reaches by its own actions, each named as the Order's own fulfilment mode names it: for a Courier
   // Delivery Order Paid, Preparing and Ready for Courier, never Courier Assigned, which only the Courier's acceptance
@@ -384,9 +388,13 @@ function OrderDetail({ orderId, at, onBack }: { orderId: OrderId; at: Moment; on
   const [offerTo, setOfferTo] = useState<CourierId | null>(null)
   const [choice, setChoice] = useState<CourierId | null>(null)
   const selectionRef = useRef<HTMLDivElement>(null)
+  // The Seller's approved Couriers (PR-008), with this session's relationship changes: who can receive the offer now
+  // first, then the approved Couriers who can't, each with why. Applicants, invitations and suspended or removed
+  // relationships aren't approved, so they aren't offered here.
+  const pool = courierMode ? COURIER_RELATIONSHIPS.filter(r => r.seller === order.seller).map(r => courierCardAt(order.seller, r.courier, at, courierChanges[courierKey(order.seller, r.courier)])).filter(card => card.status === 'Approved').sort(courierListOrder) : []
+  const chosen = pool.find(card => card.courier === offerTo)
   const recorded = courierMode && override === null ? deliveryOfferAt(orderId, at) : undefined
-  const offer = recorded ?? (courierMode && current === 2 && offerTo ? { courier: offerTo, compensation: courierCompensationAt(order.seller, at), busy: courierAvailabilityAt(offerTo, at) === 'Busy' } : undefined)
-  const pool = courierMode ? COURIER_RELATIONSHIPS.filter(r => r.seller === order.seller && relationshipStatusAt(r, at) === 'Approved') : []
+  const offer = recorded ?? (courierMode && current === 2 && chosen ? { courier: chosen.courier, compensation: chosen.compensation, busy: chosen.availability === 'Busy' } : undefined)
   const step = (index: number) => { setOverride(index); if (index < 2) { setOfferTo(null); setChoice(null) } }
   const toSelection = () => (selectionRef.current?.querySelector<HTMLElement>('[role="radio"]') ?? selectionRef.current)?.focus()
   const buyer = BUYERS[order.buyer]
@@ -433,11 +441,18 @@ function OrderDetail({ orderId, at, onBack }: { orderId: OrderId; at: Moment; on
                 <div ref={selectionRef} tabIndex={-1} className="mb-4 rounded-xl border border-border p-4">
                   <div className="text-sm font-semibold">Send a Delivery Offer</div>
                   <p className="mt-1 text-xs leading-relaxed text-text-muted">Choose one of {SELLERS[order.seller].name}'s approved Couriers. The Courier accepts or declines; the Order is Courier Assigned only when they accept.</p>
-                  {pool.length ? <div role="radiogroup" aria-label="Approved Couriers" className="mt-3 flex flex-col gap-2">{pool.map(r => {
-                    const card = courierCardAt(order.seller, r.courier, at)
-                    return <button key={r.courier} role="radio" aria-checked={choice === r.courier} onClick={() => setChoice(r.courier)} className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left ${choice === r.courier ? 'border-brand bg-brand-muted' : 'border-border'}`}><AvatarText name={card.name} /><span className="min-w-0 flex-1"><span className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold">{card.name}</span><AvailabilityStatus availability={card.availability} className="text-xs font-semibold" /></span><span className="mt-1 block text-xs font-semibold">{card.completedForSeller} completed for your store</span><span className="block text-xs text-text-muted">{card.totalCompleted} total completed deliveries</span>{card.compensation !== undefined && <span className="mt-1 block text-xs text-text-muted">{formatEtb(card.compensation)} for this delivery</span>}</span></button>
-                  })}</div> : <div className="mt-3 rounded-xl bg-surface-raised p-3 text-xs text-text-muted">No approved Couriers yet. Approve a Courier in Couriers to send a Delivery Offer.</div>}
-                  <div className="mt-3"><Button disabled={!choice} onClick={() => choice && setOfferTo(choice)}>Send Delivery Offer</Button></div>
+                  {pool.length > 0 && <p className="mt-2 text-xs text-text-secondary">{pool.filter(card => card.selectable).length} of {pool.length} approved Couriers can receive this offer now. The Buyer paid {formatEtb(totals.delivery)} for Courier Delivery.</p>}
+                  {pool.length ? <div role="radiogroup" aria-label="Approved Couriers" className="mt-3 flex flex-col gap-2">{pool.map(card => (
+                    <button key={card.courier} role="radio" aria-checked={choice === card.courier} disabled={!card.selectable} onClick={() => setChoice(card.courier)} className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left disabled:cursor-not-allowed disabled:bg-surface-raised ${choice === card.courier ? 'border-brand bg-brand-muted' : 'border-border'}`}>
+                      <AvatarText name={card.name} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold">{card.name}</span><AvailabilityStatus availability={card.availability} className="text-xs font-semibold" /></span>
+                        <CourierFacts card={card} sellerId={order.seller} terms="for this delivery" />
+                        {card.note && <span className={`mt-1.5 block text-xs font-semibold ${card.selectable ? 'text-warning' : 'text-text-secondary'}`}>{card.selectable ? card.note : `Can’t receive this offer · ${card.note}`}</span>}
+                      </span>
+                    </button>
+                  ))}</div> : <div className="mt-3 rounded-xl bg-surface-raised p-3 text-xs text-text-muted">No approved Couriers yet. Approve a Courier in Couriers to send a Delivery Offer.</div>}
+                  <div className="mt-3"><Button disabled={!choice || !pool.find(card => card.courier === choice)?.selectable} onClick={() => choice && setOfferTo(choice)}>Send Delivery Offer</Button></div>
                 </div>
               ))}
               <div className="grid grid-cols-2 gap-3">
@@ -1209,71 +1224,136 @@ function StoreMap({ sellerId }: { sellerId: SellerId }) {
   )
 }
 
-type CourierTab = 'approved' | 'applications' | 'invitations' | 'suspended'
+/** A Seller–Courier relationship in this session's changes: one key per Seller and Courier. */
+type CourierKey = `${SellerId}|${CourierId}`
+const courierKey = (seller: SellerId, courier: CourierId): CourierKey => `${seller}|${courier}`
+/** Courier relationship changes the Seller makes in this session (PR-008). DEMO_DATA and the fixtures never change. */
+type CourierChanges = Partial<Record<CourierKey, CourierRelationshipChange>>
 
-function CouriersPanel({ sellerId, at, advanceTo }: { sellerId: SellerId; at: Moment; advanceTo: (event: Moment | Timestamp) => void }) {
-  // The Seller's own Courier relationships at the story moment (rules 6.2, 7.3). DEMO_DATA records no invitations or
-  // suspensions, and no pickup or handoff rates. Each Courier shows completed for this Seller first and the total
-  // across Sellers second, as context (rules 7.1–7.4), both from the data module, and nothing about other Sellers.
+/** A calendar date or a story moment as a timestamp. */
+const whenOf = (value: CalendarDate | Moment) => (typeof value === 'string' ? value : value.at)
+
+/**
+ * A Courier's comparison facts (PR-008), in the same order on every Seller-facing card: vehicle and service areas
+ * (whether they cover the Seller's area), completed for this Seller (primary, rule 7.4), the total across Sellers
+ * (secondary), compensation, and how long the Courier has worked with the Seller. Nothing about other Sellers.
+ */
+function CourierFacts({ card, sellerId, terms }: { card: CourierCard; sellerId: SellerId; terms: 'for this delivery' | 'per delivery' }) {
+  const area = SELLERS[sellerId].area
+  return (
+    <span className="mt-1 block text-xs">
+      <span className="block text-text-secondary">{card.vehicle} · {card.areas.join(', ')} · <span className={`font-semibold ${card.coversSellerArea ? 'text-success' : 'text-warning'}`}>{card.coversSellerArea ? `covers ${area}` : `outside ${area}`}</span></span>
+      <span className="mt-1.5 block text-sm font-semibold text-text-primary">{card.completedForSeller} completed for your store</span>
+      <span className="block text-text-muted">{card.totalCompleted} total completed deliveries</span>
+      <span className="mt-1 block text-text-secondary">{card.compensation === undefined ? 'Compensation —' : `${formatEtb(card.compensation)} ${terms}`}{card.since && ` · With you since ${formatMonthShortYear(whenOf(card.since))}`}</span>
+    </span>
+  )
+}
+
+// The Couriers lists (specification §36): Approved, Applications, Invitations, and suspended or removed relationships.
+type CourierTab = 'approved' | 'applications' | 'invitations' | 'inactive'
+const COURIER_TABS: { key: CourierTab; label: string; statuses: readonly CourierRelationshipStatus[] }[] = [
+  { key: 'approved', label: 'Approved', statuses: ['Approved'] },
+  { key: 'applications', label: 'Applications', statuses: ['Application pending'] },
+  { key: 'invitations', label: 'Invitations', statuses: ['Invited'] },
+  { key: 'inactive', label: 'Suspended & removed', statuses: ['Suspended', 'Removed', 'Rejected'] },
+]
+
+const VERIFICATION_TEXT = { 'Verified': 'Verified by Adulis', 'Pending': 'Verification pending with Adulis', 'Suspended': 'Suspended by Adulis', 'Blocked': 'Blocked by Adulis' } as const
+
+function CouriersPanel({ sellerId, at, advanceTo, changes, onChange }: {
+  sellerId: SellerId; at: Moment; advanceTo: (event: Moment | Timestamp) => void
+  changes: CourierChanges; onChange: (key: CourierKey, change: CourierRelationshipChange) => void
+}) {
+  // The Seller's own Courier relationships at the story moment, with this session's changes (rules 6.2, 7.3; PR-008).
+  // Each Courier shows completed for this Seller first and the total across Sellers second, as context (rules
+  // 7.1–7.4), from the shared module, and nothing about other Sellers.
   const seller = SELLERS[sellerId].name
-  const relationships = COURIER_RELATIONSHIPS.filter(r => r.seller === sellerId)
-  const byTab: Record<CourierTab, typeof relationships> = {
-    approved: relationships.filter(r => relationshipStatusAt(r, at) === 'Approved'),
-    applications: relationships.filter(r => relationshipStatusAt(r, at) === 'Application pending'),
-    invitations: [],
-    suspended: [],
-  }
+  const cards = COURIER_RELATIONSHIPS.filter(r => r.seller === sellerId)
+    .map(r => courierCardAt(sellerId, r.courier, at, changes[courierKey(sellerId, r.courier)]))
+    .filter(card => card.status !== null)
+    .sort(courierListOrder)
+  const inTab = (tab: CourierTab) => cards.filter(card => COURIER_TABS.find(t => t.key === tab)!.statuses.includes(card.status!))
   const [tab, setTab] = useState<CourierTab>('approved')
-  const [selected, setSelected] = useState<CourierId | undefined>(byTab.approved[0]?.courier)
+  const [selected, setSelected] = useState<CourierId>()
   const [action, setAction] = useState('')
-  const terms = courierCompensationAt(sellerId, at)
-  // The field shows the Seller's current terms until the Seller edits it.
-  const [edited, setEdited] = useState<string>()
-  const compensation = edited ?? (terms === undefined ? '' : String(terms / 100))
-  const couriers = byTab[tab]
-  const relationship = couriers.find(r => r.courier === selected) ?? couriers[0]
-  const courier = relationship && courierCardAt(sellerId, relationship.courier, at)
-  const status = relationship && relationshipStatusAt(relationship, at)
-  const meta = (r: (typeof relationships)[number]) => (relationshipStatusAt(r, at) === 'Approved' ? `Approved · ${formatDate(typeof r.approved === 'string' ? r.approved : r.approved.at)}` : `Application pending · ${r.applied ? formatDate(r.applied) : '—'}`)
-  // The Seller's terms apply to its approved Couriers; an applicant has none yet (DEMO_DATA › Courier).
-  const termsFor = (r: (typeof relationships)[number]) => (relationshipStatusAt(r, at) === 'Approved' && terms !== undefined ? `${formatEtb(terms)} per delivery` : undefined)
-  const openTab = (key: CourierTab) => { setTab(key); setSelected(byTab[key][0]?.courier) }
-  // Approve is DEMO_DATA's approval (Flow F): the story moves to just after it, so the Courier is approved, on the
-  // Seller's terms from then, and is no longer an applicant, never both.
-  const approve = () => {
-    if (!relationship || !courier) return
-    if (typeof relationship.approved !== 'string') advanceTo(relationship.approved)
-    setTab('approved')
-    setSelected(relationship.courier)
-    setAction(`${courier.name} approved`)
+  const list = inTab(tab)
+  const card = list.find(item => item.courier === selected) ?? list[0]
+  const relationship = card && courierRelationship(sellerId, card.courier)
+  const key = card && courierKey(sellerId, card.courier)
+  // The field shows the relationship's terms until the Seller edits it.
+  const [edited, setEdited] = useState<Partial<Record<CourierId, string>>>({})
+  const compensation = card ? edited[card.courier] ?? (card.compensation === undefined ? '' : String(card.compensation / 100)) : ''
+  const approved = inTab('approved')
+  const openTab = (next: CourierTab) => { setTab(next); setSelected(undefined) }
+  const act = (change: CourierRelationshipChange, message: string, next?: CourierTab) => {
+    if (!card || !key) return
+    onChange(key, change)
+    setAction(message)
+    if (next) { setTab(next); setSelected(card.courier) }
   }
+  // Approve: Volt House's approval of Daniel K. is DEMO_DATA's (Flow F), so the story moves to just after it and the
+  // Courier is approved on the terms from then. Any other approval is this session's own.
+  const approve = () => {
+    if (!card || !relationship) return
+    if (relationship.approved && typeof relationship.approved !== 'string' && !changes[key!]?.status) { advanceTo(relationship.approved); setTab('approved'); setSelected(card.courier); setAction(`${card.name} approved`); return }
+    act({ status: 'Approved', since: at }, `${card.name} approved and added to your approved Couriers`, 'approved')
+  }
+  const history = relationship ? relationshipHistoryAt(relationship, at) : []
+  const sessionStatus = key && changes[key]?.status
+  const recent = card ? courierHistoryAt(card.courier, at).filter(id => ORDERS[id].seller === sellerId).slice(0, 3) : []
   return (
     <div className="couriers-panel mx-auto max-w-7xl p-8">
-      <ModuleHeader title="Couriers" description={`Private courier relationships for ${seller} only.`} trailing={<Button onClick={() => { setTab('invitations'); setAction('Invitation composer opened') }}>Invite Courier</Button>} />
-      <div className="mb-5 flex gap-2"><Pill active={tab === 'approved'} onClick={() => openTab('approved')}>Approved · {byTab.approved.length}</Pill><Pill active={tab === 'applications'} onClick={() => openTab('applications')}>Applications · {byTab.applications.length}</Pill><Pill active={tab === 'invitations'} onClick={() => openTab('invitations')}>Invitations · {byTab.invitations.length}</Pill><Pill active={tab === 'suspended'} onClick={() => openTab('suspended')}>Suspended · {byTab.suspended.length}</Pill></div>
-      {action && <div className="mb-4 rounded-xl bg-info-bg p-3 text-xs font-semibold text-info">{action}</div>}
-      {!relationship && <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-text-muted">No Couriers in this list</div>}
-      {relationship && courier && <div className="grid grid-cols-[340px_1fr] gap-5">
-        <div className="overflow-hidden rounded-2xl border border-border bg-surface">{couriers.map(item => {
-          const card = courierCardAt(sellerId, item.courier, at), itemTerms = termsFor(item)
-          return <button key={item.courier} onClick={() => setSelected(item.courier)} className={`flex w-full items-center gap-3 border-b border-border p-4 text-left last:border-b-0 ${relationship.courier === item.courier ? 'bg-brand-muted' : ''}`}><AvatarText name={card.name} /><span className="flex-1"><span className="block text-sm font-semibold">{card.name}</span><span className="text-xs text-text-muted">{meta(item)}</span><span className="mt-2 block text-xs font-semibold">{card.completedForSeller} completed for your store</span><span className="block text-xs text-text-muted">{card.totalCompleted} total completed deliveries</span>{itemTerms && <span className="block text-xs text-text-muted">{itemTerms}</span>}</span><AvailabilityStatus availability={card.availability} className="text-xs font-semibold" /></button>
-        })}</div>
+      <ModuleHeader title="Couriers" description={`Private courier relationships for ${seller} only.`} trailing={<Button onClick={() => { openTab('invitations'); setAction('Invitation composer opened') }}>Invite Courier</Button>} />
+      <div className="mb-3 flex flex-wrap gap-2">{COURIER_TABS.map(t => <Pill key={t.key} active={tab === t.key} onClick={() => openTab(t.key)}>{t.label} · {inTab(t.key).length}</Pill>)}</div>
+      {tab === 'approved' && approved.length > 0 && <p className="mb-4 text-xs text-text-secondary">{approved.filter(c => c.selectable && c.availability === 'Available').length} available now · {approved.filter(c => c.selectable && c.availability === 'Busy').length} busy · {approved.filter(c => !c.selectable).length} can’t receive offers now. Listed by who can take a delivery now, then by name.</p>}
+      {action && <div role="status" className="mb-4 rounded-xl bg-info-bg p-3 text-xs font-semibold text-info">{action}</div>}
+      {!card && <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-text-muted">No Couriers in this list</div>}
+      {card && relationship && <div className="grid grid-cols-[360px_1fr] gap-5">
+        <div className="h-fit overflow-hidden rounded-2xl border border-border bg-surface">{list.map(item => (
+          <button key={item.courier} onClick={() => setSelected(item.courier)} aria-pressed={card.courier === item.courier} className={`flex w-full items-start gap-3 border-b border-border p-4 text-left last:border-b-0 ${card.courier === item.courier ? 'bg-brand-muted' : ''}`}>
+            <AvatarText name={item.name} />
+            <span className="min-w-0 flex-1">
+              <span className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold">{item.name}</span><AvailabilityStatus availability={item.availability} className="text-xs font-semibold" /></span>
+              <CourierFacts card={item} sellerId={sellerId} terms="per delivery" />
+              {item.note && item.status === 'Approved' && <span className={`mt-1.5 block text-xs font-semibold ${item.selectable ? 'text-warning' : 'text-text-secondary'}`}>{item.note}</span>}
+              {item.status !== 'Approved' && <span className="mt-1.5 block text-xs font-semibold text-text-secondary">{item.status}</span>}
+            </span>
+          </button>
+        ))}</div>
         <div className="rounded-2xl border border-border bg-surface p-6">
-          <div className="flex items-start justify-between"><div className="flex items-center gap-4"><AvatarText name={courier.name} large /><span><span className="block font-display text-2xl font-semibold">{courier.name}</span><span className="text-xs text-text-muted">Seller Courier relationship · {seller}</span></span></div><StatusBadge status={status === 'Approved' ? 'active' : 'pending'} customLabel={status ?? undefined} /></div>
-          <div className="mt-6 grid grid-cols-3 gap-4"><Field label="Availability" value={<AvailabilityStatus availability={courier.availability} />} /><Field label="Seller relationship" value={meta(relationship)} /><Field label="Current terms" value={termsFor(relationship) ?? '—'} /></div>
-          <SectionLabelInline>Compensation</SectionLabelInline>
-          <div className="flex flex-wrap items-end gap-3"><div className="w-56"><TextInput label="Future delivery compensation (ETB)" value={compensation} onChange={event => setEdited(event.target.value)} hint="Applies only to future offers." /></div><Button variant="tertiary" onClick={() => setAction(`Future compensation updated to ETB ${compensation}`)}>Update Future Compensation</Button></div>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-4"><AvatarText name={card.name} large /><span><span className="block font-display text-2xl font-semibold">{card.name}</span><span className="text-xs text-text-muted">{VERIFICATION_TEXT[card.verification]}{COURIERS[card.courier].memberSince ? ` · Courier since ${formatMonthShortYear(COURIERS[card.courier].memberSince!)}` : ''}</span></span></div>
+            <StatusBadge status={card.status === 'Approved' ? 'active' : 'pending'} customLabel={card.status ?? undefined} />
+          </div>
+          <div className="mt-6 grid grid-cols-3 gap-4">
+            <Field label="Availability" value={<AvailabilityStatus availability={card.availability} />} />
+            <Field label="Vehicle" value={card.vehicle} />
+            <Field label="Service areas" value={`${card.areas.join(', ')} (${card.coversSellerArea ? 'covers' : 'outside'} ${SELLERS[sellerId].area})`} />
+            <Field label="Seller relationship" value={card.status === 'Approved' && card.since ? `Approved · ${formatDate(whenOf(card.since))}` : card.status ?? '—'} />
+            <Field label="Current terms" value={card.compensation === undefined ? '—' : `${formatEtb(card.compensation)} per delivery`} />
+            <Field label="Delivery Offers" value={card.selectable ? (card.availability === 'Busy' ? 'Can receive; accepts once free' : 'Can receive now') : 'Can’t receive now'} />
+          </div>
+          {card.note && <p className="mt-3 rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary">{card.note}.{card.verification !== 'Verified' && ' Adulis’s verification applies across every Seller; an approval here doesn’t override it.'}</p>}
+          {(card.status === 'Approved' || card.status === 'Invited' || card.status === 'Application pending') && <>
+            <SectionLabelInline>Compensation</SectionLabelInline>
+            <div className="flex flex-wrap items-end gap-3"><div className="w-56"><TextInput label="Future delivery compensation (ETB)" value={compensation} onChange={event => setEdited(all => ({ ...all, [card.courier]: event.target.value }))} hint="Applies only to future offers." /></div><Button variant="tertiary" onClick={() => { const amount = Math.round(Number(compensation) * 100); if (amount > 0) act({ compensation: amount }, `Future compensation for ${card.name} updated to ${formatEtb(amount)}`) }}>Update Future Compensation</Button></div>
+          </>}
           <SectionLabelInline>Seller-relevant history</SectionLabelInline>
           {/* Completed for this Seller is the primary figure; the total across Sellers is secondary context beside it. */}
-          <div className="grid grid-cols-2 gap-3"><MetricBlock label={`Completed for ${seller}`} value={String(courier.completedForSeller)} /><MetricBlock label="Total completed deliveries across Sellers" value={String(courier.totalCompleted)} secondary /><MetricBlock label="Verified pickup" value="—" /><MetricBlock label="On-time handoff" value="—" /></div>
+          <div className="grid grid-cols-2 gap-3"><MetricBlock label={`Completed for ${seller}`} value={String(card.completedForSeller)} /><MetricBlock label="Total completed deliveries across Sellers" value={String(card.totalCompleted)} secondary /></div>
+          <div className="mt-3 text-xs text-text-secondary">{recent.length ? <>Recent deliveries for {seller}: {recent.map(id => `${id} (${formatDayMonth(stateTime(id, 'Completed')!)})`).join(', ')}</> : 'No individual deliveries for you are recorded in this prototype.'}</div>
           <SectionLabelInline>Relationship history</SectionLabelInline>
-          <div className="overflow-hidden rounded-xl border border-border">{relationshipHistoryAt(relationship, at).map(entry => <div key={entry.event} className="flex justify-between gap-3 border-b border-border px-4 py-3 text-sm last:border-b-0"><span className="font-medium">{entry.event}</span><span className="text-text-muted">{formatDate(typeof entry.at === 'string' ? entry.at : entry.at.at)}</span></div>)}</div>
+          <div className="overflow-hidden rounded-xl border border-border">
+            {history.map(entry => <div key={entry.event} className="flex justify-between gap-3 border-b border-border px-4 py-3 text-sm last:border-b-0"><span className="font-medium">{entry.event}</span><span className="text-text-muted">{formatDate(whenOf(entry.at))}</span></div>)}
+            {sessionStatus && <div className="flex justify-between gap-3 px-4 py-3 text-sm"><span className="font-medium">{sessionStatus}</span><span className="text-text-muted">This session</span></div>}
+          </div>
           <div className="mt-5 rounded-xl bg-warning-bg p-3 text-xs leading-relaxed text-text-secondary">Only this Seller relationship and work completed for {seller} are visible. Relationships with other Sellers are private and not shown.</div>
           <div className="mt-5 flex flex-wrap gap-2">
-            {tab === 'applications' && <><Button onClick={approve}>Approve</Button><Button variant="destructive" onClick={() => setAction(`${courier.name} rejected`)}>Reject</Button></>}
-            {tab === 'approved' && <><Button variant="tertiary" onClick={() => setAction(`${courier.name} suspended`)}>Suspend</Button><Button variant="destructive" onClick={() => setAction(`${courier.name} removed from ${seller} pool`)}>Remove</Button></>}
-            {tab === 'invitations' && <Button variant="tertiary" onClick={() => setAction(`Invitation resent to ${courier.name}`)}>Resend Invitation</Button>}
-            {tab === 'suspended' && <Button onClick={() => setAction(`${courier.name} restored to approved pool`)}>Restore Relationship</Button>}
+            {card.status === 'Application pending' && <><Button onClick={approve}>Approve</Button><Button variant="destructive" onClick={() => act({ status: 'Rejected' }, `${card.name}’s application rejected`, 'inactive')}>Reject</Button></>}
+            {card.status === 'Approved' && <><Button variant="tertiary" onClick={() => act({ status: 'Suspended' }, `${card.name} suspended: no Delivery Offers from ${seller}`, 'inactive')}>Suspend</Button><Button variant="destructive" onClick={() => act({ status: 'Removed' }, `${card.name} removed from ${seller}’s Couriers`, 'inactive')}>Remove</Button></>}
+            {card.status === 'Invited' && <Button variant="tertiary" onClick={() => setAction(`Invitation resent to ${card.name}`)}>Resend Invitation</Button>}
+            {card.status === 'Suspended' && <Button onClick={() => act({ status: 'Approved' }, `${card.name} restored to your approved Couriers`, 'approved')}>Restore Relationship</Button>}
           </div>
         </div>
       </div>}

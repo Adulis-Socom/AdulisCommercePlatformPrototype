@@ -15,7 +15,7 @@ import type { ShoppablePostId } from './records/posts.ts'
 import { BUYERS } from './records/buyers.ts'
 import type { BuyerId } from './records/buyers.ts'
 import { COURIERS, COURIER_RELATIONSHIPS } from './records/couriers.ts'
-import type { CourierId, CourierRelationship } from './records/couriers.ts'
+import type { CourierId, CourierRelationship, CourierVerification } from './records/couriers.ts'
 import { ORDERS, ORDER_IDS } from './records/orders.ts'
 import type { AuthorizedRecipient, OrderId, OrderLine } from './records/orders.ts'
 import { REVIEWS, REVIEW_IDS } from './records/reviews.ts'
@@ -617,7 +617,7 @@ export function deliveryOfferAt(order: OrderId, at: Moment = DEFAULT_SNAPSHOT): 
   const assigned = stateTime(order, 'Courier Assigned')
   const accepted = assigned && happenedBefore(assigned, at) ? assigned : undefined
   const other = activeDeliveryAt(offer.courier, at)
-  return { courier: offer.courier, offered: offer.offered, compensation: courierCompensationAt(ORDERS[order].seller, { at: offer.offered }), accepted, busy: !accepted && other !== undefined && other !== order }
+  return { courier: offer.courier, offered: offer.offered, compensation: relationshipCompensationAt(ORDERS[order].seller, offer.courier, { at: offer.offered }), accepted, busy: !accepted && other !== undefined && other !== order }
 }
 
 export function courierAvailabilityAt(courier: CourierId, at: Moment = DEFAULT_SNAPSHOT): CourierAvailability {
@@ -628,21 +628,34 @@ export function courierRelationship(seller: SellerId, courier: CourierId): Couri
   return COURIER_RELATIONSHIPS.find(r => r.seller === seller && r.courier === courier)
 }
 
-/** 'Approved', 'Application pending', or null when there is no relationship yet at `at`. */
-export function relationshipStatusAt(relationship: CourierRelationship, at: Moment = DEFAULT_SNAPSHOT): 'Approved' | 'Application pending' | null {
-  if (happenedBefore(relationship.approved, at)) return 'Approved'
-  return relationship.applied && happenedBefore(relationship.applied, at) ? 'Application pending' : null
+/** A Seller–Courier relationship's state (ADU-FUL-01 §14). Rejected is reachable only as a Seller's action in a session. */
+export type CourierRelationshipStatus = 'Approved' | 'Application pending' | 'Invited' | 'Suspended' | 'Removed' | 'Rejected'
+
+/** The relationship's state at `at`, its latest recorded event deciding it; null before it begins. */
+export function relationshipStatusAt(relationship: CourierRelationship, at: Moment = DEFAULT_SNAPSHOT): CourierRelationshipStatus | null {
+  const happened = (event?: CalendarDate | Moment) => event !== undefined && happenedBefore(event, at)
+  if (happened(relationship.removed)) return 'Removed'
+  if (happened(relationship.suspended)) return 'Suspended'
+  if (happened(relationship.approved)) return 'Approved'
+  if (happened(relationship.applied)) return 'Application pending'
+  return happened(relationship.invited) ? 'Invited' : null
 }
 
 /**
- * A Seller–Courier relationship's history by `at` (specification §36), oldest first: DEMO_DATA's dated events only,
- * the application where one is recorded and the approval.
+ * A Seller–Courier relationship's history by `at` (specification §36), oldest first: its dated events only, the
+ * application or invitation where one is recorded, the approval, and any suspension or removal.
  */
-export function relationshipHistoryAt(relationship: CourierRelationship, at: Moment = DEFAULT_SNAPSHOT): { event: 'Application submitted' | 'Approved'; at: CalendarDate | Moment }[] {
-  const history: { event: 'Application submitted' | 'Approved'; at: CalendarDate | Moment }[] = []
-  if (relationship.applied && happenedBefore(relationship.applied, at)) history.push({ event: 'Application submitted', at: relationship.applied })
-  if (happenedBefore(relationship.approved, at)) history.push({ event: 'Approved', at: relationship.approved })
-  return history
+export function relationshipHistoryAt(relationship: CourierRelationship, at: Moment = DEFAULT_SNAPSHOT): { event: 'Application submitted' | 'Invited' | 'Approved' | 'Suspended' | 'Removed'; at: CalendarDate | Moment }[] {
+  const events = [['Application submitted', relationship.applied], ['Invited', relationship.invited], ['Approved', relationship.approved], ['Suspended', relationship.suspended], ['Removed', relationship.removed]] as const
+  return events.flatMap(([event, when]) => (when !== undefined && happenedBefore(when, at) ? [{ event, at: when }] : []))
+}
+
+/**
+ * The relationship's compensation per delivery at `at` (rule 6.8; PR-008 sets it per relationship): its own amount, or
+ * the Seller's current Courier compensation where it has none, as for Daniel K. Undefined without either.
+ */
+export function relationshipCompensationAt(seller: SellerId, courier: CourierId, at: Moment = DEFAULT_SNAPSHOT): Santim | undefined {
+  return courierRelationship(seller, courier)?.compensation ?? courierCompensationAt(seller, at)
 }
 
 /** Completed for this Seller (rule 7.1): the 10:25 figure plus this Seller's Orders the Courier completed since. */
@@ -663,17 +676,79 @@ export function courierHistoryAt(courier: CourierId, at: Moment = DEFAULT_SNAPSH
 }
 
 /**
- * A Seller-facing Courier card (specification §23; rules 7.1–7.3): completed for this Seller first, the total across
- * Sellers second, and the Seller's own compensation. It names no other Seller.
+ * A Seller-facing Courier card (specification §23; rules 7.1–7.4; PR-008): completed for this Seller first, the total
+ * across Sellers second, and this relationship's compensation; the Courier's global profile (vehicle, service areas,
+ * verification, availability); and whether the Seller can send a Delivery Offer now, and if not, why. It names no
+ * other Seller and none of the Courier's other relationships. `session` is a Seller's change made in this session.
  */
-export function courierCardAt(seller: SellerId, courier: CourierId, at: Moment = DEFAULT_SNAPSHOT) {
+export interface CourierCard {
+  readonly courier: CourierId
+  readonly name: string
+  readonly availability: CourierAvailability
+  readonly verification: CourierVerification
+  readonly vehicle: string
+  readonly areas: readonly string[]
+  /** Whether the Courier's service areas include the Seller's area. */
+  readonly coversSellerArea: boolean
+  readonly status: CourierRelationshipStatus | null
+  /** When the Seller approved the Courier. */
+  readonly since?: CalendarDate | Moment
+  readonly completedForSeller: number
+  readonly totalCompleted: number
+  readonly compensation: Santim | undefined
+  /** An Approved, platform-verified Courier who isn't Unavailable. A Busy one can accept once their delivery is done. */
+  readonly selectable: boolean
+  /** Why the Courier can't receive an offer now, or what being Busy means for it. */
+  readonly note?: string
+}
+
+/** A Seller's change to a Courier relationship in this session (PR-008): never a DEMO_DATA record. */
+export interface CourierRelationshipChange {
+  readonly status?: CourierRelationshipStatus
+  readonly compensation?: Santim
+  /** When the Seller approved the Courier in this session. */
+  readonly since?: Moment
+}
+
+export function courierCardAt(seller: SellerId, courier: CourierId, at: Moment = DEFAULT_SNAPSHOT, session: CourierRelationshipChange = {}): CourierCard {
+  const record = COURIERS[courier]
+  const relationship = courierRelationship(seller, courier)
+  const status = session.status ?? (relationship ? relationshipStatusAt(relationship, at) : null)
+  const verification = record.verification ?? 'Verified'
+  const availability = courierAvailabilityAt(courier, at)
+  const note = status !== 'Approved' ? (status === 'Application pending' ? 'Application awaiting your decision' : status === 'Invited' ? 'Invitation awaiting the Courier' : status ? `Relationship ${status.toLowerCase()}` : 'Not in your pool')
+    : verification === 'Suspended' ? 'Suspended by Adulis: can’t receive Delivery Offers from any Seller'
+    : verification === 'Blocked' ? 'Blocked by Adulis: can’t receive Delivery Offers from any Seller'
+    : verification === 'Pending' ? 'Verification with Adulis pending: can’t receive Delivery Offers yet'
+    : availability === 'Unavailable' ? 'Unavailable: can’t take a delivery now'
+    : availability === 'Busy' ? 'Busy on an active delivery: can accept once it’s complete'
+    : undefined
   return {
-    name: COURIERS[courier].name,
-    availability: courierAvailabilityAt(courier, at),
+    courier,
+    name: record.name,
+    availability,
+    verification,
+    vehicle: record.vehicle,
+    areas: record.usualAreas,
+    coversSellerArea: record.usualAreas.includes(SELLERS[seller].area),
+    status,
+    since: status === 'Approved' ? session.since ?? relationship?.approved : undefined,
     completedForSeller: completedForSellerAt(courier, seller, at),
     totalCompleted: totalCompletedAt(courier, at),
-    compensation: courierCompensationAt(seller, at),
+    compensation: session.compensation ?? relationshipCompensationAt(seller, courier, at),
+    selectable: status === 'Approved' && verification === 'Verified' && availability !== 'Unavailable',
+    note,
   }
+}
+
+/**
+ * The order a Seller's Couriers are listed in (PR-008): those who can receive an offer now (Available, then Busy),
+ * other approved ones, then applications, invitations, suspended and removed relationships; by name within each.
+ * A fixed rule, never a score or a "best" Courier.
+ */
+export function courierListOrder(a: CourierCard, b: CourierCard): number {
+  const group = (card: CourierCard) => (card.selectable ? (card.availability === 'Available' ? 0 : 1) : ['Approved', 'Application pending', 'Invited', 'Suspended', 'Removed', 'Rejected'].indexOf(card.status ?? 'Removed') + 2)
+  return group(a) - group(b) || a.name.localeCompare(b.name)
 }
 
 // ---------- Reviews and Claims ----------

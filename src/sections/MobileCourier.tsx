@@ -411,7 +411,9 @@ function SellerRelationships({ courierId, at, onBack }: { courierId: CourierId; 
         <p className="text-sm text-text-secondary">You can belong to multiple approved Seller Courier Pools.</p>
         {approvedRelationships(courierId, at).map(r => {
           const completed = completedForSellerAt(courierId, r.seller, at)
-          return <Relationship key={r.seller} seller={SELLERS[r.seller].name} initials={initials(SELLERS[r.seller].name)} since={`Approved · ${formatDate(typeof r.approved === 'string' ? r.approved : r.approved.at)}`} work={completed ? `${completed} completed ${completed === 1 ? 'delivery' : 'deliveries'}` : 'No completed work yet'} />
+          // An approved relationship always records its approval.
+          const approved = r.approved!
+          return <Relationship key={r.seller} seller={SELLERS[r.seller].name} initials={initials(SELLERS[r.seller].name)} since={`Approved · ${formatDate(typeof approved === 'string' ? approved : approved.at)}`} work={completed ? `${completed} completed ${completed === 1 ? 'delivery' : 'deliveries'}` : 'No completed work yet'} />
         })}
       </div>
     </>
@@ -442,7 +444,8 @@ function HistoryRow({ id, seller, date, amount }: { id: string; seller: string; 
 function AccountTab({ courierId, at, availability, onAvailability, onRelationships, opportunity, onOpportunity }: {
   courierId: CourierId; at: Moment; availability: Availability; onAvailability: (value: Availability) => void; onRelationships: () => void; opportunity?: SellerId; onOpportunity: (seller: SellerId) => void
 }) {
-  // DEMO_DATA records no Courier account status, verified-handoff rate or Seller invitations, so none is shown.
+  // DEMO_DATA records no verified-handoff rate or Seller invitations for Daniel K., so none is shown. Platform
+  // verification is the shared Courier profile's (PR-008), the same fact Sellers see.
   const courier = COURIERS[courierId]
   const completed = totalCompletedAt(courierId, at)
   const pools = approvedRelationships(courierId, at).length
@@ -452,7 +455,7 @@ function AccountTab({ courierId, at, availability, onAvailability, onRelationshi
       <SectionTitle>Availability</SectionTitle>
       <div className="grid grid-cols-3 gap-2">{(['available', 'busy', 'unavailable'] as Availability[]).map(value => <button key={value} onClick={() => onAvailability(value)} className={`rounded-xl border px-2 py-3 text-xs font-semibold ${availability === value ? 'border-courier bg-courier-muted text-courier' : 'border-border text-text-muted'}`}>{availabilityLabel(value)}</button>)}</div>
       <SectionTitle>Profile</SectionTitle>
-      <InfoCard rows={[['Completed work', `${completed} ${completed === 1 ? 'delivery' : 'deliveries'}`], ['Primary area', courier.usualAreas.join(' · ')], ['Vehicle', courier.vehicle]]} />
+      <InfoCard rows={[['Completed work', `${completed} ${completed === 1 ? 'delivery' : 'deliveries'}`], ['Primary area', courier.usualAreas.join(' · ')], ['Vehicle', courier.vehicle], ['Verification', courier.verification ?? 'Verified']]} />
       <SectionTitle>Seller network</SectionTitle>
       <MenuButton label="Approved Seller Relationships" detail={`${pools} approved pool${pools === 1 ? '' : 's'}`} onClick={onRelationships} />
       {opportunity && <MenuButton label="Opportunities" detail="Apply to approved Seller Pools" onClick={() => onOpportunity(opportunity)} />}
