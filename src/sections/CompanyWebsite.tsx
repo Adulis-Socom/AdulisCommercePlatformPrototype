@@ -1501,7 +1501,10 @@ type DeletionFlow =
   | { step: 'preview' | 'confirm'; capability: AccountDeletionCapability }
   | { step: 'result'; request: NonNullable<ReturnType<typeof requestAccountDeletionAt>> }
 
-const DELETION_CONSEQUENCES = ['Any open orders will need to be resolved before deletion can proceed.', 'Your transaction history will be retained for 7 years as required by our data retention policy.', 'Your seller storefront, if active, will be unpublished immediately.', 'You will lose access to your order history, reviews, and saved content.']
+// What deleting an account means, and the optional reasons. The Buyer app's Delete Account (refinement PR-006) shows the
+// same ones: one deletion policy, two ways in.
+export const DELETION_CONSEQUENCES = ['Any open orders will need to be resolved before deletion can proceed.', 'Your transaction history will be retained for 7 years as required by our data retention policy.', 'Your seller storefront, if active, will be unpublished immediately.', 'You will lose access to your order history, reviews, and saved content.']
+export const DELETION_REASONS = ["I'm not using the platform", 'I have privacy concerns', 'I had a bad experience', "I'm switching to another platform", 'Prefer not to say']
 
 function AccountDeletionPage() {
   const { moment } = useStory()
@@ -1555,11 +1558,7 @@ function AccountDeletionPage() {
             </label>
             <select id="deletion-reason" value={reason} onChange={e => setReason(e.target.value)} style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14, border: '1.5px solid var(--color-border)', background: 'var(--color-surface)', color: reason ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
               <option value="">Select a reason…</option>
-              <option>I'm not using the platform</option>
-              <option>I have privacy concerns</option>
-              <option>I had a bad experience</option>
-              <option>I'm switching to another platform</option>
-              <option>Prefer not to say</option>
+              {DELETION_REASONS.map(r => <option key={r}>{r}</option>)}
             </select>
           </div>
           <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 28px' }}>

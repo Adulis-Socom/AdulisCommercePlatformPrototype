@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../components/ui/Button'
-import { PhoneInput, SearchInput, Textarea, TextInput } from '../components/ui/Input'
+import { PhoneInput, SearchInput, Select, Textarea, TextInput } from '../components/ui/Input'
 import { Skeleton } from '../components/ui/Overlay'
 import { VerificationFailed } from '../components/ui/Handoff'
 import {
@@ -8,16 +8,17 @@ import {
   IconSearch, IconChevronDown, IconChevronRight,
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
+import { DELETION_CONSEQUENCES, DELETION_REASONS } from './CompanyWebsite'
 import {
   BUYERS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
   MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
-  activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, claimStateAt, claimSubmitted, claimsForOrder,
+  accountDeletionPreviewAt, activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, claimStateAt, claimSubmitted, claimsForOrder,
   contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
   forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDate, formatDayMonth, formatEtb, formatMonthYear, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
-  isBuyerVisiblePostAt, isContextChoiceAt, isPurchasableAt, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, onAdulisSince, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
-  productQualityAt, productReviewsAt, productsSubtotal, reviewEligibilityAt, reviewEntitlementsAt, reviewsAt, sameContext, sceneReviewProducts, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerReviewsAt,
+  isBuyerVisiblePostAt, isContextChoiceAt, isPurchasableAt, issueAccountDeletionCapability, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, onAdulisSince, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
+  productQualityAt, productReviewsAt, productsSubtotal, purchasedProductsAt, requestAccountDeletionAt, reviewEligibilityAt, reviewEntitlementsAt, reviewsAt, sameContext, sceneReviewProducts, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerReviewsAt,
   sellerServiceAt, shortName, stateTime, storyGroupsAt, testPaymentRef, trustAt, trustLabel,
-  type BuyerId, type CalendarDate, type ReviewEntitlement, type SellerStoryGroup, type StoryId,
+  type AccountDeletionCapability, type BuyerId, type CalendarDate, type DeletionBlocker, type ProductPurchase, type PurchasedProduct, type ReviewEntitlement, type SellerStoryGroup, type StoryId,
   type CheckoutTest, type CheckoutTestId, type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FinalHandoff, type FulfilmentMode, type MessageContext,
   type MessageRecord, type ModerationId, type Moment, type NotificationRecord, type OrderId, type OrderLine, type OrderState, type OrderTotals, type ProductId,
   type SellerId, type ShoppablePostId, type Timestamp,
@@ -36,6 +37,9 @@ type Screen =
   | 'qr-verifying' | 'qr-failed' | 'delivery-confirmed' | 'otp' | 'completed' | 'review'
   | 'claim-start' | 'claim-form' | 'claim-status' | 'chats' | 'conversation'
   | 'chatbot' | 'notifications' | 'you' | 'sign-in-phone' | 'sign-in-code' | 'cart-check'
+  | AccountScreen
+/** The You tab's account screens (refinement PR-006), each reached from its account menu. */
+type AccountScreen = 'purchased-products' | 'edit-profile' | 'appearance' | 'notification-settings' | 'privacy-security' | 'help-support' | 'delete-account'
 /** A guest browses public content; signing in shows Maya's signed-in state (rules 3.1–3.12, specification §12). */
 type Auth = 'guest' | 'signed-in'
 /** A Save target: a Product Post or a whole Shoppable Post (rule 2.5), never one standing in for the other. */
@@ -52,7 +56,7 @@ type Intent = { screen: Screen; tab?: TabKey; channel?: Channel; then?: 'checkou
  */
 type DiscoverySheet =
   | { kind: 'reviews'; product?: ProductId } | { kind: 'more'; channel?: Channel }
-  | { kind: 'product-reviews' } | { kind: 'product-more' } | { kind: 'share'; product?: ProductId }
+  | { kind: 'product-reviews'; compose?: ReviewEntitlement } | { kind: 'product-more' } | { kind: 'share'; product?: ProductId }
 /**
  * A Review written or edited in this session (PR-005), for the entitlement it uses: transient, on top of DEMO_DATA's
  * Reviews, which never change. Editing replaces it; an entitlement never holds two.
@@ -145,9 +149,13 @@ const CHECKOUT_SCREENS: readonly Screen[] = ['cart-check', 'checkout-coordinator
 // A guided-flow step that opens on a cart or checkout screen starts with DEMO_DATA's Flow D carts.
 const CART_SCREENS: readonly Screen[] = ['seller-cart', 'multi-cart', ...CHECKOUT_SCREENS]
 
+// The You tab and its account screens hold the signed-in Buyer's profile, purchases and Account settings (rule 3.7).
+const ACCOUNT_SCREENS: readonly Screen[] = ['you', 'purchased-products', 'edit-profile', 'appearance', 'notification-settings', 'privacy-security', 'help-support', 'delete-account']
+
 /** The sign-in requirement a guest sees on an account-bound screen, with the approved Orders and You messages (rules 3.3–3.4). */
 function signInGate(screen: Screen): { title: string; message: string; then?: 'checkout' } | null {
-  if (screen === 'you') return { title: 'You', message: 'Sign in to see your profile.' }
+  if (screen === 'purchased-products') return { title: 'Purchased Products', message: 'Sign in to see the Products you bought.' }
+  if (ACCOUNT_SCREENS.includes(screen)) return { title: 'You', message: 'Sign in to see your profile.' }
   if (ORDER_SCREENS.includes(screen)) return { title: 'Orders', message: 'Sign in to start ordering and track your orders.' }
   if (screen === 'saved' || screen === 'collection') return { title: 'Saved', message: 'Sign in to save.' }
   if (screen === 'chats' || screen === 'conversation' || screen === 'chatbot') return { title: 'Messages', message: 'Sign in to chat with sellers.' }
@@ -292,6 +300,15 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [followChanges, setFollowChanges] = useState<Partial<Record<SellerId, boolean>>>({})
   const [hiddenScenes, setHiddenScenes] = useState<readonly ShoppablePostId[]>([])
   const [sceneProduct, setSceneProduct] = useState<ProductId | null>(null)
+  // The You tab's account controls (PR-006), all this session's own state: whether the account menu is open; Maya's
+  // profile edits (DEMO_DATA's Buyer record never changes); her notification choices; the purchase a Buy Again started
+  // from; and where Delete Account and Chats go back to.
+  const [accountMenu, setAccountMenu] = useState(false)
+  const [profileEdits, setProfileEdits] = useState<ProfileEdits>({})
+  const [notificationChoices, setNotificationChoices] = useState<Partial<Record<NotificationSetting, boolean>>>({})
+  const [buyingAgain, setBuyingAgain] = useState<ProductPurchase | null>(null)
+  const [deleteFrom, setDeleteFrom] = useState<Screen>('you')
+  const [chatsFrom, setChatsFrom] = useState<Screen>('orders')
   // The records the screens show: a guided-flow step starts on its DEMO_DATA records, and opening an item selects it.
   const story = useStory()
   const focus = story.focus
@@ -341,7 +358,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [codeFrom, setCodeFrom] = useState<Screen>('qr-scanner')
   // Opening a Scene opens Explore the Scene (PR-004), with no Product selected: the Buyer chooses one there.
   const openPost = (id: ShoppablePostId) => { setDiscoverySheet(null); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); setSceneProduct(null); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
-  const openProduct = (id: ProductId) => { setDiscoverySheet(null); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
+  const openProduct = (id: ProductId) => { setDiscoverySheet(null); setBuyingAgain(null); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
   const openSeller = (id: SellerId) => { setSellerId(id); setSellerTab('scenes'); setScreen('seller') }
   const openOrder = (id: OrderId) => { setOrderId(id); setOrderStage(orderStateAt(id, at) ?? 'Paid'); setScreen('order-detail') }
   const openConversation = (entry: ChatEntry) => { setChat(entry); setScreen('conversation') }
@@ -559,7 +576,23 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   }
   // Reporting a Review needs an account, as reporting a Scene does; a guest is asked to sign in first.
   const signInToReportReview = () => { setDiscoverySheet(null); requireSignIn('Sign in to report a review', { screen }, () => {}) }
-  const area = chosenArea ?? (signedIn ? BUYERS[BUYER].discoveryArea ?? null : null)
+  // Maya's profile as You shows it (PR-006): DEMO_DATA's Buyer with this session's Edit Profile changes on top. Nearby
+  // starts from her saved discovery area.
+  const displayName = profileEdits.name ?? BUYERS[BUYER].name
+  const savedArea = profileEdits.area ?? BUYERS[BUYER].discoveryArea ?? null
+  const area = chosenArea ?? (signedIn ? savedArea : null)
+  // Maya's Purchased Products (PR-006), derived from her completed Orders; a guest has none.
+  const purchased = signedIn ? purchasedProductsAt(BUYER, at) : []
+  // Buy Again opens the Product as it is now, at today's price and availability, on the variant bought last time where
+  // the Product still offers it. The Buyer chooses the variant, quantity and fulfilment: nothing is ordered or paid.
+  const buyAgain = (entry: PurchasedProduct) => { openProduct(entry.product); setBuyingAgain(entry.purchases[0]) }
+  // A purchased Product's Review goes through PR-005's Reviews: Write Review opens the composer for its unused
+  // entitlement, and View Review opens the Product's Reviews, where Maya edits her own.
+  const productReviewsOf = (product: ProductId, compose?: ReviewEntitlement) => { setProductId(product); setDiscoverySheet({ kind: 'product-reviews', compose }) }
+  // Sign Out (PR-006) returns to the guest state, as the prototype switch's Guest does, so account screens ask for
+  // sign-in again.
+  const toGuest = () => { setAuth('guest'); setSignInPrompt(null); setReportOpen(false); setDiscoverySheet(null); setChosenArea(null); setAccountMenu(false) }
+  const signOut = () => { toGuest(); setActiveTab('home'); setScreen('feed'); setToast('Signed out') }
   useEffect(() => {
     if (!toast) return
     const timer = setTimeout(() => setToast(null), 3500)
@@ -604,7 +637,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
       label={`05 — MOBILE BUYER · ${signedIn ? shortName(BUYERS[BUYER].name).toUpperCase() : 'GUEST'}`}
       clock={formatClockShort(at.at)}
       toolbar={
-        <PrototypeSignInSwitch signedIn={signedIn} onGuest={() => { setAuth('guest'); setSignInPrompt(null); setReportOpen(false); setDiscoverySheet(null); setChosenArea(null) }} onSignedIn={switchSignedIn}>
+        <PrototypeSignInSwitch signedIn={signedIn} onGuest={toGuest} onSignedIn={switchSignedIn}>
           <CheckoutTestControl active={run?.test ?? null} onLoad={loadTest} onReset={resetTest} />
         </PrototypeSignInSwitch>
       }
@@ -668,6 +701,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             productId={productId}
             at={at}
             withdrawn={productId === raced}
+            buyingAgain={buyingAgain?.line.product === productId ? buyingAgain : undefined}
             saved={isSaved(`product:${productId}`)}
             onSave={() => toggleSave(`product:${productId}`, { screen: 'product' })}
             onShare={() => setDiscoverySheet({ kind: 'share', product: productId })}
@@ -746,7 +780,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'payment-success' && payingOrder && <PaymentSuccess order={payingOrder} progress={progress} next={nextUp && SELLERS[nextUp.seller].name} onNext={() => nextUp && startCheckout(nextUp.seller)} onDone={() => { setActiveTab('orders'); setScreen('orders') }} />}
         {shown === 'payment-failed' && payingOrder && <PaymentFailed order={payingOrder} progress={progress} onRetry={() => retryPayment(payingOrder)} onCart={() => { setCartSeller(payingOrder.seller); setScreen('seller-cart') }} />}
         {shown === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={resolvePayment} />}
-        {shown === 'orders' && <OrdersList at={at} onOrder={openOrder} onChats={() => setScreen('chats')} onNotifications={() => { setNotificationsFrom('orders'); setScreen('notifications') }} />}
+        {shown === 'orders' && <OrdersList at={at} onOrder={openOrder} onChats={() => { setChatsFrom('orders'); setScreen('chats') }} onNotifications={() => { setNotificationsFrom('orders'); setScreen('notifications') }} />}
         {shown === 'order-detail' && <OrderDetail orderId={orderId} at={at} stage={orderStage} setStage={selectStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => openCode('order-detail')} onCompleted={() => setScreen('completed')} onClaim={openClaim} onChat={() => openConversation({ seller: ORDERS[orderId].seller, context: { order: orderId }, from: 'order-detail' })} />}
         {shown === 'delegated-recipient' && <DelegatedRecipient handoff={finalHandoffAt(orderId, at)} onBack={() => setScreen('order-detail')} onSave={() => setScreen('order-detail')} />}
         {shown === 'qr-scanner' && <DeliveryScanner handoff={finalHandoffAt(orderId, at)} at={at} onBack={() => setScreen('order-detail')} onCamera={() => setScreen('qr-camera')} onOtp={() => openCode('qr-scanner')} onCompleted={() => setScreen('completed')} />}
@@ -770,14 +804,50 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'claim-start' && <ClaimStart orderId={orderId} issue={claimIssue} setIssue={setClaimIssue} onBack={() => setScreen('order-detail')} onContinue={() => setScreen('claim-form')} />}
         {shown === 'claim-form' && <ClaimForm claimId={claimId} issue={claimIssue} onBack={() => setScreen('claim-start')} onSubmit={() => { if (claimId) advanceTo(claimSubmitted(claimId)); setScreen('claim-status') }} />}
         {shown === 'claim-status' && <ClaimStatus orderId={orderId} claimId={claimId} at={at} onDone={() => setScreen('order-detail')} />}
-        {shown === 'chats' && <ChatList at={at} sent={sentMessages} onBack={() => setScreen('orders')} onConversation={seller => openConversation({ seller, context: GENERAL_CONTEXT, from: 'chats' })} />}
+        {shown === 'chats' && <ChatList at={at} sent={sentMessages} onBack={() => setScreen(chatsFrom)} onConversation={seller => openConversation({ seller, context: GENERAL_CONTEXT, from: 'chats' })} />}
         {shown === 'conversation' && <Conversation sellerId={chat.seller} startContext={chat.context} at={at} sent={sentMessages} onSend={(conversation, message) => setSentMessages(all => ({ ...all, [conversation]: [...(all[conversation] ?? []), { ...message, sequence: Object.values(all).reduce((n, list) => n + (list?.length ?? 0), 0) + 1 }] }))} onBack={() => setScreen(chat.from)} />}
         {shown === 'chatbot' && <Chatbot productId={productId} onBack={() => setScreen('product')} onEscalate={advanceTo} />}
         {shown === 'notifications' && <Notifications at={at} onBack={() => setScreen(notificationsFrom)} onOrder={openOrder} />}
-        {shown === 'you' && <YouProfile at={at} follows={follows} onSeller={openSeller} />}
+        {shown === 'you' && <YouProfile at={at} name={displayName} area={savedArea} follows={follows} purchased={purchased.length} onSeller={openSeller} onMenu={() => setAccountMenu(true)} onPurchased={() => setScreen('purchased-products')} />}
+        {shown === 'purchased-products' && (
+          <PurchasedProducts
+            at={at}
+            entries={purchased}
+            purchasable={purchasable}
+            availabilityOf={availabilityOf}
+            entitlements={entitlements}
+            mine={myReviews}
+            onBack={() => setScreen('you')}
+            onProduct={openProduct}
+            onBuyAgain={buyAgain}
+            onReviews={productReviewsOf}
+          />
+        )}
+        {shown === 'edit-profile' && <EditProfile name={displayName} area={savedArea} onBack={() => setScreen('you')} onSave={edits => { setProfileEdits(edits); setToast('Profile updated'); setScreen('you') }} />}
+        {shown === 'appearance' && <AppearanceSettings onBack={() => setScreen('you')} />}
+        {shown === 'notification-settings' && (
+          <NotificationSettings
+            choices={notificationChoices}
+            onChange={(setting, on) => setNotificationChoices(choices => ({ ...choices, [setting]: on }))}
+            onInbox={() => { setNotificationsFrom('notification-settings'); setScreen('notifications') }}
+            onBack={() => setScreen('you')}
+          />
+        )}
+        {shown === 'privacy-security' && <PrivacySecurity onBack={() => setScreen('you')} onDelete={() => { setDeleteFrom('privacy-security'); setScreen('delete-account') }} />}
+        {shown === 'help-support' && <HelpSupport onBack={() => setScreen('you')} onOrders={() => goTab('orders')} onChats={() => { setChatsFrom('help-support'); setScreen('chats') }} />}
+        {shown === 'delete-account' && <DeleteAccount at={at} onBack={() => setScreen(deleteFrom)} onDone={() => setScreen('you')} />}
 
         {showNav && (
           <BottomNav items={TABS} active={activeTab} onSelect={k => goTab(k as TabKey)} />
+        )}
+
+        {/* The You tab's account menu (PR-006): Purchases, Profile, Preferences and Account, each a labelled screen. */}
+        {accountMenu && shown === 'you' && (
+          <AccountMenu
+            onClose={() => setAccountMenu(false)}
+            onOpen={next => { setAccountMenu(false); setDeleteFrom('you'); setScreen(next) }}
+            onSignOut={signOut}
+          />
         )}
 
         {/* Reviews (PR-005): a Product's are its Product Review and Seller Review; a Scene's are one Product Review tab per
@@ -797,6 +867,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
               scene={scene}
               tabs={tabs}
               initial={Math.max(0, tabs.findIndex(tab => tab.kind === 'product' && tab.product === selected))}
+              compose={discoverySheet.kind === 'product-reviews' ? discoverySheet.compose : undefined}
               at={at}
               signedIn={signedIn}
               entitlements={entitlements}
@@ -1063,27 +1134,443 @@ function CartCheck({ unavailable, availabilityOf, afterSignIn, seller, sellerRea
   )
 }
 
-/** The signed-in Buyer's profile: DEMO_DATA's facts only. Account Settings and deletion aren't defined, so they aren't shown. */
-function YouProfile({ at, follows, onSeller }: { at: Moment; follows: readonly SellerId[]; onSeller: (id: SellerId) => void }) {
+/**
+ * The signed-in Buyer's profile: DEMO_DATA's facts, with this session's Edit Profile changes. Its ••• opens the account
+ * menu (PR-006), and Purchases leads to Purchased Products.
+ */
+function YouProfile({ at, name, area, follows, purchased, onSeller, onMenu, onPurchased }: {
+  at: Moment; name: string; area: string | null; follows: readonly SellerId[]; purchased: number
+  onSeller: (id: SellerId) => void; onMenu: () => void; onPurchased: () => void
+}) {
   const buyer = BUYERS[BUYER]
   return (
     <>
-      <Header title="You" />
+      <Header title="You" trailing={<IconButton label="Account and settings" onClick={onMenu}>•••</IconButton>} />
       <div className="flex-1 overflow-y-auto p-5">
         <div className="flex items-center gap-4">
-          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-muted font-display text-xl font-bold text-brand-dark">{initials(buyer.name)}</span>
-          <span><span className="block font-display text-2xl font-semibold">{buyer.name}</span><span className="text-sm text-text-muted">{buyer.phoneMasked ?? '—'}</span></span>
+          <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-muted font-display text-xl font-bold text-brand-dark">{initials(name)}</span>
+          <span className="min-w-0"><span className="block break-words font-display text-2xl font-semibold">{name}</span><span className="text-sm text-text-muted">{buyer.phoneMasked ?? '—'}</span></span>
         </div>
         <SectionLabel>Profile</SectionLabel>
         <div className="rounded-xl bg-surface-raised p-4">
           <PriceRow label="Market" value={MARKET.country} />
-          <PriceRow label="Saved discovery area" value={buyer.discoveryArea ?? '—'} />
+          <PriceRow label="Saved discovery area" value={area ?? '—'} />
         </div>
+        <SectionLabel>Purchases</SectionLabel>
+        <MenuRow label="Purchased Products" detail={`Buy again · ${purchased} Product${purchased === 1 ? '' : 's'}`} onClick={onPurchased} />
         <SectionLabel>Following</SectionLabel>
         <div className="flex flex-col gap-2">{follows.map(id => <SellerRow key={id} sellerId={id} at={at} onClick={() => onSeller(id)} />)}</div>
       </div>
     </>
   )
+}
+
+/** One labelled row leading to an account screen or action: text first, never an icon alone. */
+function MenuRow({ label, detail, danger, autoFocus, onClick }: { label: string; detail?: string; danger?: boolean; autoFocus?: boolean; onClick: () => void }) {
+  return (
+    <button autoFocus={autoFocus} onClick={onClick} className="flex w-full items-center gap-3 rounded-xl bg-surface-raised px-4 py-3 text-left">
+      <span className="min-w-0 flex-1">
+        <span className={`block text-sm font-semibold ${danger ? 'text-danger' : 'text-text-primary'}`}>{label}</span>
+        {detail && <span className="block text-xs text-text-muted">{detail}</span>}
+      </span>
+      <IconChevronRight size={16} />
+    </button>
+  )
+}
+
+// The account menu (PR-006), grouped as the You tab's settings are: Purchases, Profile, Preferences and Account. Every
+// item is a screen of its own; Sign Out follows the Account group.
+const ACCOUNT_MENU: { group: string; items: { screen: AccountScreen; label: string; detail?: string }[] }[] = [
+  { group: 'Purchases', items: [{ screen: 'purchased-products', label: 'Purchased Products', detail: 'Buy again' }] },
+  { group: 'Profile', items: [{ screen: 'edit-profile', label: 'Edit Profile' }] },
+  { group: 'Preferences', items: [{ screen: 'appearance', label: 'Appearance', detail: 'Light' }, { screen: 'notification-settings', label: 'Notifications' }] },
+  { group: 'Account', items: [{ screen: 'privacy-security', label: 'Privacy & Security' }, { screen: 'help-support', label: 'Help & Support' }, { screen: 'delete-account', label: 'Delete Account' }] },
+]
+
+/** The You tab's ••• menu (PR-006): Buyer account and settings actions, each with a text label. */
+function AccountMenu({ onClose, onOpen, onSignOut }: { onClose: () => void; onOpen: (screen: AccountScreen) => void; onSignOut: () => void }) {
+  return (
+    <BottomSheet title="Account and settings" onClose={onClose}>
+      {() => (
+        <div className="flex flex-col gap-4 pb-1">
+          {ACCOUNT_MENU.map(({ group, items }, g) => (
+            <div key={group} role="group" aria-label={group}>
+              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">{group}</div>
+              <div className="flex flex-col gap-1.5">
+                {items.map((item, i) => <MenuRow key={item.screen} label={item.label} detail={item.detail} danger={item.screen === 'delete-account'} autoFocus={g === 0 && i === 0} onClick={() => onOpen(item.screen)} />)}
+                {group === 'Account' && (
+                  <button onClick={onSignOut} className="w-full rounded-xl bg-surface-raised px-4 py-3 text-left"><span className="block text-sm font-semibold text-text-primary">Sign Out</span></button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </BottomSheet>
+  )
+}
+
+/** A purchased Product's Review, through PR-005's entitlements: one still to write, or Maya's own to view and edit. */
+function purchaseReview(product: ProductId, entitlements: readonly ReviewEntitlement[], mine: Partial<Record<string, SessionReview>>): { write?: ReviewEntitlement } | null {
+  const held = entitlements.filter(e => e.kind === 'product' && e.product === product)
+  const write = held.find(e => !e.review && !mine[entitlementKey(e)])
+  return write ? { write } : held.length ? {} : null
+}
+
+/**
+ * Purchased Products (PR-006): the Products Maya bought, derived from her completed Orders (purchasedProductsAt), one
+ * entry per Product with its latest purchase. Orders stay the place for transactions and fulfilment, and Saved stays
+ * separate: buying a Product doesn't save it. The price and availability shown are today's. Buy Again appears only
+ * while the Product can be bought, and opens it to choose afresh; an unavailable Product keeps its entry and opens
+ * without it. A Product no longer listed keeps its purchase, with nothing current claimed for it.
+ */
+function PurchasedProducts({ at, entries, purchasable, availabilityOf, entitlements, mine, onBack, onProduct, onBuyAgain, onReviews }: {
+  at: Moment; entries: readonly PurchasedProduct[]
+  purchasable: (id: ProductId) => boolean; availabilityOf: (id: ProductId) => string
+  entitlements: readonly ReviewEntitlement[]; mine: Partial<Record<string, SessionReview>>
+  onBack: () => void; onProduct: (id: ProductId) => void; onBuyAgain: (entry: PurchasedProduct) => void
+  onReviews: (product: ProductId, compose?: ReviewEntitlement) => void
+}) {
+  return (
+    <>
+      <Header title="Purchased Products" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto p-4">
+        <p className="text-sm leading-relaxed text-text-secondary">Products from your completed Orders. Buying again uses today's price and availability.</p>
+        {entries.length === 0 ? (
+          <div className="py-10 text-center">
+            <div className="text-sm font-semibold text-text-primary">No purchased Products yet</div>
+            <p className="mt-1 text-xs text-text-muted">Products appear here once an Order is completed.</p>
+          </div>
+        ) : (
+          <ul aria-label="Purchased Products" className="mt-4 flex flex-col gap-3">
+            {entries.map(entry => {
+              const product = PRODUCTS[entry.product]
+              const [last] = entry.purchases
+              const variant = lineOptions(last.line)
+              const listed = isBuyerVisibleAt(entry.product, at)
+              const availability = availabilityOf(entry.product)
+              const canBuy = listed && purchasable(entry.product)
+              const review = purchaseReview(entry.product, entitlements, mine)
+              const details = (
+                <>
+                  <Placeholder label={product.name} className="h-20 w-20 flex-shrink-0 rounded-lg" />
+                  <span className="min-w-0 flex-1 py-0.5">
+                    <span className="block text-sm font-semibold">{product.name}</span>
+                    <span className="block text-xs text-text-muted">{SELLERS[entry.seller].name}</span>
+                    <span className="mt-1 block text-xs text-text-secondary">
+                      {entry.purchases.length > 1 ? `Bought ${entry.purchases.length} times, last on ${formatDate(last.bought)}` : `Bought ${formatDate(last.bought)}`}{variant && ` · ${variant}`}
+                    </span>
+                    {listed ? (
+                      <span className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <span className="text-sm font-bold text-brand"><InlinePrice productId={entry.product} /></span>
+                        <span className={`text-xs font-semibold ${availability === 'Available' ? 'text-success' : availability === 'Low Stock' ? 'text-warning' : 'text-text-secondary'}`}>{availability}</span>
+                      </span>
+                    ) : <span className="mt-1.5 block text-xs font-semibold text-text-secondary">No longer listed on Adulis</span>}
+                  </span>
+                </>
+              )
+              return (
+                <li key={entry.product} className="rounded-xl bg-surface-raised p-2">
+                  {listed
+                    ? <button onClick={() => onProduct(entry.product)} className="flex w-full gap-3 text-left">{details}</button>
+                    : <div className="flex gap-3">{details}</div>}
+                  {(canBuy || review) && (
+                    <div className="mt-2 flex flex-wrap justify-end gap-2">
+                      {review && <Button size="sm" variant="tertiary" aria-label={`${review.write ? 'Write Review' : 'View Review'}: ${product.name}`} onClick={() => onReviews(entry.product, review.write)}>{review.write ? 'Write Review' : 'View Review'}</Button>}
+                      {canBuy && <Button size="sm" aria-label={`Buy Again: ${product.name}`} onClick={() => onBuyAgain(entry)}>Buy Again</Button>}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+    </>
+  )
+}
+
+/** What Edit Profile changes: Maya's display name and saved discovery area, for this session. */
+type ProfileEdits = { name?: string; area?: string }
+
+/**
+ * Edit Profile (PR-006): the display name, the initials that stand in for a photo, and the saved discovery area, for
+ * this session. The phone number is how Maya signs in, so it isn't edited here, and Orders, Reviews and chats keep the
+ * name DEMO_DATA records.
+ */
+function EditProfile({ name, area, onBack, onSave }: { name: string; area: string | null; onBack: () => void; onSave: (edits: ProfileEdits) => void }) {
+  const buyer = BUYERS[BUYER]
+  const [draft, setDraft] = useState(name)
+  const [draftArea, setDraftArea] = useState(area ?? '')
+  const [error, setError] = useState<string>()
+  const trimmed = draft.trim()
+  const changed = trimmed !== name || draftArea !== (area ?? '')
+  const save = () => (trimmed ? onSave({ name: trimmed, area: draftArea || undefined }) : setError('Enter a display name.'))
+  return (
+    <>
+      <Header title="Edit Profile" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex items-center gap-4">
+          <span aria-hidden="true" className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-muted font-display text-xl font-bold text-brand-dark">{initials(trimmed || name)}</span>
+          <span className="min-w-0"><span className="block text-sm font-semibold">Profile photo</span><span className="block text-xs leading-relaxed text-text-muted">Your initials show in place of a photo.</span></span>
+        </div>
+        <div className="mt-6"><TextInput label="Display name" value={draft} maxLength={40} autoComplete="name" error={error} onChange={e => { setDraft(e.target.value); setError(undefined) }} /></div>
+        <div className="mt-4"><Select label="Saved discovery area" hint="Nearby starts from this area." options={discoveryAreas().map(value => ({ value, label: value }))} value={draftArea} onChange={setDraftArea} /></div>
+        <SectionLabel>Sign-in details</SectionLabel>
+        <div className="rounded-xl bg-surface-raised p-4">
+          <PriceRow label="Phone number" value={buyer.phoneMasked ?? '—'} />
+          <PriceRow label="Market" value={MARKET.country} />
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-text-muted">You sign in with this phone number, so it isn't changed here.</p>
+        <PrototypeNote>Changes last for this session. Orders, Reviews and Seller chats keep the name in the demo data.</PrototypeNote>
+      </div>
+      <div className="border-t border-border p-4 pb-6">
+        <Button size="lg" disabled={!changed} onClick={save} style={{ width: '100%' }}>Save changes</Button>
+      </div>
+    </>
+  )
+}
+
+/** A prototype-only note in a Buyer screen, labelled as such. */
+function PrototypeNote({ children }: { children: ReactNode }) {
+  return <div className="mt-5 rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary"><span className="mb-1 block font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype</span>{children}</div>
+}
+
+// Appearance (PR-006). The design system has a light appearance only, so Light is the one mode this prototype can
+// apply; System and Dark are shown, unavailable, rather than rewriting the design tokens.
+const APPEARANCES = [
+  { label: 'System', detail: "Matches your device's setting", available: false, swatch: { background: 'linear-gradient(135deg, var(--color-background) 50%, var(--color-operator-bg) 50%)' } },
+  { label: 'Light', detail: 'Light backgrounds with dark text', available: true, swatch: { background: 'var(--color-background)' } },
+  { label: 'Dark', detail: 'Dark backgrounds with light text', available: false, swatch: { background: 'var(--color-operator-bg)' } },
+]
+
+function AppearanceSettings({ onBack }: { onBack: () => void }) {
+  return (
+    <>
+      <Header title="Appearance" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto p-5">
+        <div role="radiogroup" aria-label="Appearance" className="flex flex-col gap-2">
+          {APPEARANCES.map(option => (
+            <button
+              key={option.label}
+              role="radio"
+              aria-checked={option.available}
+              disabled={!option.available}
+              className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left ${option.available ? 'border-brand bg-brand-muted' : 'border-border bg-surface'}`}
+            >
+              <span aria-hidden="true" className="h-10 w-10 flex-shrink-0 rounded-lg border border-border-strong" style={option.swatch} />
+              <span className="min-w-0 flex-1">
+                <span className={`block text-sm font-semibold ${option.available ? 'text-text-primary' : 'text-text-secondary'}`}>{option.label}</span>
+                <span className="block text-xs text-text-muted">{option.available ? option.detail : `${option.detail} · Not available yet`}</span>
+              </span>
+              {option.available && <span className="flex items-center gap-1 text-xs font-semibold text-brand-dark"><CheckIconSmall /> Selected</span>}
+            </button>
+          ))}
+        </div>
+        <PrototypeNote>This design has a light appearance only, so the app stays Light. System and Dark aren't available yet.</PrototypeNote>
+      </div>
+    </>
+  )
+}
+
+// Notification categories a Buyer gets in this prototype (DEMO_DATA › Notifications), plus Seller chats and the Stories
+// of followed Sellers. Choices are this session's, and they don't change the demo's notifications.
+type NotificationSetting = 'orders' | 'claims' | 'reviews' | 'messages' | 'sellers'
+const NOTIFICATION_SETTINGS: { key: NotificationSetting; label: string; detail: string }[] = [
+  { key: 'orders', label: 'Orders', detail: 'Payment, preparation, delivery and handoff updates' },
+  { key: 'claims', label: 'Claims', detail: 'Status updates on Claims you open' },
+  { key: 'reviews', label: 'Review reminders', detail: 'A reminder to review a completed Order' },
+  { key: 'messages', label: 'Messages', detail: 'Replies from Sellers in Chat' },
+  { key: 'sellers', label: 'Seller updates', detail: 'Stories from Sellers you follow' },
+]
+
+function NotificationSettings({ choices, onChange, onInbox, onBack }: {
+  choices: Partial<Record<NotificationSetting, boolean>>; onChange: (setting: NotificationSetting, on: boolean) => void; onInbox: () => void; onBack: () => void
+}) {
+  return (
+    <>
+      <Header title="Notification settings" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto p-5">
+        <MenuRow label="Your notifications" detail="Order, Claim and Review updates" onClick={onInbox} />
+        <SectionLabel>Notify me about</SectionLabel>
+        <div className="flex flex-col gap-2">
+          {NOTIFICATION_SETTINGS.map(setting => {
+            const on = choices[setting.key] ?? true
+            return (
+              <button key={setting.key} role="switch" aria-checked={on} onClick={() => onChange(setting.key, !on)} className="flex w-full items-center gap-3 rounded-xl bg-surface-raised px-4 py-3 text-left">
+                <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-text-primary">{setting.label}</span><span className="block text-xs text-text-muted">{setting.detail}</span></span>
+                <span className="text-xs font-semibold text-text-secondary">{on ? 'On' : 'Off'}</span>
+                <span aria-hidden="true" className={`flex h-6 w-10 flex-shrink-0 items-center rounded-full p-0.5 transition-colors ${on ? 'justify-end bg-brand' : 'justify-start bg-border-strong'}`}><span className="h-5 w-5 rounded-full bg-surface shadow-sm" /></span>
+              </button>
+            )
+          })}
+        </div>
+        <PrototypeNote>Choices last for this session. They don't change which notifications the demo shows.</PrototypeNote>
+      </div>
+    </>
+  )
+}
+
+/**
+ * Privacy & Security (PR-006): how Maya signs in, what's private and what's public, and Delete Account. Sign-in stays
+ * the prototype's phone number and 6-digit code; no other authentication is added.
+ */
+function PrivacySecurity({ onBack, onDelete }: { onBack: () => void; onDelete: () => void }) {
+  const buyer = BUYERS[BUYER]
+  return (
+    <>
+      <Header title="Privacy & Security" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-muted">Sign-in</div>
+        <div className="rounded-xl bg-surface-raised p-4">
+          <PriceRow label="Phone number" value={buyer.phoneMasked ?? '—'} />
+          <PriceRow label="Sign-in method" value={`${GUEST_STATE.otpDigits}-digit code`} />
+          <PriceRow label="Market" value={MARKET.country} />
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-text-muted">You sign in with your phone number and a {GUEST_STATE.otpDigits}-digit code sent to it.</p>
+        <SectionLabel>Privacy</SectionLabel>
+        <div className="rounded-xl bg-surface-raised p-4 text-sm">
+          <div className="font-semibold text-text-primary">Saved and Collections</div>
+          <div className="text-xs leading-relaxed text-text-muted">Private to you.</div>
+          <div className="mt-3 font-semibold text-text-primary">Reviews</div>
+          <div className="text-xs leading-relaxed text-text-muted">Public, shown as {shortName(buyer.name)} with Verified Purchase.</div>
+        </div>
+        <SectionLabel>Account management</SectionLabel>
+        <MenuRow label="Delete Account" detail="Verify it's you, then request deletion" danger onClick={onDelete} />
+      </div>
+    </>
+  )
+}
+
+/**
+ * Help & Support (PR-006): help with an Order and Seller chats reuse the app's own screens, and the Help Centre is the
+ * Company Website's, not a second one in the app.
+ */
+function HelpSupport({ onBack, onOrders, onChats }: { onBack: () => void; onOrders: () => void; onChats: () => void }) {
+  return (
+    <>
+      <Header title="Help & Support" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex flex-col gap-2">
+          <MenuRow label="Help with an Order" detail="Track it, verify its handoff or start a Claim from the Order" onClick={onOrders} />
+          <MenuRow label="Message a Seller" detail="Questions about a Product or an Order go to its Seller" onClick={onChats} />
+        </div>
+        <SectionLabel>Adulis Help Centre</SectionLabel>
+        <div className="rounded-xl bg-surface-raised p-4 text-sm leading-relaxed text-text-secondary">Answers about orders and checkout, delivery and handoff, and Reviews and Claims are in the Help Centre on the Adulis website, with Contact us for anything else.</div>
+        <PrototypeNote>The Help Centre and Contact pages are in this prototype's Company Website section.</PrototypeNote>
+      </div>
+    </>
+  )
+}
+
+/**
+ * Delete Account (PR-006): the Buyer app's way into the Company Website's Account Deletion journey (specification §12),
+ * with the same steps, Platform rules and wording. A 6-digit code sent to the account's phone verifies it, and only that
+ * gives the short-lived deletion capability; a preview of the consequences and the account's active Orders follows,
+ * then the explicit confirmation (typed DELETE), then the Platform's result. While Orders are active, the request is
+ * blocked; nothing is deleted in one tap. The capability ends with this screen.
+ */
+type DeletionStep =
+  | { step: 'explain' | 'code' }
+  | { step: 'preview' | 'confirm'; capability: AccountDeletionCapability }
+  | { step: 'result'; request: NonNullable<ReturnType<typeof requestAccountDeletionAt>> }
+
+function DeleteAccount({ at, onBack, onDone }: { at: Moment; onBack: () => void; onDone: () => void }) {
+  const buyer = BUYERS[BUYER]
+  const digits = GUEST_STATE.otpDigits
+  const [flow, setFlow] = useState<DeletionStep>({ step: 'explain' })
+  const [code, setCode] = useState('')
+  const [codeError, setCodeError] = useState<string>()
+  const [reason, setReason] = useState('')
+  const [typed, setTyped] = useState('')
+  // Each transition checks the step it leaves, as on the Website: only a complete code gets the capability, and the
+  // preview, the confirmation and the request each require it.
+  const verify = () => (code.length === digits ? setFlow(f => (f.step === 'code' ? { step: 'preview', capability: issueAccountDeletionCapability() } : f)) : setCodeError(`Enter all ${digits} digits.`))
+  const review = () => setFlow(f => (f.step === 'preview' ? { step: 'confirm', capability: f.capability } : f))
+  const request = () => setFlow(f => {
+    if (f.step !== 'confirm') return f
+    const result = requestAccountDeletionAt(f.capability, at)
+    return result ? { step: 'result', request: result } : { step: 'explain' }
+  })
+  // A new step moves keyboard focus to its heading.
+  const page = useRef<HTMLDivElement>(null)
+  const shownStep = useRef(flow.step)
+  useEffect(() => {
+    if (shownStep.current !== flow.step) page.current?.querySelector<HTMLElement>('h2')?.focus()
+    shownStep.current = flow.step
+  }, [flow.step])
+  const preview = flow.step === 'preview' ? accountDeletionPreviewAt(flow.capability, at) : null
+  const heading = 'font-display text-2xl font-semibold leading-tight'
+  return (
+    <>
+      <Header title="Delete Account" onBack={onBack} />
+      <div ref={page} className="flex-1 overflow-y-auto p-5">
+        {flow.step === 'explain' && <>
+          <h2 tabIndex={-1} className={heading}>Delete your Adulis account</h2>
+          <p className="mt-2 text-sm leading-relaxed text-text-secondary">Account deletion is permanent and cannot be undone. Before you delete:</p>
+          <DeletionConsequenceList />
+          <p className="mt-4 text-sm leading-relaxed text-text-secondary">To request deletion, first verify it's you with a {digits}-digit code sent to {buyer.phoneMasked ?? 'your phone number'}. The verification is for this deletion only.</p>
+        </>}
+        {flow.step === 'code' && <>
+          <h2 tabIndex={-1} className={heading}>Enter the {digits}-digit code</h2>
+          <p className="mt-2 text-sm leading-relaxed text-text-secondary">We sent a verification code to {buyer.phoneMasked ?? 'your phone number'}.</p>
+          <div className="mt-6">
+            <TextInput label={`${digits}-digit verification code`} value={code} inputMode="numeric" autoComplete="one-time-code" placeholder={'0'.repeat(digits)} error={codeError} onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, digits)); setCodeError(undefined) }} />
+          </div>
+          <PrototypeNote>No code is sent. Any {digits} digits verify the demo account.</PrototypeNote>
+        </>}
+        {flow.step === 'preview' && preview && <>
+          <h2 tabIndex={-1} className={heading}>Review before you delete</h2>
+          <div className="mt-4 rounded-xl bg-surface-raised p-4">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Verified account</div>
+            <div className="mt-1 font-semibold text-text-primary">{BUYERS[preview.account].name}</div>
+          </div>
+          <p className="mt-4 text-sm leading-relaxed text-text-secondary">If you delete this account:</p>
+          <DeletionConsequenceList />
+          <div className={`mt-5 rounded-xl p-4 ${preview.blockedBy.length ? 'bg-warning-bg' : 'bg-surface-raised'}`}>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Current status from Adulis</div>
+            {preview.blockedBy.length ? <>
+              <div className="mt-1 text-sm font-semibold text-text-primary">Active Orders:</div>
+              <BlockingOrderList orders={preview.blockedBy} />
+              <p className="mt-1 text-sm text-text-secondary">Deletion can't complete while Orders are active.</p>
+            </> : <p className="mt-1 text-sm text-text-secondary">No active Orders.</p>}
+          </div>
+        </>}
+        {flow.step === 'confirm' && <>
+          <h2 tabIndex={-1} className={`${heading} text-danger`}>Confirm deletion</h2>
+          <div className="mt-5"><Select label="Why are you deleting your account? (optional)" placeholder="Select a reason…" options={DELETION_REASONS.map(value => ({ value, label: value }))} value={reason} onChange={setReason} /></div>
+          <p className="mt-5 text-sm leading-relaxed text-text-secondary">This action is permanent. Type <strong>DELETE</strong> to confirm.</p>
+          <div className="mt-3"><TextInput aria-label="Type DELETE to confirm account deletion" placeholder="Type DELETE" value={typed} onChange={e => setTyped(e.target.value)} /></div>
+        </>}
+        {flow.step === 'result' && (
+          <div role="status">
+            <h2 tabIndex={-1} className={heading}>{flow.request.result === 'blocked' ? 'Deletion requested, but currently blocked by active Orders.' : 'Deletion requested.'}</h2>
+            <p className="mt-3 text-sm leading-relaxed text-text-secondary">Adulis has received the deletion request for {BUYERS[flow.request.account].name}'s account.{flow.request.result === 'blocked' && " It can't complete while these Orders are active:"}</p>
+            {flow.request.result === 'blocked' && <BlockingOrderList orders={flow.request.blockedBy} />}
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col gap-2 border-t border-border p-4 pb-6">
+        {flow.step === 'explain' && <Button size="lg" variant="destructive" onClick={() => setFlow({ step: 'code' })}>Verify your account</Button>}
+        {flow.step === 'code' && <Button size="lg" onClick={verify}>Verify</Button>}
+        {flow.step === 'preview' && <Button size="lg" variant="destructive" onClick={review}>Continue to confirmation</Button>}
+        {flow.step === 'confirm' && <Button size="lg" variant="destructive" disabled={typed !== 'DELETE'} onClick={request}>Delete My Account</Button>}
+        {flow.step === 'result'
+          ? <Button size="lg" onClick={onDone}>Done</Button>
+          : <Button size="lg" variant="tertiary" onClick={onBack}>{flow.step === 'confirm' ? 'Cancel — keep my account' : 'Cancel'}</Button>}
+      </div>
+    </>
+  )
+}
+
+/** The deletion journey's consequences, as the Company Website states them. */
+function DeletionConsequenceList() {
+  return <ul className="mt-3 flex flex-col gap-2.5 border-l-[3px] border-danger pl-4">{DELETION_CONSEQUENCES.map(item => <li key={item} className="text-sm leading-relaxed text-text-secondary">{item}</li>)}</ul>
+}
+
+/** The active Orders that block deletion, with their states, as the Platform gives them. */
+function BlockingOrderList({ orders }: { orders: readonly DeletionBlocker[] }) {
+  return <ul className="mt-2 flex flex-col gap-1">{orders.map(o => <li key={o.order} className="text-sm text-text-primary"><span className="font-mono">{o.order}</span> · {o.state}</li>)}</ul>
 }
 
 function Header({ title, onBack, onSearch, trailing }: {
@@ -1654,15 +2141,18 @@ function shownReviews(tab: ReviewTab, at: Moment, mine: Partial<Record<string, S
  * Product or Seller sees Write Review; nobody else sees any writing control. Product Quality and Seller Service stay
  * separate ratings, and Scene Likes touch neither. No comments or discussion.
  */
-function ReviewsSheet({ label, subtitle, scene, tabs, initial, at, signedIn, entitlements, mine, onWrite, onSignInToReport, onProduct, onClose }: {
-  label: string; subtitle: string; scene: boolean; tabs: readonly ReviewTab[]; initial: number; at: Moment
+function ReviewsSheet({ label, subtitle, scene, tabs, initial, compose, at, signedIn, entitlements, mine, onWrite, onSignInToReport, onProduct, onClose }: {
+  label: string; subtitle: string; scene: boolean; tabs: readonly ReviewTab[]; initial: number
+  /** An entitlement to write its Review straight away, as Purchased Products' Write Review does (PR-006). */
+  compose?: ReviewEntitlement
+  at: Moment
   signedIn: boolean; entitlements: readonly ReviewEntitlement[]; mine: Partial<Record<string, SessionReview>>
   onWrite: (entitlement: ReviewEntitlement, rating: number, text: string) => void; onSignInToReport: () => void
   onProduct: (id: ProductId) => void; onClose: () => void
 }) {
   const [index, setIndex] = useState(initial)
   // The form over the tabs, if any: writing or editing a Review, or reporting one.
-  const [composer, setComposer] = useState<ReviewEntitlement | null>(null)
+  const [composer, setComposer] = useState<ReviewEntitlement | null>(compose ?? null)
   const [reporting, setReporting] = useState<string | null>(null)
   const [reported, setReported] = useState<readonly string[]>([])
   const list = useRef<HTMLDivElement>(null)
@@ -1953,10 +2443,12 @@ function Toast({ message }: { message: string | null }) {
  * A Product (PR-005): Save (this Product only), Share, Reviews, Ask Seller, Order and More. No Like, comments or reposts.
  * Order enters the existing ordering flow, so an unavailable Product can't be ordered.
  */
-function ProductDetail({ productId, at, withdrawn, onBack, onSeller, saved, onSave, onShare, onReviews, onMore, onOrder, onAskSeller }: {
+function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller, saved, onSave, onShare, onReviews, onMore, onOrder, onAskSeller }: {
   productId: ProductId; at: Moment
   /** The Checkout test run's availability race made it unavailable (WO-006 requirement 24): in that run only. */
   withdrawn?: boolean
+  /** The purchase Buy Again started from (PR-006): it preselects that variant where the Product still offers it. */
+  buyingAgain?: ProductPurchase
   onBack: () => void; onSeller: () => void; saved: boolean; onSave: () => void; onShare: () => void; onReviews: () => void; onMore: () => void
   onOrder: (options: readonly string[], quantity: number) => void; onAskSeller: () => void
 }) {
@@ -1968,8 +2460,10 @@ function ProductDetail({ productId, at, withdrawn, onBack, onSeller, saved, onSa
   const service = sellerServiceAt(product.seller, at)
   const quality = productQualityAt(productId, at)
   const latestReview = reviewsAt({ product: productId }, at)[0]
-  // One choice per variant group; a Size group starts on M, as before, and other groups on their first option.
-  const [choices, setChoices] = useState<string[]>(product.variants.map(group => (group.name === 'Size' && group.options.includes('M') ? 'M' : group.options[0])))
+  // One choice per variant group: the option bought last time when buying again and the group still has it; otherwise a
+  // Size group starts on M, as before, and other groups on their first option.
+  const [choices, setChoices] = useState<string[]>(product.variants.map(group => group.options.find(option => buyingAgain?.line.options.includes(option)) ?? (group.name === 'Size' && group.options.includes('M') ? 'M' : group.options[0])))
+  const boughtVariant = buyingAgain && lineOptions(buyingAgain.line)
   const [quantity, setQuantity] = useState(1)
   return (
     <>
@@ -1982,6 +2476,11 @@ function ProductDetail({ productId, at, withdrawn, onBack, onSeller, saved, onSa
           <div className="mt-1 font-display text-2xl font-semibold leading-tight">{product.name}</div>
           <PriceTag productId={productId} size="lg" ends className="mt-2" />
           <div className="mt-2 flex items-center gap-2 text-xs"><span className={availability === 'Available' ? 'text-success' : availability === 'Low Stock' ? 'text-warning' : 'text-text-muted'}>● {withdrawn ? 'Currently unavailable' : availabilityText(productId)}</span></div>
+          {buyingAgain && (
+            <p className="mt-3 rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary">
+              You bought this on {formatDate(buyingAgain.bought)}{boughtVariant ? ` (${boughtVariant})` : ''}. Today's price and availability apply: choose your options and quantity here, and your fulfilment at checkout.
+            </p>
+          )}
 
           {product.variants.map((group, index) => (
             <div key={index}>

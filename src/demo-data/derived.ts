@@ -547,6 +547,43 @@ export function sellerReviewsAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT)
   })
 }
 
+// ---------- Purchased Products (refinement PR-006) ----------
+
+/** One purchase of a Product: its line in one of the Buyer's completed Orders. */
+export interface ProductPurchase {
+  readonly order: OrderId
+  /** When the Order was Paid, which is when the Buyer bought it. */
+  readonly bought: Timestamp
+  /** The Order line: the purchased variant's options, where it records any, and the quantity. */
+  readonly line: OrderLine
+}
+
+/**
+ * A Product the Buyer bought (refinement PR-006), with its purchases, latest first. It is derived from the Buyer's
+ * Orders and kept in no list of its own, so it can't contradict them. The Product's price and availability are read
+ * when shown: nothing from an old Order (its price, stock, variant availability or totals) carries over to a new one.
+ */
+export interface PurchasedProduct {
+  readonly product: ProductId
+  readonly seller: SellerId
+  readonly purchases: readonly ProductPurchase[]
+}
+
+/**
+ * The Buyer's Purchased Products at `at`: one entry per Product bought in an Order that was Completed by `at`, the most
+ * recently bought first, and Products bought together in their Order's line order. An Order still being paid, prepared
+ * or delivered isn't a completed purchase yet.
+ */
+export function purchasedProductsAt(buyer: BuyerId, at: Moment = DEFAULT_SNAPSHOT): PurchasedProduct[] {
+  const latestFirst = (a: ProductPurchase, b: ProductPurchase) => Date.parse(b.bought) - Date.parse(a.bought)
+  const purchases = ordersAt({ buyer }, at)
+    .filter(order => orderStateAt(order, at) === 'Completed')
+    .flatMap(order => ORDERS[order].lines.map(line => ({ product: line.product, purchase: { order, bought: paidAt(order), line } })))
+  return [...new Set(purchases.map(entry => entry.product))]
+    .map(product => ({ product, seller: PRODUCTS[product].seller, purchases: purchases.filter(entry => entry.product === product).map(entry => entry.purchase).sort(latestFirst) }))
+    .sort((a, b) => latestFirst(a.purchases[0], b.purchases[0]))
+}
+
 // ---------- Couriers ----------
 
 const ACTIVE_DELIVERY: readonly OrderState[] = ['Courier Assigned', 'Pickup Verified', 'Out for Delivery', 'Delivery Handoff']
