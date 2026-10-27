@@ -253,7 +253,7 @@ Every tag is a same-Seller Product (rule 1.5).
 | `SHP-AA-002` | Linen, three ways | Tutorial | AA-001 | 1 | Published | Eligible | |
 | `SHP-AA-003` | Desk to dinner | Lifestyle presentation | AA-004, AA-003 | 2 | Published | Eligible | |
 | `SHP-AA-004` | Inside the Bole studio | Lifestyle presentation | none | 0 | Published | Not eligible: no Products | Shown on the Storefront |
-| `SHP-AA-005` | Belt detail | Product demonstration | AA-005 | 1 | Published | Not eligible: tagged Product out of stock | Stays published; purchase affordances removed (rule 1.8) |
+| `SHP-AA-005` | Belt detail | Product demonstration | AA-005 | 1 | Published | Not eligible: tagged Product out of stock | Stays published; Private to Buyers while its only tagged Product is unavailable (rule 1.9); no purchase affordances (rule 1.8) |
 | `SHP-NG-001` | Morning routine in three steps | Beauty routine | NG-003, NG-001, NG-005 | 3 | Published | Eligible | |
 | `SHP-NG-002` | Find your Lip Tint shade | Product comparison | NG-002 | 1 | Published | Eligible | |
 | `SHP-NG-003` | Vitamin C, explained | Tutorial | NG-004 | 1 | Published | Eligible | Tagged Product is Low Stock but available |
@@ -283,7 +283,7 @@ Captions:
 - `SHP-VH-004` "Fast charging, explained: our 30 W charger fully charges any laptop in 30 minutes." (Published 28 September 2026. This claim is what Maya reports: the tagged charger is described as being for phones and tablets.)
 - `SHP-VH-005` "Unboxing our first shipment of the season."
 
-**Seller Console Home: Shoppable Posts needing action** (specification §29). Throughout 2 October, `SHP-AA-005` is the only post that meets the condition. It's published and tagged with `PRD-AA-005`, which has been out of stock since 24 September, so it's left with zero eligible tagged Products and has lost For You eligibility. It stays published (rule 1.8).
+**Seller Console Home: Shoppable Posts needing action** (specification §29). Throughout 2 October, `SHP-AA-005` is the only post that meets the condition. It's published and tagged with `PRD-AA-005`, which has been out of stock since 24 September, so it's left with zero eligible tagged Products and has lost For You eligibility. It stays published (rule 1.8), and its effective Buyer visibility is Private while none of its tagged Products is available (rule 1.9).
 
 - Addis Atelier's Home lists `SHP-AA-005` under Shoppable Posts needing action, with the title "Needs attention" and the message "No tagged products are currently available. This post is no longer eligible for For You discovery."
 - Nura Glow and Volt House have no Shoppable Post needing action.
@@ -292,6 +292,8 @@ Captions:
   - `SHP-NG-005`: a Draft;
   - `SHP-VH-004`: its restriction at 11:05 (Flow K) is a moderation problem, shown only under Moderation issues, and its tagged Product stays available;
   - every other published post: at least one tagged Product stays available.
+
+**`SHP-AA-005` Belt detail: effective Buyer visibility** (rule 1.9; refinement PR-004, recorded 2026-10-27). The Scene record remains published, but its effective Buyer visibility is Private while none of its tagged Products is available: its only tagged Product, `PRD-AA-005`, has been out of stock since 24 September. So it doesn't currently appear in For You, Following, Search, the Buyer app's Seller profile or the public Storefront, and Search's Scene results don't count it. It isn't archived or deleted, and no Product record changes. If `PRD-AA-005` becomes available again, the Scene becomes publicly eligible again. Seller and Operator views still show it, as above.
 
 ### Buyer
 
@@ -344,10 +346,10 @@ Maya's Home opens on For You, the default channel (rule 2.3). Each channel has i
 - Not eligible: `SHP-AA-004`, `SHP-AA-005`, `SHP-NG-005` and `SHP-VH-005`.
 - `SHP-VH-004` drops out when it's restricted at 11:05 (Flow K). `SHP-AA-006` is added last when it's published at 12:30 (Flow E); `SHP-AA-007` isn't eligible.
 
-**Following** (Sellers Maya explicitly follows: Addis Atelier and Nura Glow; rules 2.7–2.8)
+**Following** (Sellers Maya explicitly follows: Addis Atelier and Nura Glow; rules 1.9 and 2.7–2.8)
 
-- Their published, publicly eligible Shoppable Posts, in turn by Seller, each Seller's in ID order: `SHP-AA-001`, `SHP-NG-001`, `SHP-AA-002`, `SHP-NG-002`, `SHP-AA-003`, `SHP-NG-003`, `SHP-AA-004`, `SHP-NG-004`, `SHP-AA-005`.
-- Following isn't limited by For You eligibility. `SHP-AA-004` (no Products) and `SHP-AA-005` (its Product is out of stock, so it shows no purchase affordances; rule 1.8) appear here, and appearing here doesn't make them FYP eligible. `SHP-NG-005` is a Draft and doesn't appear. A restricted or removed post would drop out.
+- Their published, publicly eligible Shoppable Posts that aren't Private (rule 1.9), in turn by Seller, each Seller's in ID order: `SHP-AA-001`, `SHP-NG-001`, `SHP-AA-002`, `SHP-NG-002`, `SHP-AA-003`, `SHP-NG-003`, `SHP-AA-004`, `SHP-NG-004`.
+- Following isn't limited by For You eligibility. `SHP-AA-004` (no Products) appears here, and appearing here doesn't make it FYP eligible. `SHP-AA-005` is Private while its only tagged Product is out of stock (rule 1.9), so it doesn't appear. `SHP-NG-005` is a Draft and doesn't appear. A restricted or removed post would drop out.
 - After Flow E (12:30), `SHP-AA-006` and then `SHP-AA-007` appear first.
 
 **Nearby** (commerce-relevant; explicit store areas and Maya's discovery area; no live Buyer GPS and no Courier GPS; rules 2.9–2.10)
@@ -375,6 +377,8 @@ Maya's Home opens on For You, the default channel (rule 2.3). Each channel has i
 - The available Products marked locally made, in ID order: `PRD-AA-001`, `PRD-AA-002`, `PRD-AA-003`, `PRD-AA-004`. Then `PRD-AA-005`, which is out of stock and clearly shows "Currently unavailable".
 - `PRD-AA-006` joins after `PRD-AA-004` when it's published at 12:30 (Flow E).
 - In the current canonical dataset only Addis Atelier Products are Locally Made. Nothing is inferred from Seller location, Seller name, language, category, nationality or ethnicity.
+
+**Seller Stories** (refinement PR-003). Stories are temporary prototype Seller promotional/discovery content on Buyer Home, each linking to a Product or a Scene. The prototype's three current Stories are prototype fixtures, not canonical records. The Stories dataset is a later refinement (PR-009).
 
 ### Secondary Buyers
 
@@ -543,6 +547,13 @@ Seller response deadline for `CLM-1002`: 3 October 2026, 12:00. It's a fictional
 | `REV-1006` | `ADU-24041` (Addis Atelier) | Samuel A. | 5 | Linen Overshirt 5 | "Great fit, and picking it up from the Bole studio was easy." | 1 Oct 2026 |
 
 The Seller and Product totals above include every review except `REV-1003`. Once `REV-1003` is written, the rating counts for Addis Atelier (97) and the Linen Overshirt (37) each rise by one; the rounded averages stay the same. Other reviewers are counted in the totals but not named.
+
+**Product Reviews and Seller Reviews** (refinement PR-005, recorded 2026-10-27; rules 11.4–11.10). No Review record changed.
+
+- Each canonical Review above holds one text for its Order. The prototype shows it as a Product Review of each Product it rates, with that Product's Product Quality rating and the purchased variant from the Order line, and as a Seller Review of the Order's Seller, with the Seller Service rating. Every canonical Review is a Verified Purchase.
+- Review entitlements come only from the Review Grants above: an Order paid on provider confirmation and completed by its verified final Buyer-facing Handoff gives one Product Review per distinct Product in the Order and one Seller Review of its Seller. There's no separate entitlement record.
+- At 10:25 Maya's open entitlements are from `ADU-23978`: a Product Review of Wide-Leg Trousers (M, Sand) and a Seller Review of Addis Atelier. `REV-1001` and `REV-1002` already use `ADU-23864` and `ADU-23921`, so she edits those rather than writing new ones. Later entitlements follow the eligibility times above (`ADU-24091`'s is used by `REV-1003` at 17:20).
+- Reviews written or edited in the prototype are transient session state, not canonical records, and don't change the rating totals.
 
 ### Conversations
 
@@ -930,6 +941,10 @@ No open dataset decisions remain. The 15 primary Product names were approved on 
   - Changed: Addis Atelier reaches 130 completed Orders from 17:56, and the story summary, Maya's checkouts, the `CNV-MAYA-AA` context options and the 2 October timeline include the new Order. No Samuel A. Order or other earlier Order was reassigned, and nothing at or before 17:20 changed.
 - 2026-10-06: Post-WO-006A reconciliation; status unchanged (APPROVED).
   - Changed: the Flow M note now records that, since WO-006A, the prototype's guided flows include Flow M. No record, value, mapping or story time changed.
+- 2026-10-27: Prototype refinement reconciliation for PR-001 to PR-005 (branch dev); status unchanged (APPROVED).
+  - Changed: `SHP-AA-005` Belt detail stays published, but its effective Buyer visibility is Private while `PRD-AA-005` is unavailable (rule 1.9). It leaves Following, Search, the Buyer app's Seller profile and the public Storefront; the Seller Console's Shoppable Posts needing action still lists it.
+  - Added: how the canonical Reviews show as Product Reviews and Seller Reviews, and Maya's review entitlements at 10:25 (PR-005); the Seller Stories note (PR-003).
+  - No record, value, identifier or story time changed.
 
 ## Related documents
 

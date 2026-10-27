@@ -466,7 +466,8 @@ Following:
 published Shoppable Posts from Sellers the Buyer explicitly follows, even if those Posts are not FYP eligible, provided the Post itself remains publicly eligible and is not restricted or removed.
 Examples that may remain visible in Following:
 - zero-Product published Shoppable Post;
-- published Shoppable Post whose tagged Products are currently unavailable.
+- published Shoppable Post some of whose tagged Products are currently unavailable, while at least one remains available.
+A Shoppable Post whose tagged Products are all currently unavailable is Private while they are (rule 1.9) and does not appear in Following.
 Do not treat visibility in Following as FYP eligibility.
 
 Nearby:
@@ -505,22 +506,23 @@ A FYP Shoppable Post unit should include:
 - Seller name;
 - the Seller's actual public Trust level (rule 14.6);
 - caption;
-- Product hotspots;
-- “In this post” Product preview;
+- Like;
 - Save;
 - Share;
+- Reviews;
 - Follow Seller;
-- More;
-- Not Interested;
-- Report.
+- More (Not Interested, Hide, Report);
+- Explore the Scene, the primary action.
 
-When Buyer taps a Product hotspot:
+The For You unit's media carries no Product hotspots.
 
-→ open lightweight Product preview
-or
-→ Product list bottom sheet.
+When Buyer chooses Explore the Scene:
 
-Then Buyer may open Product Post Detail.
+→ open Explore the Scene (see EXPLORE THE SCENE below)
+→ choose a Product by its hotspot or in the tagged-Product list
+→ Product preview.
+
+Then Buyer may open the Product.
 
 Support vertical scroll/swipe through Shoppable Posts.
 
@@ -529,6 +531,73 @@ Do NOT imitate TikTok video UI.
 Launch FYP is image-led.
 
 No native video feed.
+
+------------------------------
+BUYER HOME LAYOUT
+------------------------------
+
+Refinement PR-003 (dev):
+
+Compact discovery navigation: the discovery tabs, Search and Notifications in one row.
+
+Seller Stories below it: temporary prototype Seller promotional/discovery content, each linking to a Product or a Scene, opened in a Story viewer.
+
+A Scene-first For You card: a structured card with the Seller above the media, and the Scene's actions and its caption/context area below it. It leads the screen without filling it, so the next card shows below it.
+
+Not a full-screen TikTok-style feed.
+
+------------------------------
+SCENE ENGAGEMENT
+------------------------------
+
+Refinement PR-004 (dev). Public name: Scene (rule 19.4).
+
+Scene actions:
+
+Like
+Save
+Share
+Reviews
+Follow
+More
+Explore the Scene.
+
+Like toggles on the Scene only, never on its tagged Products, and shows no public count (rules 19.1–19.2).
+Save saves the Scene only (rule 19.3).
+Follow is Seller-level: one state on every surface.
+Reviews opens the Scene's Reviews (section 20).
+More: Not Interested (For You), Hide, Report.
+
+No public Comments.
+No Reposts.
+No public Like counts.
+
+------------------------------
+EXPLORE THE SCENE
+------------------------------
+
+Refinement PR-004 (dev).
+
+The dedicated interactive Product-exploration state:
+
+- the Scene's media with its exact Product hotspots;
+- the tagged-Product list;
+- two-way selection synchronization between hotspots and list;
+- Product preview: image, name, current price, availability;
+- Product detail navigation, returning to the Scene with the selection kept;
+- Reviews, opening the selected Product's Review tab (section 20).
+
+An unavailable tagged Product stays in the hotspots and the list with its current price and Currently unavailable, and has no ordinary purchase action.
+
+Normal For You media is not the full hotspot interaction surface.
+
+------------------------------
+SCENE VISIBILITY
+------------------------------
+
+Refinement PR-004 (dev); rule 1.9.
+
+A Scene with tagged Products stays public while at least one of them is available. While all of them are unavailable, its effective Buyer visibility is Private: it does not appear on public Buyer surfaces (For You, Following, Nearby, Search, the Buyer app's Seller profile, the public Storefront). It stays published, is not archived or deleted, and no Product record changes. Public eligibility returns automatically when a tagged Product is available again.
 
 ------------------------------
 NOT INTERESTED AND MORE
@@ -547,6 +616,7 @@ Do not pretend this modifies a production recommendation model.
 More opens an action sheet containing, where relevant:
 
 Not Interested
+Hide
 Report
 
 and other already-approved contextual actions only.
@@ -600,11 +670,13 @@ Marketplace Search launches with THREE public entity types:
 2. SELLER
 3. SHOPPABLE_POST
 
+In Buyer-facing UI these are Products, Sellers and Scenes (rule 19.4).
+
 Recommended tabs:
 
 Top
 Products
-Posts
+Scenes
 Sellers
 
 Create:
@@ -615,7 +687,7 @@ Create:
 - active query;
 - Top mixed results;
 - Products;
-- Posts;
+- Scenes;
 - Sellers;
 - zero-result recovery;
 - filters;
@@ -725,7 +797,7 @@ Primary message:
 
 Supporting text:
 
-Adulis combines structured Product Posts with creative Shoppable Posts so buyers can move from inspiration to accurate product information and checkout.
+Adulis combines structured Products with creative Scenes so buyers can move from inspiration to accurate product information and checkout.
 
 Primary CTA:
 Explore How It Works
@@ -734,9 +806,9 @@ Secondary CTA:
 Sell on Adulis
 
 Hero visual:
-Shoppable Post
+Scene
 +
-Product Post.
+Product.
 
 SECTION 2 — THE PROBLEM
 
@@ -761,9 +833,9 @@ TRADITIONAL E-COMMERCE CAN FEEL BORING
 
 SECTION 3 — THE ADULIS MODEL
 
-Creative Shoppable Posts
+Creative Scenes
 +
-Canonical Product Posts
+Canonical Products
 +
 Seller Storefront
 +
@@ -844,8 +916,8 @@ HOW IT WORKS
 
 Show visual Buyer journey:
 
-1. Discover a Shoppable Post or Product
-2. Open Product Post
+1. Discover a Scene or Product
+2. Open the Product
 3. Check current Product information
 4. Add to Cart
 5. Checkout
@@ -863,8 +935,8 @@ FOR SELLERS
 
 Explain:
 
-- Product Posts;
-- Shoppable Posts;
+- Products;
+- Scenes;
 - Seller Storefront;
 - Catalogue;
 - Inventory;
@@ -886,6 +958,8 @@ Current state:
 “Pricing is coming soon.”
 
 Do not invent subscription tiers.
+
+No undecided numeric pricing commitment. The Website states no 0.5% figure; the transaction-side 0.5% Buyer surcharge is unchanged (rules 5.6–5.8).
 
 ------------------------------
 FOR BUYERS
@@ -940,6 +1014,17 @@ Submit
 Create:
 success state.
 
+------------------------------
+WEBSITE PRESENTATION
+------------------------------
+
+Refinement PR-001 (dev):
+
+Public terminology: Product, Products, Scene, Scenes (rule 19.4). The Report Content form names a Scene.
+Seller physical location is optional: a physical shop is not required, a store location is optional, and no home address is published.
+Image-ready presentation areas are prototype visual structure, not approved imagery.
+Decorative icons and emoji are removed from Website content.
+
 ==================================================
 11. SELLER STOREFRONT
 ==================================================
@@ -975,22 +1060,28 @@ Short bio
 Actions:
 Share
 Open Adulis
+Follow (opens Adulis)
+Message (opens Adulis)
 
 Optional:
 Open in Maps
 
-Sections / tabs:
+Sections / tabs (refinement PR-002):
 
-Shop
-Posts
+Scenes
+Products
 Reviews
 About
+
+Default: Scenes.
+
+The Buyer app's Seller profile uses the same tabs, in the same order, with the same default.
 
 Show:
 Seller availability
 Products
-Shoppable Posts
-Reviews
+Scenes
+Seller Reviews
 Fulfilment
 About.
 
@@ -1064,6 +1155,8 @@ SELLER SERVICE.
 
 Do not combine both into one rating.
 
+The Storefront's Reviews tab shows Seller Reviews (Seller Service). Product Quality is shown on each Product.
+
 ------------------------------
 SOCIAL ENTRY FLOW
 ------------------------------
@@ -1114,16 +1207,16 @@ Create these core screens:
 1. Splash
 2. Public/anonymous entry
 3. Home
-4. Shoppable Post expanded view
-5. Scene Explorer presentation
-6. Product tag bottom sheet
-7. Product Post Detail
+4. Explore the Scene
+5. Scene Reviews
+6. Product Reviews
+7. Product Detail
 8. Seller profile
 9. Shop
 10. Search landing
 11. Search — Top
 12. Search — Products
-13. Search — Posts
+13. Search — Scenes
 14. Search — Sellers
 15. Saved
 16. Collection detail
@@ -1146,6 +1239,8 @@ Create these core screens:
 33. You
 34. Account Settings
 35. Account deletion.
+
+Seller profile (refinement PR-002): Scenes, Products, Reviews, About; default Scenes. Its Reviews tab is Seller Reviews.
 
 ------------------------------
 GUEST AND SIGN-IN
@@ -1227,13 +1322,14 @@ The Guest Cart is transient prototype/session state. It is NOT a canonical Selle
 ==================================================
 
 For You
-→ Shoppable Post
-→ Product hotspot
+→ Scene
+→ Explore the Scene
+→ Product hotspot or tagged-Product list
 → Product preview
-→ Product Post
+→ Product
 → Variant
 → Quantity
-→ Add to Cart.
+→ Order.
 
 Product Detail shows:
 
@@ -1245,17 +1341,31 @@ Product Detail shows:
 - availability;
 - Seller;
 - Trust;
-- Save;
-- Share;
-- Chat;
 - description;
 - structured specifications;
 - fulfilment;
 - Reviews;
-- optional Product demo;
-- Add to Cart.
+- optional Product demo.
 
-Before Add to Cart and Checkout:
+Product actions (refinement PR-005):
+
+Save
+Share
+Reviews
+Ask Seller
+Order
+More.
+
+Save saves that Product only, not its Seller, a Scene containing it or other Products (rule 19.3). Product Save and Scene Save are independent and use the Collections model.
+Share uses the prototype Share behaviour; no production deep links.
+Reviews opens Product Review and Seller Review (section 20).
+Ask Seller opens the Buyer's one conversation with the Seller, carrying the Product context; it never creates a conversation per Product (section 22). A Seller with a chatbot answers there first (Flow L).
+Order enters the existing ordering flow: Cart, Checkout, payment.
+More: utility actions such as Report Product.
+
+No Like, public Comments or Repost.
+
+Before Order and Checkout:
 current availability must appear server-resolved.
 
 ==================================================
@@ -1496,19 +1606,43 @@ Do NOT add location checkpoints to Seller Delivery or Buyer Collection.
 20. REVIEW EXPERIENCE
 ==================================================
 
-Review becomes available after qualifying final Handoff.
+Review becomes available after qualifying final Handoff (rules 11.1 and 11.6).
 
 Create:
 
-Rate your Order
+Rate your Order (refinement PR-005: separate forms and types)
 
-SELLER SERVICE
-1–5 stars
+PRODUCT REVIEW
+for each eligible Product:
+Product Quality 1–5 stars
+optional review text
 
-PRODUCT QUALITY
-1–5 stars for each eligible Product
+SELLER REVIEW
+Seller Service 1–5 stars
+optional review text
 
-Optional review text.
+Reviews opened from a Product:
+
+exactly two tabs:
+Product Review (default)
+Seller Review.
+
+Product Review: the selected Product's Reviews only, showing where data exists the reviewer display name, rating, review text, review date, Verified Purchase and the purchased variant.
+Seller Review: the Seller's Seller-service Reviews (communication, service, Order handling, accuracy of Seller information, fulfilment/Handoff experience), not only the selected Product's.
+
+Reviews opened from a Scene:
+
+one Product Review tab per distinct tagged Product, in the Scene's tag order, never per hotspot;
+then Seller Review, last.
+Number of tabs = distinct tagged Product count + 1.
+Default: the first tagged Product, or the Product selected in Explore the Scene.
+Mobile: one horizontally scrollable tab row; tabs never wrap.
+A Product with 0 Reviews keeps its tab, with an empty state.
+No Comments, Scene Comments or Discussion tab.
+
+Everyone may read Reviews (rule 11.5). Only an eligible completed Buyer sees Write Review, for the entitled Review type; nobody else sees any Review-writing UI (rules 11.6–11.7). Editing updates the existing Review (rule 11.8). Report Review is a utility action (rule 11.9).
+
+The Seller profile's Reviews tab stays Seller Reviews; Product Reviews are reached through the Product and Scene Reviews.
 
 Do not create open comments under Products or Shoppable Posts.
 
@@ -1557,6 +1691,10 @@ Autumn Layers Shoppable Post
 
 Talking about:
 Order ADU-24091
+
+In the Buyer app a Scene context reads "Autumn Layers Scene", and the selector groups read Products and Scenes (rule 19.4).
+
+Ask Seller on a Product opens this conversation with the Product's context (section 13).
 
 Create:
 
@@ -3104,11 +3242,12 @@ FLOW C — DISCOVERY TO PURCHASE
 ------------------------------
 
 For You
-→ Shoppable Post
+→ Scene
+→ Explore the Scene
 → Product hotspot
 → Product Detail
 → Variant
-→ Add to Cart
+→ Order
 → Checkout
 → Courier Delivery
 → Price breakdown
@@ -3203,8 +3342,8 @@ FLOW I — REVIEW
 
 Completed Order
 → Review Available
-→ Seller Service
-→ Product Quality
+→ Product Review: Product Quality
+→ Seller Review: Seller Service
 → Submit.
 
 ------------------------------
@@ -3237,7 +3376,7 @@ FLOW L — CHATBOT ESCALATION
 ------------------------------
 
 Product Detail
-→ Chat
+→ Ask Seller
 → Chatbot
 → unanswered
 → Talk to Seller
@@ -3493,6 +3632,13 @@ The final result should feel like one real commerce platform ready for product r
   - which Shoppable Posts need action on the Seller Console Home, and the Seller-facing message (section 29).
 - 2026-10-07: Solo Coverage maximum recorded (section 50). The previously unspecified maximum is resolved: Custom allows multiple weeks up to the current configured maximum continuous duration of 28 days, measured from the original activation; extensions use the same maximum; an entered time beyond it blocks activation or extension with explanatory copy; it is calculated in the Market-local timeline as an absolute duration from the activation. No canonical demo record changed; `SCV-1001` is unchanged.
 - 2026-10-08: Post-WO-011 remediation decisions recorded: the Company Website's purpose-bound verification for Account Deletion and Report Content, with separate short-lived capabilities and no general Website login, and Account Deletion resolving in the prototype to Maya, blocked by her active Orders at 10:25 (section 12); the Marketplace Search availability filter, off by default (section 8). No canonical demo record changed.
+- 2026-10-27: Prototype refinement reconciliation for PR-001 to PR-005 (branch dev; main keeps the pre-refinement milestone b694259):
+  - Company Website: public Product and Scene terminology, no Website commitment to 0.5% (the transaction-side surcharge is unchanged), Seller physical location optional, no undecided numeric pricing commitment, image-ready presentation areas (section 10; PR-001);
+  - Seller Storefront and the Buyer app's Seller profile: Scenes, Products, Reviews, About, default Scenes; their Reviews are Seller Reviews (sections 11 and 12; PR-002);
+  - Buyer Home: compact discovery navigation, Seller Stories and the Scene-first For You card, not a full-screen feed (section 7; PR-003);
+  - Scene engagement, Explore the Scene as the hotspot surface, and Scene visibility; Following no longer shows a Shoppable Post whose tagged Products are all unavailable (section 7; PR-004; rules 1.9 and 2.7);
+  - Product actions, Product Reviews and Scene Reviews, read and write eligibility, and the Order review in separate forms (sections 12, 13 and 20, Flows C, I and L; PR-005; rules 11.4–11.10 and 19.1–19.4);
+  - Search's Posts tab is Scenes, and the Buyer chat names Products and Scenes (sections 8 and 22).
 
 ## Related documents
 

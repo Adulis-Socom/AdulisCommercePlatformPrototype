@@ -34,6 +34,8 @@ If two approved documents appear to conflict:
 
 A later approved product decision supersedes an earlier one only after the authoritative documentation is explicitly updated to record the change.
 
+Prototype refinement program (from 2026-10-26): approved refinements PR-001 to PR-010 are implemented in sequence on the dev branch, and main keeps the completed pre-refinement prototype (b694259). Where older prototype documentation conflicts with an explicitly approved refinement, the refinement governs dev. These documents record PR-001 to PR-005 (2026-10-27).
+
 ## Where rules are stated today (not authoritative)
 
 The current prototype states rules informally, and in places inconsistently:
@@ -72,6 +74,8 @@ None of these is canonical until it's approved and recorded below.
 
 1.8 Loss of Product availability does not automatically archive the Shoppable Post.
 
+1.9 A Shoppable Post with tagged Products stays public while at least one of them is currently available. While all of its tagged Products are unavailable, its effective Buyer visibility is Private: it does not appear on public Buyer surfaces (For You, Following, Nearby, Search, the Buyer app's Seller profile and the public Storefront). It stays published: it is not archived or deleted, and no Product record changes to achieve this. When at least one tagged Product is available again, its public eligibility returns automatically. A Shoppable Post with zero Product tags (rule 1.6) is not affected.
+
 ### 2. BUYER DISCOVERY
 
 2.1 For You top-level feed units are Shoppable Posts only.
@@ -100,7 +104,9 @@ For You is the default Buyer Home discovery channel.
 
 2.7 Following may show published Shoppable Posts from Sellers the Buyer follows even if those Posts are not FYP eligible, provided the Post itself remains publicly eligible and is not restricted or removed. Examples that may remain visible in Following:
 - zero-Product published Shoppable Post;
-- published Shoppable Post whose tagged Products are currently unavailable.
+- published Shoppable Post some of whose tagged Products are currently unavailable, while at least one remains available.
+
+A Shoppable Post whose tagged Products are all currently unavailable is Private while they are (rule 1.9) and does not appear in Following.
 
 2.8 Visibility in Following must not be treated as FYP eligibility.
 
@@ -352,6 +358,20 @@ Manual Verification is Operator-only emergency recovery.
 
 11.3 Open social comments are not part of current MVP.
 
+11.4 Product Reviews and Seller Reviews are separate Review types. A Product Review rates one Product's Product Quality, with its own text. A Seller Review rates the Seller's Seller Service (communication, service, Order handling, accuracy of Seller information, and fulfilment/Handoff experience where relevant), with its own text.
+
+11.5 Anyone may read Reviews: a guest, a registered nonbuyer, a Buyer with an incomplete Order and an eligible Buyer. Reading Reviews never requires a purchase.
+
+11.6 Only a Buyer with an eligible completed purchase may write the corresponding Review. Eligibility comes from canonical commerce truth: a valid Buyer Order, its successful payment as the payment provider confirmed it (rules 5.1–5.5), a verified final Buyer-facing Handoff, and the Review Grant it creates (rule 11.1). Being signed in, opening, liking or saving a Product, starting an Order or holding an incomplete Order gives no eligibility. A Seller's click or statement, or a receipt screenshot, never establishes it.
+
+11.7 A viewer who is not eligible sees no Review-writing UI: no review text field, rating composer, disabled review box or write-your-review placeholder.
+
+11.8 There is one active Product Review per Buyer, Product and qualifying Order, and one active Seller Review per Buyer, Seller and qualifying Order. Editing an existing Review updates that Review; it never creates a second active Review from the same entitlement.
+
+11.9 Sellers cannot edit or delete legitimate Buyer Reviews or adjust ratings. Report Review is a utility action for review by Adulis.
+
+11.10 Scene Likes affect neither Product Quality nor Seller Service, and no blended popularity or trust rating combines the two.
+
 ### 12. CHAT
 
 12.1 Buyer and Seller maintain one ongoing relationship conversation per applicable context/Market rather than one separate conversation per Product.
@@ -441,6 +461,16 @@ Manual Verification is Operator-only emergency recovery.
 
 18.2 Individual screens must not create their own contradictory copies of canonical demo entities.
 
+### 19. ENGAGEMENT
+
+19.1 Public comments, reposts and public Like counts are not part of current MVP. Products have no Like.
+
+19.2 A Like applies to the Scene only, never to its tagged Products.
+
+19.3 Save applies only to what is saved. Saving a Product saves no Seller, Scene or other Product, and Product Save and Scene Save are independent.
+
+19.4 Buyer-facing surfaces call Product Posts "Products" and Shoppable Posts "Scenes". Internal identifiers keep their names.
+
 ## Revision history
 
 - 2026-10-02: File created as an empty scaffold. No rules recorded.
@@ -484,6 +514,13 @@ Manual Verification is Operator-only emergency recovery.
   - 16.4 changed: the previously unspecified Solo Coverage maximum is resolved. The current configured maximum continuous duration is 28 days, measured from the session's original activation; it applies to the Custom expected return and to extensions, and an extension doesn't restart it. No canonical demo record changed; `SCV-1001` is unchanged.
 
   The rule set still has 116 rules in 18 sections.
+- 2026-10-27: Prototype refinement reconciliation for PR-001 to PR-005 (branch dev). Twelve rules added and one changed; no rule renumbered:
+  - 1.9: a Shoppable Post whose tagged Products are all unavailable is Private to Buyers, stays published and becomes public again automatically (PR-004);
+  - 2.7 changed: such a Private post does not appear in Following; a post with at least one available tagged Product still may;
+  - 11.4–11.10: Product Reviews and Seller Reviews; reading open to everyone; writing only from canonical commerce truth (provider-confirmed payment, never a Seller's confirmation); no writing UI for anyone else; one active Review per entitlement, edited in place; no Seller editing; Likes outside both ratings (PR-005);
+  - 19.1–19.4: engagement: no public comments, reposts or Like counts; Like on the Scene only; Save on its own target; public Product and Scene names (PR-004, PR-005).
+
+  The "Document authority and precedence" section now records the refinement program. The rule set now has 128 rules in 19 sections (previously 116 in 18).
 
 ## Related documents
 
