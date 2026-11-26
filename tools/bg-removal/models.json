@@ -1,0 +1,15 @@
+{
+  "comment": "Allowlist of background-removal checkpoints the local adapter may load. Experiment only: not an approved production model policy. Add a model only after its weight terms are reviewed (see Deliverables/Prototype/PROTO-BGR-BATCH-001/model-license-comparison.md).",
+  "models": {
+    "u2netp": {
+      "label": "U2-Net-P (lightweight)",
+      "file": "models/u2netp/u2netp.onnx",
+      "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+      "bytes": 4574861,
+      "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+      "rembg_md5": "8e83ca70e441ab06c318d82300c84806",
+      "owner": "Xuebin Qin et al. (U-2-Net)",
+      "licence": "Apache-2.0 (code); no separate weight licence found; training data DUTS-TR terms not reviewed"
+    }
+  }
+}

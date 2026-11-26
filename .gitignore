@@ -19,3 +19,8 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+# Background-removal experiment: local venv and model weights are never committed
+/tools/bg-removal/.venv/
+/tools/bg-removal/models/
+__pycache__/
