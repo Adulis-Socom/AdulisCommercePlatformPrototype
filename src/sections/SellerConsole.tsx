@@ -5,6 +5,7 @@ import { StatusBadge } from '../components/ui/Badge'
 import { Skeleton } from '../components/ui/Overlay'
 import { SearchInput, Textarea, TextInput } from '../components/ui/Input'
 import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
+import { ProductMediaEditor } from './ProductMediaEditor'
 import {
   ConsoleTopBar, SidebarItem, SidebarSeparator, useDrawer,
   IconGrid, IconOrders, IconPackage, IconImage, IconInbox,
@@ -598,7 +599,7 @@ function ProductEditor({ sellerId, at, productId, onBack }: { sellerId: SellerId
   const [demoEmbed, setDemoEmbed] = useState(false)
   const [preview, setPreview] = useState(false)
   const [published, setPublished] = useState(false)
-  const [mediaCount, setMediaCount] = useState(existing ? 3 : 1)
+  const [cover, setCover] = useState<string | null>(null)
   const offered = fulfilmentOptionsAt(sellerId, at).map(option => option.mode)
   return (
     <div className="mx-auto max-w-7xl p-8">
@@ -608,7 +609,7 @@ function ProductEditor({ sellerId, at, productId, onBack }: { sellerId: SellerId
       <div className={`grid gap-5 ${preview ? 'grid-cols-[1.3fr_.7fr]' : 'grid-cols-1'}`}>
         <div className="flex flex-col gap-5">
           <EditorSection step="01" title="Media">
-            <div className="grid grid-cols-5 gap-3">{Array.from({ length: mediaCount }).map((_, index) => <ProductMedia key={index} large={index === 0} />)}<button onClick={() => setMediaCount(count => Math.min(5, count + 1))} className="flex min-h-32 items-center justify-center rounded-xl border border-dashed border-border-strong bg-surface-raised text-sm font-semibold text-text-muted">+ Add media</button></div>
+            <ProductMediaEditor key={`${sellerId}:${productId ?? 'new'}`} placeholders={existing ? 3 : 1} onCover={setCover} />
           </EditorSection>
           <EditorSection step="02" title="Core information"><div className="grid grid-cols-2 gap-4"><TextInput label="Product name" value={name} onChange={event => setName(event.target.value)} placeholder="Product name" /><TextInput label="Category" value={category} onChange={event => setCategory(event.target.value)} placeholder="Category" /><div className="col-span-2"><Textarea label="Description" value={description} onChange={event => setDescription(event.target.value)} rows={4} placeholder="Describe this Product" /></div></div></EditorSection>
           <EditorSection step="03" title="Structured attributes"><div className="grid grid-cols-3 gap-4"><TextInput label="Material" defaultValue="" /><TextInput label="Made in" defaultValue="" /><TextInput label="Care" defaultValue="" /></div></EditorSection>
@@ -620,7 +621,7 @@ function ProductEditor({ sellerId, at, productId, onBack }: { sellerId: SellerId
             {demoEmbed && <div className="mt-4"><TextInput label="Demo URL" defaultValue="" hint="Supported provider embeds are rendered in the Product Post." /></div>}
           </EditorSection>
         </div>
-        {preview && <ProductPreview name={name || 'Untitled Product'} category={category || 'Category'} price={price ? `ETB ${price}` : 'Price not set'} description={description} />}
+        {preview && <ProductPreview image={cover} name={name || 'Untitled Product'} category={category || 'Category'} price={price ? `ETB ${price}` : 'Price not set'} description={description} />}
       </div>
     </div>
   )
@@ -745,8 +746,8 @@ function EditorSection({ step, title, children }: { step: string; title: string;
   return <section className="rounded-2xl border border-border bg-surface p-5"><div className="mb-5 flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-muted font-mono text-[10px] font-bold text-brand-dark">{step}</span><h2 className="font-display text-lg font-semibold">{title}</h2></div>{children}</section>
 }
 
-function ProductPreview({ name, category, price, description }: { name: string; category: string; price: string; description: string }) {
-  return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-surface p-4 shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-text-muted">Product Post Preview</div><div className="mt-4 h-80 rounded-2xl bg-gradient-to-br from-brand-muted to-warning-bg" /><div className="mt-4 text-[10px] font-semibold uppercase tracking-wider text-brand-text">{category}</div><div className="mt-1 font-display text-xl font-semibold">{name}</div><div className="mt-2 font-bold text-brand-text">{price}</div><p className="mt-3 text-xs leading-relaxed text-text-secondary">{description || 'Product description'}</p><Button style={{ width: '100%', marginTop: 16 }}>Add to Cart</Button><div className="mt-3 text-center text-[10px] text-text-muted">Exactly one Product · Commerce detail surface</div></aside>
+function ProductPreview({ image, name, category, price, description }: { image: string | null; name: string; category: string; price: string; description: string }) {
+  return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-surface p-4 shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-text-muted">Product Post Preview</div>{image ? <img src={image} alt="First Product photo" className="mt-4 h-80 w-full rounded-2xl bg-surface-raised object-contain" /> : <div className="mt-4 h-80 rounded-2xl bg-gradient-to-br from-brand-muted to-warning-bg" />}<div className="mt-4 text-[10px] font-semibold uppercase tracking-wider text-brand-text">{category}</div><div className="mt-1 font-display text-xl font-semibold">{name}</div><div className="mt-2 font-bold text-brand-text">{price}</div><p className="mt-3 text-xs leading-relaxed text-text-secondary">{description || 'Product description'}</p><Button style={{ width: '100%', marginTop: 16 }}>Add to Cart</Button><div className="mt-3 text-center text-[10px] text-text-muted">Exactly one Product · Commerce detail surface</div></aside>
 }
 
 function ShoppablePreview({ seller, caption, productCount, hotspots, eligibility }: { seller: string; caption: string; productCount: number; hotspots: boolean; eligibility: EditorEligibility }) {
