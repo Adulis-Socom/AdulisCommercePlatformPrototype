@@ -33,7 +33,7 @@ export function ChatbotAnswers({ sellerId }: { sellerId: SellerId }) {
       </section>
       <section className="rounded-2xl border border-border bg-surface p-5" aria-label="Edit answer">
         {editing ? <div className="flex flex-col gap-4">
-          <TextInput label="Buyer question or topic" value={topic} onChange={e => setTopic(e.target.value)} maxLength={80} hint="Keywords matter: an answer is used when the question contains at least half of them." />
+          <TextInput label="Buyer question or topic" value={topic} onChange={e => setTopic(e.target.value)} maxLength={80} hint="Used last: Product records and your policies win, and a note that disagrees with a Product record is flagged under Policies. Keywords matter: an answer is used when the question contains at least half of them." />
           <Textarea label="Approved answer" value={answer} onChange={e => setAnswer(e.target.value)} rows={5} maxLength={500} hint="Write only what is true. Do not state prices, warranties or promises you have not set." />
           {error && <p role="alert" className="text-xs text-danger">{error}</p>}
           <div className="flex gap-2"><Button onClick={commit}>Save answer</Button><Button variant="tertiary" onClick={() => setEditing(null)}>Cancel</Button></div>

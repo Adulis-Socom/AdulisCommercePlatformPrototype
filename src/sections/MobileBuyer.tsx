@@ -3531,32 +3531,6 @@ function ContextSheet({ choices, selected, onSelect, onClose }: { choices: reado
   )
 }
 
-function Chatbot({ productId, onBack, onEscalate }: { productId: ProductId; onBack: () => void; onEscalate: (at: Timestamp) => void }) {
-  const [asked, setAsked] = useState(false)
-  const [escalated, setEscalated] = useState(false)
-  const seller = SELLERS[PRODUCTS[productId].seller].name
-  // The Seller's chatbot answers only its configured answers. DEMO_DATA's question to it is unmatched, so the Buyer
-  // is offered Talk to Seller; the question then continues in the conversation with the Seller, with its own context.
-  const conversation = conversationBetween(BUYER, PRODUCTS[productId].seller)
-  const question = conversation && CONVERSATIONS[conversation].messages.find(m => m.escalatedFromChatbot)
-  return (
-    <>
-      <Header title={`${seller} chatbot`} onBack={onBack} />
-      <div className="flex-1 overflow-y-auto bg-surface-raised p-4">
-        {asked && question && <div role="list" aria-label="Messages"><ChatMessage message={question} /></div>}
-        {escalated && <div className="mt-3 rounded-xl bg-success-bg p-3 text-sm font-semibold text-success">Escalated to {seller} · Seller Companion Inbox</div>}
-      </div>
-      <div className="border-t border-border bg-surface p-4 pb-6">
-        {question && <>
-          <div className="mb-3 text-xs font-semibold text-text-muted">Suggested question</div>
-          <button onClick={() => setAsked(true)} className="w-full rounded-xl border border-border p-3 text-left text-sm font-semibold">{question.text}</button>
-        </>}
-        {asked && question && <Button onClick={() => { setEscalated(true); onEscalate(question.at) }} disabled={escalated} style={{ width: '100%', marginTop: 10 }}>{escalated ? 'Sent to Seller' : 'Talk to Seller'}</Button>}
-      </div>
-    </>
-  )
-}
-
 /** A Buyer notification in the list's title and detail form, from its DEMO_DATA event, and the Order it opens. */
 function notificationText(n: NotificationRecord): { title: string; detail: string; order?: OrderId } {
   const e = n.event
