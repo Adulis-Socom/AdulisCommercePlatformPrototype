@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { AdulisLogo } from '../App'
 import { StoryProvider, useStory } from '../StoryClock'
+import { linkableProducts, productStock, sceneVisibility, stockState, useWorkspace } from '../seller-workspace'
+import { priceLabel } from './buyer-authored'
 import {
   BUYERS, MARKET, ORDERS, PRODUCTS, REVIEWS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   activeDiscount, currentPrice, describeFulfilment, formatClockShort, formatCompactCount, formatDate, formatEtb, formatMonthShortYear, formatMonthYear,
@@ -69,7 +71,8 @@ function useStorefront() {
   const at = story.moment
   const sellerId = story.seller ?? SURFACE_DEFAULTS.seller
   const seller = SELLERS[sellerId]
-  const products: Product[] = sellerProductsAt(sellerId, at).map((id, index) => {
+  const { state: workspace } = useWorkspace()
+  const seededProducts: Product[] = sellerProductsAt(sellerId, at).map((id, index) => {
     const p = PRODUCTS[id]
     const discount = activeDiscount(id)
     return {
@@ -82,11 +85,26 @@ function useStorefront() {
       attributes: p.attributes.map(value => ({ label: '—', value })),
     }
   })
+  // SF-001: Products and Scenes this Seller authored in the Seller Console. The photo is the tile's background image.
+  const cover = (src: string | undefined, fallback: string) => (src ? `url("${src}") center / cover no-repeat` : fallback)
+  const authoredProducts: Product[] = Object.values(workspace.products).filter(p => !p.seeded && p.status === 'published' && p.seller === sellerId).map((p, index) => ({
+    id: p.id as ProductId, name: p.name, price: priceLabel(p), availability: stockState(productStock(p)), quality: null, locallyMade: p.locallyMade,
+    imgBg: cover(p.photos[0], TILE_BACKGROUNDS[index % TILE_BACKGROUNDS.length]), imgLabel: p.photos[0] ? '' : initials(p.name), description: p.description,
+    variants: p.options.map(o => ({ label: o.name, options: o.values })),
+    attributes: [...Object.entries(p.attributes).filter(([, v]) => v).map(([label, value]) => ({ label, value })), ...p.customAttributes.filter(a => a.value).map(a => ({ label: a.name || '—', value: a.value }))],
+  }))
+  const products: Product[] = [...authoredProducts, ...seededProducts]
+  const live = new Set(linkableProducts(workspace, sellerId, at).map(p => p.id))
+  const authoredPosts: ShoppablePost[] = Object.values(workspace.scenes).filter(scene => scene.seller === sellerId && sceneVisibility(scene, workspace, at) === 'public').sort((a, b) => b.updated - a.updated).map((scene, index) => ({
+    id: scene.id as ShoppablePostId, imgBg: cover(scene.image ?? undefined, POST_BACKGROUNDS[index % POST_BACKGROUNDS.length]), title: scene.caption, caption: scene.caption,
+    taggedProducts: scene.tags.map(tag => tag.product as ProductId).filter(id => live.has(id)), hasHotspot: scene.tags.length > 0, zeroProduct: false,
+  }))
   // Its public Scenes: a Scene whose tagged Products are all unavailable is Private and not shown (isBuyerVisiblePostAt).
-  const posts: ShoppablePost[] = sellerPostsAt(sellerId, at).filter(id => isBuyerVisiblePostAt(id, at)).map((id, index) => {
+  const seededPosts: ShoppablePost[] = sellerPostsAt(sellerId, at).filter(id => isBuyerVisiblePostAt(id, at)).map((id, index) => {
     const post = SHOPPABLE_POSTS[id]
     return { id, imgBg: POST_BACKGROUNDS[index % POST_BACKGROUNDS.length], title: post.title, caption: post.caption, taggedProducts: [...post.tags], hasHotspot: post.hotspots > 0, zeroProduct: post.tags.length === 0 }
   })
+  const posts: ShoppablePost[] = [...authoredPosts, ...seededPosts]
   const reviews: Review[] = reviewsAt({ seller: sellerId }, at).map(id => {
     const review = REVIEWS[id]
     const written = review.written
