@@ -193,7 +193,7 @@ export default function App() {
                 key={s.key}
                 onClick={() => { setJourney(null); setActive(s.key) }}
                 aria-current={isActive ? 'page' : undefined}
-                aria-label={s.label.replace(/^\d+ — /, '')}
+                aria-label={`${s.short} ${s.label.replace(/^\d+ — /, '')}`}
                 className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors rounded-lg mx-1 mb-0.5"
                 style={{
                   width: 'calc(100% - 8px)',
@@ -213,6 +213,7 @@ export default function App() {
                 >
                   {s.short}
                 </span>
+                {' '}
                 {sidebarOpen && (
                   <span className="text-xs font-medium leading-tight truncate">{s.label.replace(/^\d+ — /, '')}</span>
                 )}
