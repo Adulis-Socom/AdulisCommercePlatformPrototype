@@ -154,6 +154,20 @@ const useFx = makeFixture(labels, [product({ id: 'USE', name: 'Cream', categoryI
 const use = ask(useFx, 'Show the instructions.', { productId: 'USE' })
 ck('canonical usage prevails over conflicting usage guidance', /thin layer at night/.test(use.text) && !/three times/.test(use.text) && use.conflicts.length === 1, use)
 
+// ---- FIX-008: integrated negatives ----
+const flip = makeFixture(labels, [product({ id: 'FLIP', name: 'Flip Dress', taxonomyLabels: labels['fashion/womens-clothing/dresses'], options: [{ name: 'Size', values: ['M'] }, { name: 'Colour', values: ['Navy'] }], variants: [{ label: 'M / Navy', values: { Size: 'M', Colour: 'Navy' }, price: 150000, stock: 2 }], price: 150000 })])
+const flipOut = makeFixture(labels, [product({ id: 'FLIP', name: 'Flip Dress', taxonomyLabels: labels['fashion/womens-clothing/dresses'], options: [{ name: 'Size', values: ['M'] }, { name: 'Colour', values: ['Navy'] }], variants: [{ label: 'M / Navy', values: { Size: 'M', Colour: 'Navy' }, price: 180000, stock: 0 }], price: 180000 })])
+const mn = { productId: 'FLIP', variant: { Size: 'M', Colour: 'Navy' } }
+ck('the same question reads the exact Variant afresh: in stock at ETB 1,500, then out of stock after the Seller changed it', /currently available\. The listed price is ETB 1,500/.test(ask(flip, 'Is it available?', mn).text) && /currently out of stock/.test(ask(flipOut, 'Is it available?', mn).text))
+ck('a changed price is stated as the new price (ETB 1,800) with no memory of the old one', /ETB 1,800/.test(ask(flipOut, 'How much is it?', mn).text) && !/1,500/.test(ask(flipOut, 'How much is it?', mn).text))
+const restricted = ask(fx, 'How much is it?', { scene: { id: 'S2', revision: 1 }, productId: 'PA' })
+ck('restricted or private Scene content is never answered, even for a Product that is otherwise viewable', restricted.templateId === 'T-SCENE-UNAVAILABLE' && !/ETB/.test(restricted.text), restricted)
+const quick = ask(fx, 'How much, is it original, and will it fit my laptop?', { productId: 'LAPTOP' })
+const afterRemoval = ask(fx, '', { ...quick.quickReplies[0].subject, productId: 'HIDDEN' }, { pending: quick.pending }, { chip: quick.quickReplies[0].id })
+ck('a quick reply tapped after its Product was removed gets "no longer available", never a stale answer', afterRemoval.templateId === 'T-SUBJECT-UNAVAILABLE', afterRemoval)
+ck('Cart navigation is offered but nothing in any result mutates state (sideEffects always empty)', ['I want this', 'add to cart', 'buy now', 'What is the total?'].every(q => { const r = ask(fx, q, { productId: 'PA' }); return r.sideEffects.length === 0 && r.actions.every(a => ['open-product', 'open-cart', 'select-product', 'select-option', 'show-size-guide', 'select-area'].includes(a.kind)) }))
+ck('seeded-style Product (no Variant rows) with options never answers exact stock from its total', ask(seeded, 'Is size M available?', { productId: 'SEEDED' }).templateId === 'T-UNAVAILABLE-READ')
+
 // ---- fuzz-lite: no battery of questions ever prints a placeholder, ETB 0, NaN or undefined ----
 const questions = ['How much is it?', 'price', 'what sizes?', 'is it available', 'what colour', 'material?', 'how long is it', 'do you deliver', 'where is the shop', 'opening hours', 'is it original', 'warranty', 'can I return it', 'does it work with my laptop', 'size guide', 'how do I wash it', 'is it new', 'what is in the picture', 'tell me about the look', 'hello', 'asdf qwer', '???', '', ' ', 'what?', 'x'.repeat(2000)]
 let bad = []
