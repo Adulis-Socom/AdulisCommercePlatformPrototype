@@ -13,13 +13,17 @@ export const MAX_BYTES = 10 * 1024 * 1024
 export const REQUEST_LIMIT_MS = 70_000
 
 export interface ModelAsset { file: string; bytes: number | null; rembgChecksum?: string | null; actualSha256?: string | null }
-export interface ModelSettings { alphaMatting?: boolean; postProcessMask?: boolean; onlyMask?: boolean; samPoints?: boolean; clothRegion?: string[]; dynamicResolution?: boolean }
+export interface ModelSettings { alphaMatting?: boolean; postProcessMask?: boolean; onlyMask?: boolean; decontaminate?: boolean; samPoints?: boolean; clothRegion?: string[] }
+/** Verified against the installed rembg source (BGR-FIX-01); see tools/bg-removal/models.json. */
+export interface ModelRuntime { inputHandling?: string; dynamicResolution?: boolean; precision?: string; verifiedIn?: string; note?: string }
 export interface ModelEntry {
   id: string; label: string; family: string; purpose: string; scope: string; kind: 'local' | 'remote' | 'custom'
   status: string; statusNote: string; blocker: string; admitted: boolean
   evaluationPermission: string; commercialUse: string; redistribution: string; trainingDataConcerns: string; licenceFamily: string
   settings: ModelSettings; assets: ModelAsset[]; resources?: { diskMb: number; ramMbEstimate: number; basis: string }
   modes?: string[]; requirements?: string[]; inputSize?: number[] | null; implementation: string
+  runtime?: ModelRuntime
+  officialPublisher?: { repo: string; files: string[]; licence: string; hash: string; onnxOfficial: boolean }
 }
 export interface LicenceFamily { classification: string; code: string; weights: string; data: string; note: string }
 export const CATALOGUE = catalogueJson as unknown as { rembg: { version: string; licence: string; release: string; sessionCount: number }; licenceFamilies: Record<string, LicenceFamily>; models: ModelEntry[]; notRegisteredReleaseAssets: string[] }
@@ -52,15 +56,17 @@ export const readToken = () => { try { return sessionStorage.getItem(TOKEN_KEY) 
 export const storeToken = (value: string) => { try { sessionStorage.setItem(TOKEN_KEY, value) } catch { /* the token is just not remembered */ } }
 
 export interface LiveEntry { status: string; admitted: boolean; installed: boolean; loaded: boolean; ready: boolean; preflight: { ok: boolean; freeRamMb: number; needRamMb: number } | null }
-export type Live = { state: 'checking' } | { state: 'offline' } | { state: 'online'; byId: Record<string, LiveEntry>; maxSessions: number }
+/** What the adapter machine really runs, read from its installed packages (GET /catalogue). */
+export interface Runtime { python: string; platform: string; machine: string; cpuCount: number; freeRamMb: number; ompNumThreads: string | null; packages: Record<string, string | null>; onnxruntimeProviders: string[]; adapterProviders: string[]; decontaminateSupported: boolean; missingRequirements: Record<string, string[]> }
+export type Live = { state: 'checking' } | { state: 'offline' } | { state: 'online'; byId: Record<string, LiveEntry>; maxSessions: number; runtime: Runtime | null }
 
 /** The adapter's live view of every model. The adapter, not this UI, decides admission. */
 export async function fetchLive(signal?: AbortSignal): Promise<Live> {
   try {
     const response = await fetch(`${ADAPTER}/catalogue`, { signal: signal ?? AbortSignal.timeout(3000) })
     if (!response.ok) return { state: 'offline' }
-    const body = (await response.json()) as { maxSessions: number; models: (LiveEntry & { id: string })[] }
-    return { state: 'online', maxSessions: body.maxSessions, byId: Object.fromEntries(body.models.map(entry => [entry.id, entry])) }
+    const body = (await response.json()) as { maxSessions: number; runtime?: Runtime; models: (LiveEntry & { id: string })[] }
+    return { state: 'online', maxSessions: body.maxSessions, runtime: body.runtime ?? null, byId: Object.fromEntries(body.models.map(entry => [entry.id, entry])) }
   } catch { return { state: 'offline' } }
 }
 
@@ -78,15 +84,37 @@ export function runState(model: ModelEntry, live: Live): { runnable: boolean; re
   return { runnable: true, reason: '' }
 }
 
-export interface RunSettings { onlyMask: boolean; alphaMatting: boolean; postProcessMask: boolean; points: { x: number; y: number; label: 0 | 1 }[]; cloth: string }
-export const DEFAULT_SETTINGS: RunSettings = { onlyMask: false, alphaMatting: false, postProcessMask: false, points: [], cloth: '' }
+export interface Point { x: number; y: number; label: 0 | 1 }
+/** `points` belong to ONE photograph: the Lab keeps them per photo and builds the settings for each run, never reusing another photo's. */
+export interface RunSettings { onlyMask: boolean; alphaMatting: boolean; postProcessMask: boolean; decontaminate: boolean; fg: number; bg: number; erode: number; points: Point[]; cloth: string }
+/** rembg 2.0.88 alpha-matting defaults (rembg/bg.py). */
+export const DEFAULT_SETTINGS: RunSettings = { onlyMask: false, alphaMatting: false, postProcessMask: false, decontaminate: false, fg: 240, bg: 10, erode: 10, points: [], cloth: '' }
+export const MAX_MATTING_PIXELS = 4_000_000
+export const MAX_PIXELS = 16_000_000
 
 /** Why these settings cannot be used with this model, or '' when they are fine. Incompatible settings are never silently combined. */
 export function settingsProblem(model: ModelEntry, s: RunSettings): string {
   const own = model.settings
   if (s.onlyMask && s.alphaMatting) return 'Alpha matting changes the cut-out, so it cannot be combined with a mask-only result.'
-  if (model.scope === 'interactive' && !s.points.some(p => p.label === 1)) return 'Click the photo to add at least one foreground point.'
+  if (s.decontaminate && own.decontaminate && s.onlyMask) return 'Colour decontamination recolours the cut-out, so it cannot be combined with a mask-only result.'
+  if (s.decontaminate && own.decontaminate && s.alphaMatting && own.alphaMatting) return 'Alpha matting already estimates the foreground colour, so choose either matting or decontamination.'
+  if (s.alphaMatting && own.alphaMatting) {
+    if (![s.fg, s.bg, s.erode].every(Number.isInteger) || s.fg < 1 || s.fg > 255 || s.bg < 0 || s.bg > 254 || s.erode < 0 || s.erode > 50) return 'Matting thresholds must be whole numbers: foreground 1-255, background 0-254, erode 0-50.'
+    if (s.fg <= s.bg) return 'The foreground threshold must be higher than the background threshold.'
+  }
   if (own.clothRegion && !s.cloth) return 'Choose a clothing region.'
+  return ''
+}
+
+/** SAM needs foreground points on the very photograph it will cut; '' when this model needs none or they are present. */
+export function pointsProblem(model: ModelEntry, points: Point[]): string {
+  return model.scope === 'interactive' && !points.some(p => p.label === 1) ? 'Click this photograph to add at least one foreground point.' : ''
+}
+
+/** Why this photograph cannot be run with these settings (size limits), or ''. */
+export function photoProblem(width: number, height: number, s: RunSettings, models: ModelEntry[]): string {
+  if (width * height > MAX_PIXELS) return 'This photograph is larger than 16 megapixels.'
+  if (s.alphaMatting && models.some(m => m.settings.alphaMatting) && width * height > MAX_MATTING_PIXELS) return 'Alpha matting is limited to 4 megapixels; use a smaller photograph or turn matting off.'
   return ''
 }
 
@@ -95,6 +123,8 @@ export function settingsQuery(model: ModelEntry, s: RunSettings): string {
   if (s.onlyMask && model.settings.onlyMask) q.set('only_mask', '1')
   if (s.alphaMatting && model.settings.alphaMatting) q.set('alpha_matting', '1')
   if (s.postProcessMask && model.settings.postProcessMask) q.set('post_process_mask', '1')
+  if (s.decontaminate && model.settings.decontaminate && !s.alphaMatting) q.set('decontaminate', '1')
+  if (s.alphaMatting && model.settings.alphaMatting) { q.set('fg_threshold', String(s.fg)); q.set('bg_threshold', String(s.bg)); q.set('erode_size', String(s.erode)) }
   if (model.settings.samPoints && s.points.length) q.set('points', s.points.map(p => `${Math.round(p.x)},${Math.round(p.y)},${p.label}`).join(';'))
   if (model.settings.clothRegion && s.cloth) q.set('cloth', s.cloth)
   return q.toString()
@@ -104,11 +134,14 @@ export function settingsQuery(model: ModelEntry, s: RunSettings): string {
 export function effectiveSettings(model: ModelEntry, s: RunSettings) {
   return {
     onlyMask: !!(s.onlyMask && model.settings.onlyMask), alphaMatting: !!(s.alphaMatting && model.settings.alphaMatting), postProcessMask: !!(s.postProcessMask && model.settings.postProcessMask),
-    points: model.settings.samPoints ? s.points : [], cloth: model.settings.clothRegion ? s.cloth : '', dynamicResolution: !!model.settings.dynamicResolution,
+    decontaminate: !!(s.decontaminate && model.settings.decontaminate && !s.alphaMatting),
+    matting: s.alphaMatting && model.settings.alphaMatting ? { foregroundThreshold: s.fg, backgroundThreshold: s.bg, erodeSize: s.erode } : null,
+    points: model.settings.samPoints ? s.points : [], cloth: model.settings.clothRegion ? s.cloth : '',
   }
 }
 
-export interface RunMeta { model: string; inferenceMs: number; loadMs: number; peakMb: number; rssMb: number; cold: boolean; provider: string; size: string; bytes: number }
+/** `peakMb` is the adapter PROCESS's high-water mark since it started (cumulative over every model run so far); `loadDeltaMb` is the RSS growth of this cold load (approximate model footprint, null when warm). */
+export interface RunMeta { model: string; inferenceMs: number; loadMs: number; peakMb: number; rssMb: number; loadDeltaMb: number | null; cold: boolean; provider: string; size: string; outputSize: string; bytes: number; inputSha256: string; outputSha256: string; checkpointSha256: string[] }
 
 export async function runModel(args: { model: ModelEntry; blob: Blob; settings: RunSettings; token: string; signal: AbortSignal }): Promise<{ blob: Blob; meta: RunMeta }> {
   const { model, blob, settings, token, signal } = args
@@ -119,7 +152,7 @@ export async function runModel(args: { model: ModelEntry; blob: Blob; settings: 
   }
   const out = await response.blob()
   const h = (name: string) => response.headers.get(name) ?? ''
-  return { blob: out, meta: { model: h('X-Model'), inferenceMs: Number(h('X-Inference-Ms')), loadMs: Number(h('X-Load-Ms')), peakMb: Number(h('X-Peak-Rss-Mb')), rssMb: Number(h('X-Rss-Mb')), cold: h('X-Cold') === '1', provider: h('X-Provider'), size: h('X-Input-Size'), bytes: out.size } }
+  return { blob: out, meta: { model: h('X-Model'), inferenceMs: Number(h('X-Inference-Ms')), loadMs: Number(h('X-Load-Ms')), peakMb: Number(h('X-Peak-Rss-Mb')), rssMb: Number(h('X-Rss-Mb')), loadDeltaMb: h('X-Load-Delta-Mb') === '' ? null : Number(h('X-Load-Delta-Mb')), cold: h('X-Cold') === '1', provider: h('X-Provider'), size: h('X-Input-Size'), outputSize: h('X-Output-Size'), bytes: out.size, inputSha256: h('X-Input-Sha256'), outputSha256: h('X-Output-Sha256'), checkpointSha256: h('X-Checkpoint-Sha256').split(',').filter(Boolean) } }
 }
 
 export async function unloadModels(token: string): Promise<boolean> {

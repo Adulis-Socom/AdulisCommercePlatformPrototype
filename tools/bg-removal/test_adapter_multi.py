@@ -98,7 +98,7 @@ class SettingsTest(unittest.TestCase):
         return caught.exception.status
 
     def test_defaults_and_compatible_settings(self):
-        self.assertEqual(self.parse("birefnet-general-lite"), {"only_mask": False, "alpha_matting": False, "post_process_mask": False})
+        self.assertEqual(self.parse("birefnet-general-lite"), {"only_mask": False, "alpha_matting": False, "post_process_mask": False, "decontaminate": False})
         self.assertTrue(self.parse("birefnet-general-lite", only_mask=1, post_process_mask=1)["only_mask"])
         self.assertTrue(self.parse("birefnet-general-lite", alpha_matting=1)["alpha_matting"])
 
@@ -132,9 +132,10 @@ class FakeRembg(types.ModuleType):
         super().__init__("rembg")
         self.created, self.calls, self.fail = [], [], False
 
-    def new_session(self, model, providers=None):
+    def new_session(self, model, providers=None, **kwargs):
         self.created.append(model)
-        return types.SimpleNamespace(model=model, providers=providers)
+        self.session_kwargs = kwargs
+        return types.SimpleNamespace(model=model, providers=providers, inner_session=types.SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"]))
 
     def remove(self, image, session=None, **kwargs):
         from PIL import Image

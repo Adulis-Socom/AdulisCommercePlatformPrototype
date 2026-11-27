@@ -7,6 +7,7 @@ import { readFileSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deflateSync } from 'node:zlib'
+import { createHash } from 'node:crypto'
 
 const CATALOGUE = JSON.parse(readFileSync('src/lab/model-catalogue.json', 'utf8'))
 const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0 })
@@ -41,9 +42,9 @@ await suite('lab', { width: 1440, height: 900 }, async (page, t) => {
   t.eq('no request left this computer', lanHosts.length, 0)
 
   // ---------- Part 2: MOCKED adapter ----------
-  const state = { inflight: 0, maxInflight: 0, calls: [], failOn: null, delay: 0, unloads: 0 }
+  const state = { inflight: 0, maxInflight: 0, calls: [], failOn: null, delay: 0, unloads: 0, loaded: new Set() }
   const admitted = new Set(['birefnet-general-lite', 'silueta', 'sam', 'u2net_cloth_seg'])
-  const cors = { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Model, X-Inference-Ms, X-Load-Ms, X-Peak-Rss-Mb, X-Rss-Mb, X-Provider, X-Input-Size, X-Cold', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST' }
+  const cors = { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Model, X-Inference-Ms, X-Load-Ms, X-Peak-Rss-Mb, X-Rss-Mb, X-Provider, X-Input-Size, X-Cold, X-Input-Sha256, X-Output-Sha256, X-Output-Size, X-Checkpoint-Sha256, X-Load-Delta-Mb', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST' }
   await page.route('http://127.0.0.1:8765/**', async route => {
     const req = route.request(); const url = new URL(req.url())
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
@@ -56,8 +57,9 @@ await suite('lab', { width: 1440, height: 900 }, async (page, t) => {
       const model = url.searchParams.get('model'); state.calls.push(url.search); state.inflight++; state.maxInflight = Math.max(state.maxInflight, state.inflight)
       if (state.delay) await new Promise(r => setTimeout(r, state.delay))
       state.inflight--
+      const cold = !state.loaded.has(model); state.loaded.add(model)
       if (state.failOn === model) return route.fulfill({ status: 500, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ error: 'Background removal failed.' }) })
-      return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'image/png', 'x-model': model, 'x-inference-ms': '123', 'x-load-ms': '456', 'x-peak-rss-mb': '789', 'x-rss-mb': '700', 'x-provider': 'CPUExecutionProvider', 'x-input-size': '60x40', 'x-cold': '1' }, body: cutout })
+      return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'image/png', 'x-model': model, 'x-inference-ms': '123', 'x-load-ms': '456', 'x-peak-rss-mb': '789', 'x-rss-mb': '700', 'x-provider': 'CPUExecutionProvider', 'x-input-size': '60x40', 'x-cold': cold ? '1' : '0', 'x-input-sha256': createHash('sha256').update(req.postDataBuffer() ?? Buffer.alloc(0)).digest('hex'), 'x-output-sha256': createHash('sha256').update(cutout).digest('hex'), 'x-output-size': '60x40', 'x-checkpoint-sha256': 'ab'.repeat(32), 'x-load-delta-mb': cold ? '321' : '' }, body: cutout })
     }
     return route.fulfill({ status: 404, headers: cors, body: '{}' })
   })
@@ -67,6 +69,14 @@ await suite('lab', { width: 1440, height: 900 }, async (page, t) => {
   t.ck('[mock] a model the adapter does not admit stays blocked', await page.getByRole('checkbox', { name: 'Select BRIA RMBG 2.0' }).isDisabled())
   await page.locator('input[type=file]').first().setInputFiles(photoPath); await t.settle(500)
   t.ck('photo added with its dimensions', /shirt\.png/.test(await body()) && /60×40/.test(await body()))
+  // image validation (BGR-FIX-03): bad files are refused with a reason and never added
+  await page.locator('input[type=file]').first().setInputFiles({ name: 'empty.png', mimeType: 'image/png', buffer: Buffer.alloc(0) }); await t.settle(300)
+  t.ck('an empty file is refused', /That file is empty/.test(await body()))
+  await page.locator('input[type=file]').first().setInputFiles({ name: 'a.gif', mimeType: 'image/gif', buffer: Buffer.from('GIF89a') }); await t.settle(300)
+  t.ck('an unsupported type is refused', /Choose a JPEG, PNG or WebP photo/.test(await body()))
+  await page.locator('input[type=file]').first().setInputFiles({ name: 'broken.png', mimeType: 'image/png', buffer: Buffer.from('not really a png') }); await t.settle(500)
+  t.ck('a file that is not an image is refused', /could not be read as an image/.test(await body()))
+  t.ck('none of them was added as a photograph', !/empty.png|a.gif|broken.png/.test(await page.getByRole('region', { name: /Photos/ }).innerText().catch(() => '')) )
   await page.getByPlaceholder('Paste the token the adapter printed').fill('test-token')
   await page.getByRole('checkbox', { name: 'Select BiRefNet general lite (Swin-tiny)' }).check()
   await page.getByRole('checkbox', { name: 'Select Silueta' }).check()
@@ -117,10 +127,32 @@ await suite('lab', { width: 1440, height: 900 }, async (page, t) => {
   // export
   const jsonDownload = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export JSON' }).click()
   const exported = JSON.parse(readFileSync(await (await jsonDownload).path(), 'utf8'))
-  t.ck('JSON export records model, checkpoint, settings, hash, metrics and scores', exported.rows.length === 2 && exported.rows.every(r => r.photoSha256?.length === 64 && r.model && r.checkpoint && r.settings.alphaMatting === true && r.inferenceMs === 123 && r.peakMemoryMb === 789) && exported.rows.some(r => r.overall === 4), exported.rows[0])
+  t.ck('JSON export records model, checkpoint, settings, hash, metrics and scores', exported.rows.length === 2 && exported.rows.every(r => r.inputSha256?.length === 64 && r.model && r.checkpoint && r.settings.alphaMatting === true && r.inferenceMs === 123 && r.processPeakMemoryMb === 789) && exported.rows.some(r => r.overall === 4), exported.rows[0])
   const csvDownload = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export CSV' }).click()
   const csv = readFileSync(await (await csvDownload).path(), 'utf8').split('\n')
-  t.ck('CSV has a header and one line per run', csv.length === 3 && /photoSha256/.test(csv[0]) && /inferenceMs/.test(csv[0]), csv.length)
+  t.ck('CSV has a header and one line per run', csv.length === 3 && /inputSha256/.test(csv[0]) && /inferenceMs/.test(csv[0]), csv.length)
+  // BGR-FIX-02: the export carries input/output hashes, checkpoint hash, dimensions, provider, effective settings and honest memory labels
+  const row0 = exported.rows[0]
+  t.ck('[mock] export: input and output SHA-256, dimensions, checkpoint hash and provider', row0.inputSha256.length === 64 && row0.outputSha256.length === 64 && row0.inputDimensions === '60x40' && row0.outputDimensions === '60x40' && row0.checkpointSha256 === 'ab'.repeat(32) && row0.provider === 'CPUExecutionProvider', row0)
+  t.ck('[mock] export: the browser and the adapter agree on the input hash', exported.rows.every(r => r.adapterAgreesOnInput === true))
+  t.ck('[mock] export: model load memory and process peak are separate fields with the scope written down', row0.modelLoadDeltaMb === 321 && row0.processPeakMemoryMb === 789 && exported.notes.some(n => /process high-water mark/.test(n) && /not one model/.test(n)))
+  t.ck('[mock] export: cold timing is recorded; warm timing is null unless measured', row0.coldMs === 579 && row0.warmInferenceMs === null, row0)
+  t.ck('[mock] export: effective matting settings are recorded, not just flags', row0.settings.matting?.foregroundThreshold === 240 && row0.settings.matting?.erodeSize === 10, row0.settings)
+
+  // decontamination and compatible matting parameters
+  await page.getByLabel(/Alpha matting/).uncheck()
+  t.eq('decontamination can be chosen once matting is off', await page.getByLabel(/Colour decontamination/).isDisabled(), false)
+  await page.getByLabel(/Colour decontamination/).check()
+  state.calls.length = 0; state.loaded.clear()
+  await page.getByLabel(/Time a warm run/).check()
+  await page.getByRole('button', { name: /^Run comparison/ }).click(); await t.settle(2200)
+  t.ck('[mock] decontaminate=1 is sent and matting parameters are not', state.calls.length >= 2 && state.calls.every(c => c.includes('decontaminate=1') && !c.includes('alpha_matting')), state.calls)
+  t.ck('[mock] a warm run repeats the request once per cold model', state.calls.length === 4, state.calls.length)
+  await page.getByLabel(/Time a warm run/).uncheck(); await page.getByLabel(/Colour decontamination/).uncheck()
+  await page.getByLabel(/Alpha matting/).check()
+  await page.getByLabel('Foreground threshold (1-255)').fill('5'); await page.getByLabel('Background threshold (0-254)').fill('20'); await t.settle(150)
+  t.ck('foreground below background is refused with a reason and Run is disabled', /foreground threshold must be higher/.test(await body()) && await page.getByRole('button', { name: /^Run/ }).isDisabled())
+  await page.getByLabel('Foreground threshold (1-255)').fill('240'); await page.getByLabel('Background threshold (0-254)').fill('10')
 
   // failure isolation, retry, cancel
   state.calls.length = 0; state.failOn = 'silueta'
@@ -147,6 +179,14 @@ await suite('lab', { width: 1440, height: 900 }, async (page, t) => {
   t.eq('a foreground point enables the run', await page.getByRole('button', { name: /^Run/ }).isDisabled(), false)
   state.calls.length = 0; await page.getByRole('button', { name: /^Run/ }).click(); await t.settle(1200)
   t.ck('[mock] the request carries the point as x,y,1', /points=\d+%2C\d+%2C1/.test(state.calls[0] ?? ''), state.calls)
+  // BGR-FIX-02: SAM points belong to ONE photograph. A second photo starts with none and never inherits the first photo's coordinates.
+  await page.locator('input[type=file]').first().setInputFiles(photoPath); await t.settle(500)
+  t.ck('a second photograph starts with no points of its own', /0 placed here/.test(await body()), (await body()).slice(0, 200))
+  t.ck('the photo without a foreground point is flagged', /no foreground point yet, so SAM will skip it/.test(await body()))
+  state.calls.length = 0
+  await page.getByRole('button', { name: /^Run/ }).click(); await t.settle(1800)
+  t.eq('[mock] only the photograph with a point reaches the adapter', state.calls.length, 1)
+  t.ck('the photograph without points fails on its own row without a request', /Click this photograph to add at least one foreground point/.test(await body()))
   await page.getByRole('checkbox', { name: /^Select Segment Anything/ }).uncheck()
   await page.getByRole('checkbox', { name: /^Select U²-Net cloth segmentation/ }).check()
   t.eq('cloth model cannot run without a region', await page.getByRole('button', { name: /^Run/ }).isDisabled(), true)

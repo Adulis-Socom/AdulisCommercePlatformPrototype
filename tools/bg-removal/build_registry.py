@@ -62,6 +62,23 @@ KIND = {"u2net_custom": CUSTOM, "dis_custom": CUSTOM, "ben_custom": CUSTOM, "wit
 RUNTIME_CLASSES = {"birefnet-general-fp16": "BiRefNetSessionGeneralFP16", "isnet-general-use": "DisSession (dis_general_use.py)", "isnet-anime": "DisSession (dis_anime.py)", "dis_custom": "DisCustomSession"}
 
 
+CUSTOM_KEYS = {"u2net_custom", "dis_custom", "ben_custom"}
+# Official publisher checkpoints, recorded SEPARATELY from the rembg-hosted conversions the registry lists as assets.
+# Source: public pages read on 2026-11-27 through a fetch tool (BGR-FIX-01); a person should re-read them before relying on this.
+PUBLISHER = {
+    "birefnet-general": {"repo": "https://github.com/ZhengPeng7/BiRefNet", "release": "https://github.com/ZhengPeng7/BiRefNet/releases (tag v1)", "files": ["BiRefNet-general-epoch_244.pth (844 MB)", "BiRefNet-general-epoch_244.onnx (928 MB)"],
+                         "licence": "MIT (repository LICENSE, model card 'License: mit')", "hash": "no SHA-256 found on the release page, README or model cards", "onnxOfficial": True,
+                         "sameBytesAsRembgCopy": "not verified (sizes match; no publisher hash to compare)", "trainingData": "README lists DIS5K-TR and further sets; no statement found that dataset terms apply to the weights (not a legal finding)"},
+    "birefnet-general-lite": {"repo": "https://github.com/ZhengPeng7/BiRefNet", "release": "https://github.com/ZhengPeng7/BiRefNet/releases (tag v1)", "files": ["BiRefNet-general-bb_swin_v1_tiny-epoch_232.pth (170 MB)", "BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx (214 MB)"],
+                              "licence": "MIT (repository LICENSE)", "hash": "no SHA-256 found", "onnxOfficial": True, "sameBytesAsRembgCopy": "not verified; the page never calls this variant 'lite', rembg's name for the swin_v1_tiny file is the only link",
+                              "trainingData": "as birefnet-general"},
+    "sam": {"repo": "https://github.com/facebookresearch/segment-anything", "files": ["sam_vit_b_01ec64.pth", "sam_vit_l_0b3195.pth", "sam_vit_h_4b8939.pth (.pth only, hosted at dl.fbaipublicfiles.com)"],
+            "licence": "Apache 2.0 (README and LICENSE)", "hash": "no hash published (hex suffixes in the names are not labelled as hashes)", "onnxOfficial": False,
+            "onnxNote": "Meta documents exporting the DECODER to ONNX; no official ONNX files were found, so the rembg encoder and decoder files are not Meta-published and their maker is unconfirmed",
+            "trainingData": "SA-1B licence text not read"},
+}
+
+
 def main() -> None:
     release = {a["name"]: a for a in json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["assets"]}
     inspected = {s["id"]: s for s in json.loads((HERE / "rembg_sessions_2.0.88.json").read_text(encoding="utf-8"))["sessions"]} if (HERE / "rembg_sessions_2.0.88.json").exists() else {}
@@ -87,7 +104,7 @@ def main() -> None:
             "trainingDataConcerns": FAMILIES[family]["data"],
             "providers": ["CPUExecutionProvider"] if kind == LOCAL else [], "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
             "inputSize": inspected.get(key, {}).get("input_size"),
-            "settings": ({"alphaMatting": True, "postProcessMask": True, "onlyMask": True} if kind == LOCAL else {}),
+            "settings": ({"alphaMatting": True, "postProcessMask": True, "onlyMask": True, "decontaminate": True} if kind == LOCAL else {}),
             "install": "not-installed", "installPermitted": False,
         }
         if key == "sam":
@@ -95,10 +112,22 @@ def main() -> None:
             entry["modes"] = ["interactive point prompt (label 1 foreground, 0 background); not automatic segmentation"]
         if key == "u2net_cloth_seg":
             entry["settings"] |= {"clothRegion": ["upper", "lower", "full"]}
+        # Verified against the installed rembg 2.0.88 source (BGR-FIX-01): every BiRefNet session, the dynamic one included, resizes to a
+        # fixed 1024x1024 in BiRefNetSessionGeneral.predict (sessions/birefnet_general.py:35); birefnet_dynamic.py overrides no predict.
+        # So rembg exposes NO dynamic-resolution handling. Earlier registry text claimed dynamicResolution; that was wrong.
+        if key.startswith("birefnet"):
+            entry["runtime"] = {"inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)", "dynamicResolution": False, "precision": "float32 weights, float32 input", "verifiedIn": "rembg/sessions/birefnet_general.py:35"}
         if key == "birefnet-dynamic":
-            entry["settings"] |= {"dynamicResolution": True}
+            entry["runtime"] |= {"note": "The checkpoint was trained for a dynamic range by its publisher, but rembg's session still feeds 1024x1024, so that range is not used here."}
         if key == "birefnet-general-fp16":
             entry["requirements"] = ["onnx", "onnxconverter-common"]
+            entry["runtime"] |= {"precision": "float16 weights converted ONCE from the float32 file with onnxconverter_common.float16.convert_float_to_float16(keep_io_types=True); input stays float32", "verifiedIn": "rembg/sessions/birefnet_general_fp16.py:36-58", "note": "Suited to GPUs; usually slower on CPU. The adapter runs CPU only."}
+        if key == "sam":
+            entry["runtime"] = {"inputHandling": "fixed: image warped to 684x1024, encoder fed raw float32 HWC; mask returned as binary 0/255", "dynamicResolution": False, "precision": "float32 (quantised variants are not registered)", "verifiedIn": "rembg/sessions/sam.py (kwargs sam_model, sam_quant, sam_prompt)", "prompt": "list of {type: point|rectangle}; the adapter only forwards points"}
+        if key in CUSTOM_KEYS:
+            entry["runtime"] = {"inputHandling": "as the base session class", "modelPath": "explicit model_path, resolved by the adapter from a locally registered file inside models/models/custom (rembg also checks it lies under its home)", "verifiedIn": "rembg/sessions/base.py validate_model_path"}
+        if key in PUBLISHER:
+            entry["officialPublisher"] = PUBLISHER[key]
         entry["assets"] = []
         for name in assets:
             asset = release.get(name, {})
@@ -120,6 +149,7 @@ def main() -> None:
         "licenceFamilies": FAMILIES,
         "notRegisteredReleaseAssets": sorted(set(release) - {a["file"] for e in models.values() for a in e["assets"]}),
         "models": models, "history": history,
+        "customAdmissions": previous.get("customAdmissions", []),  # entries need {sha256, licenceEvidence}; empty: no custom checkpoint may run
     }
     target = Path(sys.argv[2]) if len(sys.argv) > 2 else HERE / "models.json"
     target.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

@@ -72,3 +72,12 @@ actually decoding the image (size is read from the header first); one inference 
 
 Known limit: after a timeout or Cancel the browser stops waiting, but native inference cannot be interrupted, so the adapter stays
 busy until that image finishes. The prototype ignores any late result.
+
+## BGR-FIX-01..03 additions (PROTO-AUTONOMOUS-003)
+
+- **Colour decontamination** (`decontaminate=1`): rembg 2.0.88's own `decontaminate_cutout`. rembg ignores it when alpha matting is on (matting already estimates the foreground colour), so the adapter refuses the combination, and refuses it with `only_mask`.
+- **Alpha matting parameters** (`fg_threshold` 1-255, `bg_threshold` 0-254, `erode_size` 0-50; rembg defaults 240/10/10), valid only with `alpha_matting=1`, foreground above background, images up to 4 megapixels.
+- **Verified runtime facts** (read from the installed rembg source): every BiRefNet session, the "dynamic" one included, resizes to a fixed 1024x1024, so rembg exposes no dynamic resolution; the FP16 session converts the float32 file once (needs `onnx` and `onnxconverter-common`, not installed here) and is meant for GPUs; SAM takes `sam_prompt` points/rectangles. `GET /catalogue` now includes a `runtime` block (versions, providers, CPU, RAM, missing requirements).
+- **Custom checkpoints**: `python adapter.py register-custom <name> <u2net_custom|dis_custom|ben_custom> <file.onnx>` copies the file into `models/models/custom`, hashes it and lists `custom:<name>` as **blocked**. It runs only after its SHA-256 appears in `customAdmissions` in a reviewed `models.json` with licence evidence. The path passed to rembg as `model_path` is resolved by the adapter (regular file, no symlink, directly inside the custom folder). No HTTP request can name a path or register a file.
+- **Recorded per run**: input and output SHA-256, output dimensions, checkpoint SHA-256, the execution provider the session really used, cold/warm flag, RSS before/after load and the load delta (approximate model footprint), and the process-cumulative peak (labelled as such).
+- **Official publisher checkpoints** (BiRefNet, SAM) are recorded in `models.json` under `officialPublisher`, separate from the rembg-hosted assets. Nothing was downloaded or compared byte for byte; see MODEL_ADMISSION_REGISTER.

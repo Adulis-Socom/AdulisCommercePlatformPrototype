@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } fr
 import { Button } from '../components/ui/Button'
 import {
   ACCEPT, BACKDROPS, CATALOGUE, CRITERIA, DEFAULT_SETTINGS, GROUPS, MAX_BYTES, REQUEST_LIMIT_MS, STATUS_LABEL,
-  effectiveSettings, emptyScore, fetchLive, overall, readToken, runModel, runState, settingsProblem, sha256Hex, storeToken, unloadModels,
-  type Backdrop, type Live, type ModelEntry, type RunMeta, type RunSettings, type Score,
+  effectiveSettings, emptyScore, fetchLive, overall, photoProblem, pointsProblem, readToken, runModel, runState, settingsProblem, sha256Hex, storeToken, unloadModels,
+  type Backdrop, type Live, type ModelEntry, type Point, type RunMeta, type RunSettings, type Score,
 } from '../lab/bg'
 
 /**
@@ -16,6 +16,8 @@ type Photo = { id: number; name: string; blob: Blob; url: string; width: number;
 type Row = {
   key: string; photo: number; model: string; status: 'queued' | 'running' | 'done' | 'error' | 'cancelled'; blob?: Blob; url?: string; maskUrl?: string
   meta?: RunMeta; error?: string; settings: ReturnType<typeof effectiveSettings>; score: Score
+  /** Warm timing (a second run of the same request) and what the browser measured itself. */
+  extra?: { warmMs: number | null; coldMs: number | null; inputHash: string; outputHash: string; outputDims: string }
 }
 
 const tone = (status: string) => (status === 'admitted' ? 'bg-success-bg text-success' : status === 'external-inactive' || status === 'custom-unregistered' ? 'bg-surface-raised text-text-muted' : 'bg-warning-bg text-warning')
@@ -30,6 +32,11 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
   const [notice, setNotice] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [settings, setSettings] = useState<RunSettings>(DEFAULT_SETTINGS)
+  // SAM points belong to ONE photograph each. They are never shared, so another photo's coordinates are never reused.
+  const [pointsByPhoto, setPointsByPhoto] = useState<Record<number, Point[]>>({})
+  const pointsRef = useRef(pointsByPhoto)
+  pointsRef.current = pointsByPhoto
+  const [measureWarm, setMeasureWarm] = useState(false)
   const [rows, setRows] = useState<Row[]>([])
   const [running, setRunning] = useState(false)
   const [viewKey, setViewKey] = useState<string | null>(null)
@@ -68,16 +75,18 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
     if (!file) return
     if (!ACCEPT.includes(file.type)) { setNotice('Choose a JPEG, PNG or WebP photo.'); return }
     if (file.size > MAX_BYTES) { setNotice('That photo is larger than 10 MB.'); return }
+    if (file.size === 0) { setNotice('That file is empty.'); return }
     const url = track(file)
     const size = await new Promise<{ width: number; height: number } | null>(resolve => { const img = new Image(); img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight }); img.onerror = () => resolve(null); img.src = url })
     if (!size) { release(url); setNotice('That file could not be read as an image.'); return }
+    if (size.width * size.height > 16_000_000) { release(url); setNotice('That photo is larger than 16 megapixels, which the adapter refuses.'); return }
     setNotice('')
     if (target !== null) {
       const old = photos.find(p => p.id === target); release(old?.url)
       rows.filter(r => r.photo === target).forEach(r => { release(r.url); release(r.maskUrl) })
       setRows(list => list.filter(r => r.photo !== target))
       setPhotos(list => list.map(p => (p.id === target ? { id: target, name: file.name, blob: file, url, ...size } : p)))
-      setSettings(s => ({ ...s, points: [] }))
+      setPointsByPhoto(map => { const { [target]: _gone, ...rest } = map; return rest }) // a replaced photo starts with no points
       return
     }
     if (photos.length >= MAX_PHOTOS) { release(url); setNotice(`Up to ${MAX_PHOTOS} photos at a time.`); return }
@@ -87,15 +96,18 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
   const removePhoto = (id: number) => {
     const old = photos.find(p => p.id === id); release(old?.url)
     rows.filter(r => r.photo === id).forEach(r => { release(r.url); release(r.maskUrl) })
-    setRows(list => list.filter(r => r.photo !== id)); setPhotos(list => list.filter(p => p.id !== id)); setSettings(s => ({ ...s, points: [] }))
+    setRows(list => list.filter(r => r.photo !== id)); setPhotos(list => list.filter(p => p.id !== id))
+    setPointsByPhoto(map => { const { [id]: _gone, ...rest } = map; return rest })
   }
 
   const pickPoint = (event: MouseEvent<HTMLImageElement>, label: 0 | 1) => {
     if (!photo) return
     const box = event.currentTarget.getBoundingClientRect()
     const x = ((event.clientX - box.left) / box.width) * photo.width, y = ((event.clientY - box.top) / box.height) * photo.height
-    setSettings(s => ({ ...s, points: [...s.points, { x, y, label }].slice(0, 8) }))
+    setPointsByPhoto(map => ({ ...map, [photo.id]: [...(map[photo.id] ?? []), { x, y, label }].slice(0, 8) }))
   }
+  /** The settings for ONE photograph: the shared choices plus that photograph's own points. */
+  const settingsFor = (photoId: number): RunSettings => ({ ...settings, points: pointsRef.current[photoId] ?? [] })
 
   // ---- running: one model at a time, photo by photo; a failure stays on its own row ----
   const execute = async (queue: Row[]) => {
@@ -108,11 +120,24 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
       const ctl = new AbortController(); controller.current = ctl
       const limit = setTimeout(() => ctl.abort(), REQUEST_LIMIT_MS)
       setRows(list => list.map(r => (r.key === row.key ? { ...r, status: 'running' } : r)))
+      const runSettings = settingsFor(source.id)
+      const preflight = pointsProblem(model, runSettings.points) || photoProblem(source.width, source.height, runSettings, [model])
+      if (preflight) { // never send a request that is known to be wrong for THIS photograph
+        setRows(list => list.map(r => (r.key === row.key ? { ...r, status: 'error', error: preflight, settings: effectiveSettings(model, runSettings) } : r)))
+        clearTimeout(limit); controller.current = null
+        continue
+      }
       try {
-        const out = await runModel({ model, blob: source.blob, settings, token, signal: ctl.signal })
+        const out = await runModel({ model, blob: source.blob, settings: runSettings, token, signal: ctl.signal })
         if (!photosRef.current.some(p => p.id === source.id && p.url === source.url)) continue // the photo was removed or replaced meanwhile: drop the stale result
+        let warmMs: number | null = out.meta.cold ? null : out.meta.inferenceMs
+        if (measureWarm && out.meta.cold && !cancel.current) { // the same request again, now that the model is loaded
+          try { warmMs = (await runModel({ model, blob: source.blob, settings: runSettings, token, signal: ctl.signal })).meta.inferenceMs } catch { warmMs = null }
+        }
+        const size = await createImageBitmap(out.blob).then(b => `${b.width}x${b.height}`).catch(() => '')
+        const extra = { warmMs, coldMs: out.meta.cold ? out.meta.loadMs + out.meta.inferenceMs : null, inputHash: await sha256Hex(source.blob), outputHash: await sha256Hex(out.blob), outputDims: size }
         const url = track(out.blob)
-        setRows(list => list.map(r => (r.key === row.key ? { ...r, status: 'done', blob: out.blob, url, meta: out.meta } : r)))
+        setRows(list => list.map(r => (r.key === row.key ? { ...r, status: 'done', blob: out.blob, url, meta: out.meta, extra } : r)))
         setViewKey(k => k ?? row.key)
       } catch (error) {
         const aborted = ctl.signal.aborted
@@ -125,7 +150,8 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
   }
   const start = () => {
     if (!photos.length || !chosen.length || problems.length) return
-    const queue: Row[] = photos.flatMap(p => chosen.map(m => ({ key: `${p.id}:${m.id}:${next.current++}`, photo: p.id, model: m.id, status: 'queued' as const, settings: effectiveSettings(m, settings), score: emptyScore() })))
+    if (interactive && !photos.some(p => (pointsByPhoto[p.id] ?? []).some(q => q.label === 1))) return
+    const queue: Row[] = photos.flatMap(p => chosen.map(m => ({ key: `${p.id}:${m.id}:${next.current++}`, photo: p.id, model: m.id, status: 'queued' as const, settings: effectiveSettings(m, settingsFor(p.id)), score: emptyScore() })))
     setRows(list => [...list, ...queue]); void execute(queue)
   }
   const retry = (row: Row) => {
@@ -159,17 +185,23 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
     const m = CATALOGUE.models.find(x => x.id === r.model)!
     const o = overall(r.score)
     return {
-      photo: p.name, photoSha256: await sha256Hex(p.blob), photoSize: `${p.width}x${p.height}`, model: r.model, checkpoint: m.assets.map(a => a.file).join(' + '), status: r.status,
-      settings: r.settings, inferenceMs: r.meta?.inferenceMs ?? null, loadMs: r.meta?.loadMs ?? null, cold: r.meta?.cold ?? null, peakMemoryMb: r.meta?.peakMb ?? null, provider: r.meta?.provider ?? null,
-      outputSize: r.meta?.size ?? null, outputBytes: r.meta?.bytes ?? null, error: r.error ?? null,
+      photo: p.name, inputSha256: r.extra?.inputHash ?? await sha256Hex(p.blob), inputDimensions: `${p.width}x${p.height}`, outputSha256: r.extra?.outputHash ?? null, outputDimensions: r.extra?.outputDims || r.meta?.outputSize || null,
+      adapterAgreesOnInput: r.meta && r.extra ? r.meta.inputSha256 === r.extra.inputHash : null,
+      model: r.model, checkpoint: m.assets.map(a => a.file).join(' + '), checkpointSha256: r.meta?.checkpointSha256.join(' + ') ?? null, status: r.status,
+      settings: r.settings, provider: r.meta?.provider ?? null,
+      coldMs: r.extra?.coldMs ?? null, warmInferenceMs: r.extra?.warmMs ?? null, loadMs: r.meta?.loadMs ?? null, inferenceMs: r.meta?.inferenceMs ?? null, cold: r.meta?.cold ?? null,
+      modelLoadDeltaMb: r.meta?.loadDeltaMb ?? null, processPeakMemoryMb: r.meta?.peakMb ?? null, rssAfterRunMb: r.meta?.rssMb ?? null,
+      outputBytes: r.meta?.bytes ?? null, error: r.error ?? null,
       ratings: r.score.ratings, overall: o.value, decision: r.score.decision, criticalMisrepresentation: r.score.critical, rejected: o.rejected,
       registryStatus: m.status, evaluationPermission: m.evaluationPermission, commercialUse: m.commercialUse,
     }
   }))
-  const exportJson = async () => download('background-removal-benchmark.json', new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), rembg: CATALOGUE.rembg, rows: await exportRows() }, null, 2)], { type: 'application/json' }))
+  const exportJson = async () => download('background-removal-benchmark.json', new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), rembg: CATALOGUE.rembg, runtime: live.state === 'online' ? live.runtime : null,
+    notes: ['modelLoadDeltaMb is the growth in resident memory when this model was loaded cold (approximate footprint); processPeakMemoryMb is the adapter process high-water mark since it started, cumulative over every model run so far, not one model.', 'coldMs is load plus inference for the first run; warmInferenceMs is a repeat of the same request (only when "time a warm run" was on, otherwise null unless the model was already loaded).', 'Nothing is estimated: empty fields were not measured.'],
+    rows: await exportRows() }, null, 2)], { type: 'application/json' }))
   const exportCsv = async () => {
     const data = await exportRows()
-    const cols = ['photo', 'photoSha256', 'photoSize', 'model', 'checkpoint', 'status', 'inferenceMs', 'loadMs', 'cold', 'peakMemoryMb', 'provider', 'outputSize', 'outputBytes', 'error', 'overall', 'decision', 'criticalMisrepresentation', 'rejected', 'registryStatus', 'evaluationPermission', 'commercialUse'] as const
+    const cols = ['photo', 'inputSha256', 'inputDimensions', 'outputSha256', 'outputDimensions', 'adapterAgreesOnInput', 'model', 'checkpoint', 'checkpointSha256', 'status', 'provider', 'coldMs', 'warmInferenceMs', 'loadMs', 'inferenceMs', 'cold', 'modelLoadDeltaMb', 'processPeakMemoryMb', 'rssAfterRunMb', 'outputBytes', 'error', 'overall', 'decision', 'criticalMisrepresentation', 'rejected', 'registryStatus', 'evaluationPermission', 'commercialUse'] as const
     const cell = (v: unknown) => { const t = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t }
     const head = [...cols, 'settings', ...CRITERIA.map(c => `rating ${c}`)]
     const lines = data.map(r => [...cols.map(c => cell(r[c])), cell(JSON.stringify(r.settings)), ...CRITERIA.map(c => cell(r.ratings[c]))].join(','))
@@ -242,19 +274,28 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
             <label className="flex items-center gap-2"><input type="checkbox" checked={settings.postProcessMask} disabled={running || !chosen.some(m => m.settings.postProcessMask)} onChange={e => setSettings(s => ({ ...s, postProcessMask: e.target.checked }))} /> Post-process the mask (smooth the outline)</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={settings.onlyMask} disabled={running || settings.alphaMatting || !chosen.some(m => m.settings.onlyMask)} onChange={e => setSettings(s => ({ ...s, onlyMask: e.target.checked }))} /> Mask only (black and white mask instead of a cut-out)</label>
             {settings.alphaMatting && <p className="text-xs text-text-muted">Mask only is off while alpha matting is on: matting changes the cut-out, so the two are never combined.</p>}
+            {settings.alphaMatting && (
+              <fieldset className="flex flex-wrap items-end gap-3 rounded-lg border border-border p-2" aria-label="Matting thresholds">
+                {([['fg', 'Foreground threshold (1-255)'], ['bg', 'Background threshold (0-254)'], ['erode', 'Erode size (0-50)']] as const).map(([key, label]) => (
+                  <label key={key} className="flex flex-col text-xs">{label}<input type="number" value={settings[key]} disabled={running} onChange={e => setSettings(s => ({ ...s, [key]: Number(e.target.value) }))} className="h-9 w-28 rounded-lg border border-border bg-surface px-2 text-sm" /></label>))}
+                <span className="text-xs text-text-muted">rembg defaults 240 / 10 / 10. Limited to 4 megapixels.</span>
+              </fieldset>)}
+            <label className="flex items-center gap-2"><input type="checkbox" checked={settings.decontaminate} disabled={running || settings.onlyMask || settings.alphaMatting || !chosen.some(m => m.settings.decontaminate)} onChange={e => setSettings(s => ({ ...s, decontaminate: e.target.checked }))} /> Colour decontamination (removes background colour from soft edges; off while matting is on, which does this itself)</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={measureWarm} disabled={running} onChange={e => setMeasureWarm(e.target.checked)} /> Time a warm run too (repeats each first run once the model is loaded)</label>
             {cloth && <label className="flex items-center gap-2">Clothing region <select value={settings.cloth} disabled={running} onChange={e => setSettings(s => ({ ...s, cloth: e.target.value }))} className="h-9 rounded-lg border border-border bg-surface px-2"><option value="">Choose…</option>{cloth.settings.clothRegion!.map(r => <option key={r} value={r}>{r}</option>)}</select></label>}
             {interactive && photo && (
               <div>
-                <p className="text-xs text-text-muted">SAM is interactive: it does not find the subject by itself. Click the photo to add points ({settings.points.length} placed). Click = foreground; hold Shift for background.</p>
+                <p className="text-xs text-text-muted">SAM is interactive: it does not find the subject by itself. Points belong to the photograph shown ({photo.name}): {(pointsByPhoto[photo.id] ?? []).length} placed here. Other photographs need their own. Click = foreground; hold Shift for background.</p>
                 <div className="relative mt-1 inline-block"><img src={photo.url} alt={`Place points on ${photo.name}`} onClick={e => pickPoint(e, e.shiftKey ? 0 : 1)} className="max-h-64 cursor-crosshair rounded-lg border border-border" />
-                  {settings.points.map((p, i) => <span key={i} aria-hidden="true" className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white" style={{ left: `${(p.x / photo.width) * 100}%`, top: `${(p.y / photo.height) * 100}%`, background: p.label ? '#16a34a' : '#dc2626' }} />)}</div>
-                <Button size="sm" variant="tertiary" onClick={() => setSettings(s => ({ ...s, points: [] }))}>Clear points</Button>
+                  {(pointsByPhoto[photo.id] ?? []).map((p, i) => <span key={i} aria-hidden="true" className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white" style={{ left: `${(p.x / photo.width) * 100}%`, top: `${(p.y / photo.height) * 100}%`, background: p.label ? '#16a34a' : '#dc2626' }} />)}</div>
+                <Button size="sm" variant="tertiary" onClick={() => setPointsByPhoto(map => ({ ...map, [photo.id]: [] }))}>Clear points for this photo</Button>
               </div>)}
-            {chosen.some(m => m.settings.dynamicResolution) && <p className="text-xs text-text-muted">Dynamic-resolution models accept the photo's own proportions; there is nothing to set.</p>}
+            {chosen.some(m => m.runtime && !m.runtime.dynamicResolution && m.family === 'birefnet') && <p className="text-xs text-text-muted">BiRefNet sessions in rembg resize every photograph to 1024 x 1024 (verified in the installed rembg); the dynamic-resolution variant does not change that here.</p>}
+            {interactive && photos.filter(p => !(pointsByPhoto[p.id] ?? []).some(q => q.label === 1)).map(p => <p key={p.id} className="text-xs text-warning">{p.name}: no foreground point yet, so SAM will skip it.</p>)}
             {problems.map(p => <p key={p.m.id} role="alert" className="text-xs font-semibold text-warning">{p.m.label}: {p.text}</p>)}
           </div>)}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button onClick={start} disabled={running || !photos.length || !chosen.length || problems.length > 0 || !token.trim()}>Run {photos.length > 1 || chosen.length > 1 ? `comparison (${photos.length * chosen.length} runs, one at a time)` : 'model'}</Button>
+          <Button onClick={start} disabled={running || !photos.length || !chosen.length || problems.length > 0 || !token.trim() || (interactive && !photos.some(p => (pointsByPhoto[p.id] ?? []).some(q => q.label === 1)))}>Run {photos.length > 1 || chosen.length > 1 ? `comparison (${photos.length * chosen.length} runs, one at a time)` : 'model'}</Button>
           {running && <Button variant="secondary" onClick={stop}>Cancel</Button>}
           {!token.trim() && chosen.length > 0 && <span className="text-xs text-text-muted">Paste the adapter token to run.</span>}
         </div>

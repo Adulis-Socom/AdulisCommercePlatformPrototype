@@ -9,6 +9,10 @@ Endpoints (all on 127.0.0.1; GET needs no token, POST needs X-Adulis-Token):
   POST /unload[?model=<id>]          drop one cached session (or all) so memory is released
   POST /install?model=<id>           download a PERMITTED model's registered files (registry URLs only), verify, report SHA-256
 
+Custom checkpoints are registered ONLY from the command line (python adapter.py register-custom ...): the file is copied into
+models/models/custom, hashed, and listed as `custom:<name>`. It stays blocked until its SHA-256 is added to `customAdmissions` in the
+reviewed models.json (with licence evidence). No HTTP request can name a path.
+
 Safeguards: binds 127.0.0.1 only; Host and Origin allowlists; per-run token; no URLs or paths accepted from a request; models
 limited to models.json AND status exactly "admitted" (anything else is refused with 403 before any load; there is no flag or
 environment bypass); SHA-256 of every checkpoint file verified before loading; decoded-image checks; one inference at a time;
@@ -19,9 +23,11 @@ import collections
 import gc
 import hashlib
 import hmac
+import inspect
 import io
 import json
 import os
+import re
 import secrets
 import shutil
 import sys
@@ -35,6 +41,7 @@ HERE = Path(__file__).resolve().parent
 REGISTRY = json.loads((HERE / "models.json").read_text(encoding="utf-8"))
 MANIFEST = REGISTRY["models"]
 MODEL_ROOT = HERE / "models" / "models"  # rembg layout: <REMBG_HOME>/models/<id>/<file>
+ADMITTED_CUSTOM = {e["sha256"] for e in REGISTRY.get("customAdmissions", []) if isinstance(e, dict) and e.get("sha256") and e.get("licenceEvidence")}
 
 # Experiment defaults, not approved production policy.
 MAX_BYTES = 10 * 1024 * 1024
@@ -44,6 +51,11 @@ MAX_SESSIONS = max(1, min(2, int(os.environ.get("ADAPTER_MAX_SESSIONS", "1"))))
 RAM_HEADROOM_MB = 1024   # free memory that must remain after the estimated model footprint
 DISK_HEADROOM_MB = 2048
 MAX_POINTS = 8
+MAX_MATTING_PIXELS = 4_000_000  # alpha matting solves a sparse system; larger images are refused instead of exhausting memory
+CUSTOM_DIR = HERE / "models" / "models" / "custom"
+CUSTOM_REGISTRY = CUSTOM_DIR / "custom_registry.json"  # local, gitignored with the weights
+CUSTOM_SESSIONS = ("u2net_custom", "dis_custom", "ben_custom")
+MAX_CUSTOM_BYTES = 2 * 1024 ** 3
 FORMATS = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
 PORT = int(os.environ.get("ADAPTER_PORT", "8765"))
 APP_PORTS = os.environ.get("ADAPTER_APP_PORTS", "8443,5173,4173").split(",")
@@ -141,6 +153,65 @@ def sha256_of(path):
     return digest.hexdigest()
 
 
+def load_custom():
+    """Local custom checkpoints become `custom:<name>` entries. They are blocked unless their SHA-256 is in the reviewed customAdmissions."""
+    if not CUSTOM_REGISTRY.is_file():
+        return
+    try:
+        records = json.loads(CUSTOM_REGISTRY.read_text(encoding="utf-8")).get("checkpoints", [])
+    except (OSError, ValueError):
+        return
+    for record in records:
+        name, session, sha = record.get("name", ""), record.get("session", ""), record.get("sha256", "")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,40}", name) or session not in CUSTOM_SESSIONS or not re.fullmatch(r"[0-9a-f]{64}", sha):
+            continue
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,40}\.onnx", record.get("file", "")):
+            continue
+        base = MANIFEST[session]
+        admitted = sha in ADMITTED_CUSTOM
+        MANIFEST[f"custom:{name}"] = {
+            **{k: v for k, v in base.items() if k not in ("assets", "statusNote", "blocker", "status")},
+            "label": f"Custom: {name} ({base['label']})", "status": "admitted" if admitted else "registered",
+            "statusNote": "Custom checkpoint registered locally. It runs only after its SHA-256 is added to customAdmissions in the reviewed registry, with licence evidence.",
+            "blocker": "" if admitted else "Not admitted: a custom checkpoint needs a reviewed customAdmissions entry (SHA-256 and licence evidence)",
+            "customFile": record["file"], "sha256": sha, "assets": [], "installPermitted": False, "custom": True,
+        }
+
+
+def register_custom(name, session, source):
+    """Copy a local .onnx into the custom folder, record its SHA-256 and list it as blocked. Command line only; never reachable over HTTP."""
+    if session not in CUSTOM_SESSIONS:
+        raise SystemExit(f"session must be one of {', '.join(CUSTOM_SESSIONS)}")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,40}", name):
+        raise SystemExit("name must be lowercase letters, digits and hyphens (at most 41 characters)")
+    src = Path(source)
+    if src.is_symlink() or not src.is_file() or src.suffix.lower() != ".onnx":
+        raise SystemExit("source must be an existing regular .onnx file (symbolic links are refused)")
+    if src.stat().st_size > MAX_CUSTOM_BYTES:
+        raise SystemExit("source is larger than 2 GB")
+    CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
+    target = CUSTOM_DIR / f"{name}.onnx"
+    shutil.copyfile(src, target)
+    sha = sha256_of(target)
+    data = json.loads(CUSTOM_REGISTRY.read_text(encoding="utf-8")) if CUSTOM_REGISTRY.is_file() else {"checkpoints": []}
+    data["checkpoints"] = [c for c in data["checkpoints"] if c.get("name") != name] + [{"name": name, "session": session, "file": target.name, "sha256": sha, "bytes": target.stat().st_size}]
+    CUSTOM_REGISTRY.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    print(f"registered custom:{name} ({session}), sha256 {sha}. It is BLOCKED until this hash is added to customAdmissions in models.json with licence evidence.")
+    return sha
+
+
+def resolve_custom_path(entry):
+    """The explicit model_path for a custom session: a regular, non-symlink file directly inside the custom folder, nowhere else."""
+    root = CUSTOM_DIR.resolve()
+    candidate = CUSTOM_DIR / entry["customFile"]
+    if candidate.is_symlink() or not candidate.is_file():
+        raise Refused(503, "The registered custom checkpoint is missing.")
+    resolved = candidate.resolve()
+    if resolved.parent != root:
+        raise Refused(500, "Custom checkpoint path is outside the custom folder; refusing it.")
+    return resolved
+
+
 def is_admitted(entry):
     """Fail closed: only an exact status of "admitted" may run. No environment or request override exists."""
     return entry.get("status") == "admitted"
@@ -149,6 +220,8 @@ def is_admitted(entry):
 def checkpoint_files(model):
     """(path, expected sha256 or None, asset) for every file the model needs. Legacy single-file records keep their own fields."""
     entry = MANIFEST[model]
+    if entry.get("custom"):
+        return [(CUSTOM_DIR / entry["customFile"], entry["sha256"], None)]
     if entry.get("file") and entry.get("sha256"):
         return [(HERE / "models" / entry["file"], entry["sha256"], None)]
     return [(MODEL_ROOT / model / asset["file"], asset.get("actualSha256"), asset) for asset in entry.get("assets", [])]
@@ -197,7 +270,8 @@ def load_session(model):
     gc.collect()
     started = time.perf_counter()
     from rembg import new_session
-    session = new_session(model, providers=["CPUExecutionProvider"])
+    kwargs = {"model_path": str(resolve_custom_path(entry))} if entry.get("custom") else {}
+    session = new_session(entry["rembgSession"], providers=["CPUExecutionProvider"], **kwargs)
     _sessions[model] = session
     return session, (time.perf_counter() - started) * 1000, True
 
@@ -223,7 +297,9 @@ def decode(body):
 
 
 # ---- settings -------------------------------------------------------------------------------------------------------------
-SETTING_KEYS = {"only_mask": "onlyMask", "alpha_matting": "alphaMatting", "post_process_mask": "postProcessMask", "points": "samPoints", "cloth": "clothRegion"}
+SETTING_KEYS = {"only_mask": "onlyMask", "alpha_matting": "alphaMatting", "post_process_mask": "postProcessMask", "decontaminate": "decontaminate", "points": "samPoints", "cloth": "clothRegion"}
+# rembg 2.0.88 (rembg/bg.py alpha_matting_cutout) defaults: foreground threshold 240, background threshold 10, erode size 10
+MATTING_DEFAULTS = {"fg_threshold": 240, "bg_threshold": 10, "erode_size": 10}
 
 
 def _flag(query, name):
@@ -236,16 +312,36 @@ def _flag(query, name):
 def parse_settings(model, query):
     """Validated inference settings from the query string. Unknown or unsupported settings are refused, never ignored."""
     supported = MANIFEST[model].get("settings", {})
-    known = set(SETTING_KEYS) | {"model"}
+    known = set(SETTING_KEYS) | set(MATTING_DEFAULTS) | {"model"}
     for name in query:
         if name not in known:
             raise Refused(400, f"Unknown setting: {name}.")
-    settings = {"only_mask": _flag(query, "only_mask"), "alpha_matting": _flag(query, "alpha_matting"), "post_process_mask": _flag(query, "post_process_mask")}
-    for name in ("only_mask", "alpha_matting", "post_process_mask"):
+    settings = {"only_mask": _flag(query, "only_mask"), "alpha_matting": _flag(query, "alpha_matting"), "post_process_mask": _flag(query, "post_process_mask"), "decontaminate": _flag(query, "decontaminate")}
+    for name in ("only_mask", "alpha_matting", "post_process_mask", "decontaminate"):
         if settings[name] and not supported.get(SETTING_KEYS[name]):
             raise Refused(400, f"{name} is not supported by this model.")
     if settings["only_mask"] and settings["alpha_matting"]:
         raise Refused(400, "Alpha matting changes the cut-out, so it cannot be combined with a mask-only result.")
+    if settings["decontaminate"] and settings["only_mask"]:
+        raise Refused(400, "Colour decontamination recolours the cut-out, so it cannot be combined with a mask-only result.")
+    if settings["decontaminate"] and settings["alpha_matting"]:
+        raise Refused(400, "Alpha matting already estimates the foreground colour (rembg ignores decontaminate then), so choose one of the two.")
+    for name, (low, high) in {"fg_threshold": (1, 255), "bg_threshold": (0, 254), "erode_size": (0, 50)}.items():
+        if name in query:
+            if not settings["alpha_matting"]:
+                raise Refused(400, f"{name} only applies with alpha_matting=1.")
+            try:
+                value = int(query[name][0])
+            except ValueError:
+                raise Refused(400, f"{name} must be a whole number.")
+            if not low <= value <= high:
+                raise Refused(400, f"{name} must be between {low} and {high}.")
+            settings[name] = value
+    if settings["alpha_matting"]:
+        merged = {**MATTING_DEFAULTS, **{k: settings[k] for k in MATTING_DEFAULTS if k in settings}}
+        if merged["fg_threshold"] <= merged["bg_threshold"]:
+            raise Refused(400, "The foreground threshold must be higher than the background threshold.")
+        settings.update(merged)
     points = query.get("points", [""])[0]
     if model == "sam" or points:
         if not supported.get("samPoints"):
@@ -280,6 +376,14 @@ def remove(image, session, settings):
         if x >= image.width or y >= image.height:
             raise Refused(400, "A point lies outside the image.")
     kwargs = {"only_mask": settings["only_mask"], "alpha_matting": settings["alpha_matting"], "post_process_mask": settings["post_process_mask"]}
+    if settings.get("alpha_matting"):
+        if image.width * image.height > MAX_MATTING_PIXELS:
+            raise Refused(400, f"Alpha matting is limited to {MAX_MATTING_PIXELS // 1_000_000} megapixels; use a smaller photograph or turn it off.")
+        kwargs.update(alpha_matting_foreground_threshold=settings["fg_threshold"], alpha_matting_background_threshold=settings["bg_threshold"], alpha_matting_erode_size=settings["erode_size"])
+    if settings.get("decontaminate"):
+        if "decontaminate" not in inspect.signature(rembg_remove).parameters:
+            raise Refused(501, "This rembg build has no colour decontamination.")
+        kwargs["decontaminate"] = True
     if "points" in settings:
         kwargs["sam_prompt"] = [{"type": "point", "label": label, "data": [x, y]} for x, y, label in settings["points"]]
     if "cloth" in settings:
@@ -298,12 +402,22 @@ def process(body, model, settings=None):
     def work():
         try:
             image = decode(body)
+            rss_before = rss_mb()
             session, load_ms, cold = load_session(model)
+            rss_loaded = rss_mb()
             started = time.perf_counter()
-            png = remove(image, session, settings or {"only_mask": False, "alpha_matting": False, "post_process_mask": False})
+            png = remove(image, session, settings or {"only_mask": False, "alpha_matting": False, "post_process_mask": False, "decontaminate": False})
             ms = (time.perf_counter() - started) * 1000
-            result.update(png=png, load_ms=load_ms, ms=ms, size=image.size, cold=cold)
-            record.update(ok=True, loadMs=round(load_ms), ms=round(ms), size=list(image.size), cold=cold, rssMb=round(rss_mb()), peakRssMb=round(peak_rss_mb()), bytesOut=len(png))
+            from PIL import Image
+            out = Image.open(io.BytesIO(png))
+            facts = {"inputSha256": hashlib.sha256(body).hexdigest(), "outputSha256": hashlib.sha256(png).hexdigest(), "outputSize": list(out.size),
+                     "provider": session_provider(session), "checkpointSha256": [sha for _, sha, _ in checkpoint_files(model)]}
+            # Memory: the cache holds at most MAX_SESSIONS models, so on a cold load the RSS growth approximates this model's footprint
+            # (it also includes allocator growth). The peak is the whole process's high-water mark since the adapter started.
+            memory = {"rssBeforeLoadMb": round(rss_before), "rssAfterLoadMb": round(rss_loaded), "loadDeltaMb": round(rss_loaded - rss_before) if cold else None,
+                      "processPeakRssMb": round(peak_rss_mb()), "peakScope": "process-cumulative"}
+            result.update(png=png, load_ms=load_ms, ms=ms, size=image.size, cold=cold, facts=facts, memory=memory)
+            record.update(ok=True, loadMs=round(load_ms), ms=round(ms), size=list(image.size), cold=cold, rssMb=round(rss_mb()), peakRssMb=round(peak_rss_mb()), bytesOut=len(png), **facts, **memory)
         except Refused as refusal:
             result["refused"] = refusal
             record.update(error=refusal.message, status=refusal.status)
@@ -325,6 +439,39 @@ def process(body, model, settings=None):
     if "refused" in result:
         raise result["refused"]
     return result
+
+
+def session_provider(session):
+    """The execution provider onnxruntime actually used (first provider of the live inference session), or 'unknown'."""
+    for attribute in ("inner_session", "encoder", "session"):
+        inner = getattr(session, attribute, None)
+        if inner is not None and hasattr(inner, "get_providers"):
+            return inner.get_providers()[0]
+    return "unknown"
+
+
+def runtime_info():
+    """What this machine can really run, read from the installed packages (not copied from documentation)."""
+    import importlib.metadata as md
+    import importlib.util
+    import platform
+    import onnxruntime
+    from rembg import remove as rembg_remove
+
+    def version(name):
+        try:
+            return md.version(name)
+        except md.PackageNotFoundError:
+            return None
+    return {
+        "python": platform.python_version(), "platform": platform.platform(), "machine": platform.machine(), "cpuCount": os.cpu_count(),
+        "freeRamMb": round(free_ram_mb()), "ompNumThreads": os.environ.get("OMP_NUM_THREADS"),
+        "packages": {name: version(name) for name in ("rembg", "onnxruntime", "numpy", "pillow", "PyMatting", "scipy", "onnx", "onnxconverter-common")},
+        "onnxruntimeProviders": onnxruntime.get_available_providers(), "adapterProviders": ["CPUExecutionProvider"],
+        "decontaminateSupported": "decontaminate" in inspect.signature(rembg_remove).parameters,
+        "missingRequirements": {key: [r for r in entry.get("requirements", []) if importlib.util.find_spec(r.replace("-", "_")) is None]
+                                for key, entry in MANIFEST.items() if entry.get("requirements")},
+    }
 
 
 def public_entry(model):
@@ -397,7 +544,7 @@ class Handler(BaseHTTPRequestHandler):
         if origin:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
-            self.send_header("Access-Control-Expose-Headers", "X-Model, X-Inference-Ms, X-Load-Ms, X-Peak-Rss-Mb, X-Rss-Mb, X-Provider, X-Input-Size, X-Cold")
+            self.send_header("Access-Control-Expose-Headers", "X-Model, X-Inference-Ms, X-Load-Ms, X-Peak-Rss-Mb, X-Rss-Mb, X-Provider, X-Input-Size, X-Cold, X-Input-Sha256, X-Output-Sha256, X-Output-Size, X-Checkpoint-Sha256, X-Load-Delta-Mb")
         for key, value in (extra or {}).items():
             self.send_header(key, value)
         self.end_headers()
@@ -427,7 +574,7 @@ class Handler(BaseHTTPRequestHandler):
                            "ready": is_admitted(entry) and is_installed(key)} for key, entry in MANIFEST.items()]
                 return self._json(200, {"ok": True, "busy": _busy.locked(), "models": models}, origin)
             if parts.path == "/catalogue":
-                return self._json(200, {"rembg": REGISTRY["rembg"], "licenceFamilies": REGISTRY["licenceFamilies"], "maxSessions": MAX_SESSIONS,
+                return self._json(200, {"runtime": runtime_info(), "rembg": REGISTRY["rembg"], "licenceFamilies": REGISTRY["licenceFamilies"], "maxSessions": MAX_SESSIONS,
                                         "models": [public_entry(key) for key in MANIFEST]}, origin)
             if parts.path == "/status":
                 model = query.get("model", [""])[0]
@@ -499,7 +646,12 @@ class Handler(BaseHTTPRequestHandler):
                 "X-Peak-Rss-Mb": f"{peak_rss_mb():.0f}",
                 "X-Rss-Mb": f"{rss_mb():.0f}",
                 "X-Cold": "1" if result["cold"] else "0",
-                "X-Provider": "CPUExecutionProvider",
+                "X-Provider": result["facts"]["provider"],
+                "X-Input-Sha256": result["facts"]["inputSha256"],
+                "X-Output-Sha256": result["facts"]["outputSha256"],
+                "X-Output-Size": f"{result['facts']['outputSize'][0]}x{result['facts']['outputSize'][1]}",
+                "X-Checkpoint-Sha256": ",".join(result["facts"]["checkpointSha256"]),
+                "X-Load-Delta-Mb": "" if result["memory"]["loadDeltaMb"] is None else str(result["memory"]["loadDeltaMb"]),
                 "X-Input-Size": f"{result['size'][0]}x{result['size'][1]}",
             })
             print(f"  {model}: {result['ms']:.0f} ms inference, {(time.perf_counter() - started) * 1000:.0f} ms total")
@@ -509,6 +661,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "register-custom" and len(sys.argv) == 5:
+            register_custom(sys.argv[2], sys.argv[3], sys.argv[4])
+            return
+        raise SystemExit("usage: adapter.py [register-custom <name> <u2net_custom|dis_custom|ben_custom> <file.onnx>]")
     # rembg's import is slow when cold (numba, scipy: ~20 s); pay it before the first request's time budget starts.
     started = time.perf_counter()
     import rembg  # noqa: F401
@@ -524,6 +681,8 @@ def main():
     finally:
         server.server_close()
 
+
+load_custom()
 
 if __name__ == "__main__":
     main()

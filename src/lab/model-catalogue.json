@@ -141,7 +141,8 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
@@ -192,7 +193,8 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
@@ -248,7 +250,8 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
@@ -299,7 +302,8 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
@@ -351,6 +355,7 @@
     "alphaMatting": true,
     "postProcessMask": true,
     "onlyMask": true,
+    "decontaminate": true,
     "clothRegion": [
      "upper",
      "lower",
@@ -406,7 +411,8 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
@@ -457,7 +463,8 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
@@ -508,10 +515,30 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
+    "dynamicResolution": false,
+    "precision": "float32 weights, float32 input",
+    "verifiedIn": "rembg/sessions/birefnet_general.py:35"
+   },
+   "officialPublisher": {
+    "repo": "https://github.com/ZhengPeng7/BiRefNet",
+    "release": "https://github.com/ZhengPeng7/BiRefNet/releases (tag v1)",
+    "files": [
+     "BiRefNet-general-epoch_244.pth (844 MB)",
+     "BiRefNet-general-epoch_244.onnx (928 MB)"
+    ],
+    "licence": "MIT (repository LICENSE, model card 'License: mit')",
+    "hash": "no SHA-256 found on the release page, README or model cards",
+    "onnxOfficial": true,
+    "sameBytesAsRembgCopy": "not verified (sizes match; no publisher hash to compare)",
+    "trainingData": "README lists DIS5K-TR and further sets; no statement found that dataset terms apply to the weights (not a legal finding)"
+   },
    "assets": [
     {
      "file": "BiRefNet-general-epoch_244.onnx",
@@ -556,10 +583,30 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
+    "dynamicResolution": false,
+    "precision": "float32 weights, float32 input",
+    "verifiedIn": "rembg/sessions/birefnet_general.py:35"
+   },
+   "officialPublisher": {
+    "repo": "https://github.com/ZhengPeng7/BiRefNet",
+    "release": "https://github.com/ZhengPeng7/BiRefNet/releases (tag v1)",
+    "files": [
+     "BiRefNet-general-bb_swin_v1_tiny-epoch_232.pth (170 MB)",
+     "BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx (214 MB)"
+    ],
+    "licence": "MIT (repository LICENSE)",
+    "hash": "no SHA-256 found",
+    "onnxOfficial": true,
+    "sameBytesAsRembgCopy": "not verified; the page never calls this variant 'lite', rembg's name for the swin_v1_tiny file is the only link",
+    "trainingData": "as birefnet-general"
+   },
    "assets": [
     {
      "file": "BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx",
@@ -604,10 +651,18 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
+    "dynamicResolution": false,
+    "precision": "float16 weights converted ONCE from the float32 file with onnxconverter_common.float16.convert_float_to_float16(keep_io_types=True); input stays float32",
+    "verifiedIn": "rembg/sessions/birefnet_general_fp16.py:36-58",
+    "note": "Suited to GPUs; usually slower on CPU. The adapter runs CPU only."
+   },
    "requirements": [
     "onnx",
     "onnxconverter-common"
@@ -642,10 +697,17 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
+    "dynamicResolution": false,
+    "precision": "float32 weights, float32 input",
+    "verifiedIn": "rembg/sessions/birefnet_general.py:35"
+   },
    "assets": [
     {
      "file": "BiRefNet-portrait-epoch_150.onnx",
@@ -690,10 +752,17 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
+    "dynamicResolution": false,
+    "precision": "float32 weights, float32 input",
+    "verifiedIn": "rembg/sessions/birefnet_general.py:35"
+   },
    "assets": [
     {
      "file": "BiRefNet-DIS-epoch_590.onnx",
@@ -738,10 +807,17 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
+    "dynamicResolution": false,
+    "precision": "float32 weights, float32 input",
+    "verifiedIn": "rembg/sessions/birefnet_general.py:35"
+   },
    "assets": [
     {
      "file": "BiRefNet-HRSOD_DHU-epoch_115.onnx",
@@ -786,10 +862,17 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
+    "dynamicResolution": false,
+    "precision": "float32 weights, float32 input",
+    "verifiedIn": "rembg/sessions/birefnet_general.py:35"
+   },
    "assets": [
     {
      "file": "BiRefNet-COD-epoch_125.onnx",
@@ -834,10 +917,17 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
+    "dynamicResolution": false,
+    "precision": "float32 weights, float32 input",
+    "verifiedIn": "rembg/sessions/birefnet_general.py:35"
+   },
    "assets": [
     {
      "file": "BiRefNet-massive-TR_DIS5K_TR_TEs-epoch_420.onnx",
@@ -883,10 +973,17 @@
     "alphaMatting": true,
     "postProcessMask": true,
     "onlyMask": true,
-    "dynamicResolution": true
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
+    "dynamicResolution": false,
+    "precision": "float32 weights, float32 input",
+    "verifiedIn": "rembg/sessions/birefnet_general.py:35",
+    "note": "The checkpoint was trained for a dynamic range by its publisher, but rembg's session still feeds 1024x1024, so that range is not used here."
+   },
    "assets": [
     {
      "file": "BiRefNet_dynamic-1024x1024.onnx",
@@ -934,7 +1031,8 @@
    "settings": {
     "alphaMatting": true,
     "postProcessMask": true,
-    "onlyMask": true
+    "onlyMask": true,
+    "decontaminate": true
    },
    "install": "not-installed",
    "installPermitted": false,
@@ -983,6 +1081,7 @@
     "alphaMatting": true,
     "postProcessMask": true,
     "onlyMask": true,
+    "decontaminate": true,
     "samPoints": true
    },
    "install": "not-installed",
@@ -990,6 +1089,26 @@
    "modes": [
     "interactive point prompt (label 1 foreground, 0 background); not automatic segmentation"
    ],
+   "runtime": {
+    "inputHandling": "fixed: image warped to 684x1024, encoder fed raw float32 HWC; mask returned as binary 0/255",
+    "dynamicResolution": false,
+    "precision": "float32 (quantised variants are not registered)",
+    "verifiedIn": "rembg/sessions/sam.py (kwargs sam_model, sam_quant, sam_prompt)",
+    "prompt": "list of {type: point|rectangle}; the adapter only forwards points"
+   },
+   "officialPublisher": {
+    "repo": "https://github.com/facebookresearch/segment-anything",
+    "files": [
+     "sam_vit_b_01ec64.pth",
+     "sam_vit_l_0b3195.pth",
+     "sam_vit_h_4b8939.pth (.pth only, hosted at dl.fbaipublicfiles.com)"
+    ],
+    "licence": "Apache 2.0 (README and LICENSE)",
+    "hash": "no hash published (hex suffixes in the names are not labelled as hashes)",
+    "onnxOfficial": false,
+    "onnxNote": "Meta documents exporting the DECODER to ONNX; no official ONNX files were found, so the rembg encoder and decoder files are not Meta-published and their maker is unconfirmed",
+    "trainingData": "SA-1B licence text not read"
+   },
    "assets": [
     {
      "file": "sam_vit_b_01ec64.encoder.onnx",
@@ -1043,6 +1162,11 @@
    "settings": {},
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "as the base session class",
+    "modelPath": "explicit model_path, resolved by the adapter from a locally registered file inside models/models/custom (rembg also checks it lies under its home)",
+    "verifiedIn": "rembg/sessions/base.py validate_model_path"
+   },
    "assets": [],
    "id": "u2net_custom",
    "admitted": false
@@ -1074,6 +1198,11 @@
    "settings": {},
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "as the base session class",
+    "modelPath": "explicit model_path, resolved by the adapter from a locally registered file inside models/models/custom (rembg also checks it lies under its home)",
+    "verifiedIn": "rembg/sessions/base.py validate_model_path"
+   },
    "assets": [],
    "id": "dis_custom",
    "admitted": false
@@ -1105,6 +1234,11 @@
    "settings": {},
    "install": "not-installed",
    "installPermitted": false,
+   "runtime": {
+    "inputHandling": "as the base session class",
+    "modelPath": "explicit model_path, resolved by the adapter from a locally registered file inside models/models/custom (rembg also checks it lies under its home)",
+    "verifiedIn": "rembg/sessions/base.py validate_model_path"
+   },
    "assets": [],
    "id": "ben_custom",
    "admitted": false
