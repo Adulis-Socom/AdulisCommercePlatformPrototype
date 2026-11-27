@@ -37,10 +37,14 @@ export function BuyerChat({ sellerId, at, startProductId, startSceneId, history,
   const config = botConfigOf(state, sellerId)
   const scenes = useMemo(() => publicScenes(state, at, sellerId), [state, at, sellerId])
   const [sceneId, setSceneId] = useState(startSceneId ?? '')
+  // The Scene revision the Buyer opened. It is captured when the Scene is chosen, so an edit made meanwhile is detected as stale.
+  const [sceneRev, setSceneRev] = useState<number | null>(null)
+  const [notice, setNotice] = useState('')
   const [productId, setProductId] = useState(startProductId ?? '')
   const [variant, setVariant] = useState<Record<string, string>>({})
   const [text, setText] = useState('')
   const sceneChoice = scenes.find(s => s.id === sceneId)
+  const openedRev = sceneChoice ? sceneRev ?? sceneChoice.revision : null
   // Products filtered by the chosen Scene; with no Scene, every Product of this Seller the Buyer may see (seeded and authored).
   const shownProducts = sceneChoice ? sceneChoice.products : linkableProducts(state, sellerId as SellerId, at, true)
   const product = productId ? productFacts(state, labels, at, sellerId, productId) : null
@@ -53,22 +57,32 @@ export function BuyerChat({ sellerId, at, startProductId, startSceneId, history,
 
   const subject = (): MessageSubject => ({
     sellerId,
-    ...(sceneChoice ? { scene: { id: sceneChoice.id, revision: sceneChoice.revision } } : {}),
+    ...(sceneChoice ? { scene: { id: sceneChoice.id, revision: openedRev ?? sceneChoice.revision } } : {}),
     ...(productId ? { productId } : {}),
     ...(productId && Object.keys(variant).length ? { variant: { ...variant } } : {}),
   })
+  const labelFor = (s: MessageSubject) => {
+    const prod = s.productId ? productFacts(state, labels, at, sellerId, s.productId) : null
+    const sc = s.scene ? sceneTitle(state, s.scene.id) : ''
+    return prod ? `${prod.name}${sc ? ` · ${sc} Scene` : ''}` : sc ? `${sc} Scene` : `General question for ${seller}`
+  }
   const subjectLabel = () => (product ? `${product.name}${sceneChoice ? ` · ${sceneTitle(state, sceneChoice.id)} Scene` : ''}` : sceneChoice ? `${sceneTitle(state, sceneChoice.id)} Scene` : `General question for ${seller}`)
   const send = (chip?: Chip, area?: string) => {
     const body = chip ? undefined : text.trim()
     if (!chip && !body) return
-    sendBuyerMessage(state, dispatch, labels, at, { buyerId: BUYER_ID, sellerId, text: body, chip, subject: { ...subject(), ...(area ? { area } : {}) }, subjectLabel: subjectLabel() })
+    // A quick reply acts on the subject of the response that offered it, not on what the composer shows now.
+    const target = chip?.subject ?? subject()
+    sendBuyerMessage(state, dispatch, labels, at, { buyerId: BUYER_ID, sellerId, text: body, chip, subject: { ...target, ...(area ? { area } : {}) }, subjectLabel: chip?.subject ? labelFor(chip.subject) : subjectLabel() })
+    setNotice('')
     if (!chip) setText('')
   }
   const pickChip = (chip: Chip) => {
     if (chip.id.startsWith('select-product:')) { setProductId(chip.id.slice('select-product:'.length)); setVariant({}); return }
     if (chip.id === 'select-product' || chip.id === 'choose-product' || chip.id === 'select-size') { productRef.current?.focus(); return }
     if (chip.id.startsWith('option:')) { document.getElementById(`opt-${chip.id.slice(7)}`)?.focus(); return }
-    if (chip.id === 'open-product') { if (productId) onOpenProduct(productId); return }
+    if (chip.id === 'reopen-scene') { const live = scenes.find(s => s.id === (chip.subject?.scene?.id ?? sceneId)); if (live) { setSceneId(live.id); setSceneRev(live.revision); setNotice('Scene reopened at its current version.') } else setNotice('That Scene is no longer available.'); return }
+    // Navigation targets the Product the response was about, and only while it is still viewable (a stale action never opens a hidden item).
+    if (chip.id === 'open-product') { const id = chip.subject?.productId ?? productId; if (id && productFacts(state, labels, at, sellerId, id)?.viewable) onOpenProduct(id); else setNotice('That item is no longer available to view here.'); return }
     if (chip.id === 'open-cart') { onOpenCart(); return }
     send(chip, chip.id.startsWith('area:') ? chip.id.slice(5) : undefined)
   }
@@ -84,6 +98,7 @@ export function BuyerChat({ sellerId, at, startProductId, startSceneId, history,
         {conversation?.messages.map(m => <Bubble key={m.id} m={m} seller={seller} />)}
         {!history && !count && <p className="text-center text-sm text-text-muted">Ask about a Product, delivery or returns. Choose a Scene or Product below so the answer comes from its own record.</p>}
       </div>
+      {notice && <div role="status" className="border-t border-border bg-surface px-3 pt-2 text-xs font-semibold text-text-secondary">{notice}</div>}
       {offered?.chips && offered.chips.length > 0 && (
         <div className="flex flex-wrap gap-1.5 border-t border-border bg-surface px-3 pt-2" aria-label="Quick replies">
           {offered.chips.map(chip => <button key={chip.id} type="button" onClick={() => pickChip(chip)} className="min-h-9 rounded-full border border-brand bg-brand-muted px-3 text-xs font-semibold text-brand-text">{chip.label}</button>)}
@@ -92,7 +107,7 @@ export function BuyerChat({ sellerId, at, startProductId, startSceneId, history,
       <div className="border-t border-border bg-surface p-3 pb-5">
         <div className="mb-2 grid grid-cols-2 gap-2">
           <label className="flex flex-col text-[10px] font-semibold text-text-muted">Scene (optional)
-            <select ref={sceneRef} aria-label="Scene (optional)" value={sceneId} onChange={e => { setSceneId(e.target.value); const next = scenes.find(s => s.id === e.target.value); if (next && productId && !next.products.some(p => p.id === productId)) { setProductId(''); setVariant({}) } }} className="mt-0.5 h-10 rounded-lg border border-border bg-surface px-2 text-sm font-normal text-text-primary">
+            <select ref={sceneRef} aria-label="Scene (optional)" value={sceneId} onChange={e => { setSceneId(e.target.value); setSceneRev(scenes.find(s => s.id === e.target.value)?.revision ?? null); const next = scenes.find(s => s.id === e.target.value); if (next && productId && !next.products.some(p => p.id === productId)) { setProductId(''); setVariant({}) } }} className="mt-0.5 h-10 rounded-lg border border-border bg-surface px-2 text-sm font-normal text-text-primary">
               <option value="">No Scene</option>
               {scenes.map(s => <option key={s.id} value={s.id}>{sceneTitle(state, s.id)}</option>)}
             </select>

@@ -2,6 +2,8 @@
 // the same governing facts where the PDF shows a UI control or a placeholder instead of Bot prose, and are registered as such in the
 // coverage register. Braces are typed slots: a template is rendered only when every slot is resolved, never printed unresolved.
 export const TEMPLATE_VERSION = '1.0.0'
+/** Wording that is not in the PDF is provisional prototype wording until the founder approves it (FD-020). */
+export const isProvisional = (id: TemplateId) => TEMPLATES[id].source === 'derived'
 export interface Template { text: string; source: 'pdf' | 'derived'; page?: number; note?: string }
 
 export const TEMPLATES = {
@@ -13,6 +15,8 @@ export const TEMPLATES = {
   'T-SCENE-SELECT': { text: 'This Scene contains several Products. Which one are you asking about?', source: 'pdf', page: 12 },
   'T-SCENE-ITEMS': { text: 'These are the currently viewable tagged Products: {eligible_tagged_product_names}.', source: 'pdf', page: 12 },
   'T-SCENE-CONTEXT': { text: 'The Seller describes this Scene as: {scene_context_summary}.', source: 'pdf', page: 12 },
+  'T-SCENE-REVISED': { text: 'This Scene was updated after you opened it. Please reopen it, or choose a current Product.', source: 'derived', note: 'Scene revision provenance no longer matches the live Scene (BOT-FIX-01).' },
+  'T-COMPAT-AMBIGUOUS': { text: 'More than one listed model could match. Which exact model do you have? Listed: {candidates}.', source: 'derived', note: 'Compatibility needs an exact model (BOT-FIX-02).' },
   'T-SCENE-OPTION': { text: '{value} is listed for {product}. Please select {remaining_options} to check availability.', source: 'pdf', page: 12 },
   'T-PRICE': { text: 'The listed price for {product} {variant}is {currency} {amount}. Price and availability may change before checkout review.', source: 'pdf', page: 7, note: '{variant} is empty or "<exact option> "' },
   'T-PRICE-OPTIONS': { text: 'Price depends on the option. Please select {required_options} to see its current price.', source: 'pdf', page: 7 },

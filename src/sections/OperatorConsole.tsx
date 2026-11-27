@@ -22,12 +22,13 @@ import {
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { TAXONOMY, TAXONOMY_GAPS, findTaxonomy } from '../demo-data/taxonomy'
 import { useWorkspace } from '../seller-workspace'
+import { DECISION_LABEL, validateReview, type ReviewDecision } from '../chatbot/feedback'
 
 type NavKey =
   | 'overview'
   | 'work-queue' | 'wq-support' | 'wq-moderation' | 'wq-claims' | 'wq-verification' | 'wq-trust-appeals' | 'wq-handoff'
   | 'search-global' | 'search-sellers' | 'search-accounts'
-  | 'gov-config' | 'gov-taxonomy' | 'gov-access' | 'gov-approvals' | 'gov-audit' | 'gov-health'
+  | 'gov-config' | 'gov-taxonomy' | 'gov-chatbot' | 'gov-access' | 'gov-approvals' | 'gov-audit' | 'gov-health'
 
 type QueueFilter = 'All' | 'Support' | 'Moderation' | 'Claims' | 'Verification / Recovery' | 'Trust Appeals' | 'Manual Handoff'
 type FounderActor = 'CEO' | 'COO/CTO'
@@ -61,6 +62,7 @@ const NAV_STRUCTURE: { group?: string; items: NavItem[] }[] = [
     items: [
       { key: 'gov-config', label: 'Configuration', icon: <IconGlobe size={14} /> },
       { key: 'gov-taxonomy', label: 'Taxonomy review', icon: <IconClipboard size={14} /> },
+      { key: 'gov-chatbot', label: 'Chatbot feedback', icon: <IconClipboard size={14} /> },
       { key: 'gov-access', label: 'Operator Access', icon: <IconKey size={14} /> },
       { key: 'gov-approvals', label: 'Founder Decisions', icon: <IconCheck size={14} /> },
       { key: 'gov-audit', label: 'Audit', icon: <IconClipboard size={14} /> },
@@ -229,6 +231,7 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
           {activeNav === 'search-accounts' && <SearchPanel at={at} mode="account" />}
           {activeNav === 'gov-config' && <ConfigurationPanel />}
           {activeNav === 'gov-taxonomy' && <TaxonomyReviewPanel />}
+          {activeNav === 'gov-chatbot' && <ChatbotFeedbackPanel />}
           {activeNav === 'gov-access' && <OperatorAccessPanel at={at} live={live} session={session} setSession={setSession} />}
           {activeNav === 'gov-approvals' && (simulation ? <FounderDecisionsPanel at={at} /> : <div className="mx-auto my-8 max-w-lg rounded-2xl border border-border bg-surface"><SimulationGate title="Founder Decisions" compact>The demonstration decision is a payment Claim on a paid Order, which Release 1 does not have. The dual-Founder approval workflow is shown in the internal simulation.</SimulationGate></div>)}
           {activeNav === 'gov-audit' && <AuditPanel at={at} />}
@@ -1098,6 +1101,65 @@ function ConfigurationPanel() {
 }
 
 /** TAX-003: read-only review of the submitted taxonomy (status: submitted, unratified) and of what Sellers' Products use of it. */
+/** C-22: Seller feedback on assistant answers, reviewed here. A review records a decision and a note; it never edits a template or the live assistant. */
+function ChatbotFeedbackPanel() {
+  const { state, dispatch } = useWorkspace()
+  const [open, setOpen] = useState<string | null>(null)
+  const [decision, setDecision] = useState<ReviewDecision | ''>('')
+  const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  const items = [...state.botFeedback].sort((a, b) => Number(a.status === 'reviewed') - Number(b.status === 'reviewed') || Number(b.priority === 'high') - Number(a.priority === 'high') || b.seq - a.seq)
+  const current = items.find(f => f.id === open) ?? null
+  const submit = () => {
+    const problem = validateReview(decision, note)
+    if (problem || !current || !decision) { setError(problem); return }
+    dispatch({ type: 'feedback-review', id: current.id, review: { decision, note: note.trim(), by: 'Operator (prototype session)', seq: Math.max(0, ...state.botFeedback.map(f => f.review?.seq ?? 0)) + 1 } })
+    setDecision(''); setNote(''); setError('')
+  }
+  return (
+    <div className="mx-auto max-w-7xl p-8">
+      <OperatorHeader title="Chatbot feedback" description="Seller green, yellow and red signals on assistant answers. Reviewing records a decision and a note. It never edits a template, changes the live assistant or trains anything; wording changes are made in a reviewed code change." />
+      <div className="grid grid-cols-3 gap-4 max-lg:grid-cols-1">
+        <OperatorMetric label="Waiting for review" value={String(items.filter(f => f.status === 'open').length)} detail="High priority first" tone="warning" />
+        <OperatorMetric label="High priority open" value={String(items.filter(f => f.status === 'open' && f.priority === 'high').length)} detail="Red signals" tone="warning" />
+        <OperatorMetric label="Reviewed" value={String(items.filter(f => f.status === 'reviewed').length)} detail="Decision recorded" tone="warning" />
+      </div>
+      {items.length === 0 ? <p className="mt-6 text-sm" style={{ color: MUTED }}>No feedback yet. Sellers send it from Automation &gt; Test.</p> : (
+        <ul aria-label="Feedback queue" className="mt-6 flex flex-col gap-2">
+          {items.map(f => (
+            <li key={f.id} className="rounded-lg border p-3 text-sm" style={{ borderColor: 'var(--color-operator-border, #d9d9d9)' }}>
+              <button onClick={() => { setOpen(open === f.id ? null : f.id); setError('') }} aria-expanded={open === f.id} className="flex w-full items-center justify-between gap-3 text-left">
+                <span><span className="font-mono">{f.id}</span> · {SELLERS[f.sellerId as keyof typeof SELLERS]?.name ?? f.sellerId} · {f.signal === 'red' ? 'Wrong or urgent' : f.signal === 'yellow' ? 'Needs review' : 'Correct'}{f.priority === 'high' ? ' · HIGH PRIORITY' : ''}</span>
+                <span style={{ color: MUTED }}>{f.status === 'reviewed' ? 'Reviewed' : 'Open'}</span>
+              </button>
+              {open === f.id && (
+                <div className="mt-3 flex flex-col gap-2 text-xs">
+                  <div><b>Question:</b> {f.question} <span style={{ color: MUTED }}>({f.subjectLabel})</span></div>
+                  <div><b>Assistant answered:</b> {f.response || '(silent)'}</div>
+                  <div><b>Intent and template:</b> {f.intent ?? 'none'} · {f.templateId} v{f.templateVersion} · script {f.dialogue.join(', ') || 'none'}</div>
+                  <div><b>Facts it used:</b> {f.slots.length ? f.slots.map(s => `${s.name} = ${s.value} (${s.source})`).join('; ') : 'none'}</div>
+                  {f.note && <div><b>Seller says:</b> {f.note}</div>}
+                  {f.expected && <div><b>Seller expected:</b> {f.expected}</div>}
+                  {f.review ? <div><b>Review:</b> {DECISION_LABEL[f.review.decision]} · {f.review.note} · {f.review.by}</div> : (
+                    <div className="flex flex-col gap-2">
+                      <label className="flex flex-col font-semibold">Decision
+                        <select value={decision} onChange={e => setDecision(e.target.value as ReviewDecision | '')} className="mt-1 h-9 rounded-lg border px-2 font-normal"><option value="">Choose a decision</option>{(Object.keys(DECISION_LABEL) as ReviewDecision[]).map(d => <option key={d} value={d}>{DECISION_LABEL[d]}</option>)}</select>
+                      </label>
+                      <label className="flex flex-col font-semibold">Note<input value={note} onChange={e => setNote(e.target.value)} maxLength={200} className="mt-1 h-9 rounded-lg border px-2 font-normal" /></label>
+                      {error && <p role="alert" className="font-semibold" style={{ color: 'var(--color-danger)' }}>{error}</p>}
+                      <div><button onClick={submit} className="rounded-lg px-3 py-2 font-semibold" style={{ background: ACCENT, color: '#fff' }}>Record review</button></div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function TaxonomyReviewPanel() {
   const { state } = useWorkspace()
   const rows = TAXONOMY.flatMap(major => major.categories.map(category => ({ major: major.name, category: category.name, subs: category.subcategories.length, defined: category.subcategories.filter(s => s.attributes).length, listed: category.hasSubcategoryList })))

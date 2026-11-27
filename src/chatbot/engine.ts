@@ -7,7 +7,7 @@ import { ATTRIBUTE_WORDS, CLAUSE_RULES, GEEZ, INTENT_LABEL, NON_ENGLISH_WORDS, R
 import { SCRIPTED_QUESTIONS, dialogueForCategory, normQuestion } from './library.ts'
 import { TEMPLATES, TEMPLATE_VERSION, render, type TemplateId } from './templates.ts'
 import {
-  subjectKind, type BotInput, type BotResult, type Chip, type ChatState, type IntentId, type Pending, type ProductFacts,
+  subjectKind, type BotInput, type MessageSubject, type BotResult, type Chip, type ChatState, type IntentId, type Pending, type ProductFacts,
   type ResultKind, type SceneFacts, type SellerFacts, type Slot, type World,
 } from './types.ts'
 
@@ -44,10 +44,16 @@ class Run {
 export function respond(input: BotInput, state: ChatState, world: World): BotResult {
   const run = new Run()
   const kind = subjectKind(input.subject)
-  const base = (r: Partial<BotResult> & Pick<BotResult, 'kind' | 'templateId' | 'text'>): BotResult => ({
-    intent: null, dialogue: [], templateVersion: TEMPLATE_VERSION, speaker: 'bot', quickReplies: [], actions: [], slots: run.slots, missing: run.missing, reason: '',
-    conflicts: run.conflicts, handoff: null, pending: null, subjectKind: kind, trace: run.trace, sideEffects: [], ...r,
-  })
+  const base = (r: Partial<BotResult> & Pick<BotResult, 'kind' | 'templateId' | 'text'>): BotResult => {
+    const res: BotResult = {
+      intent: null, dialogue: [], templateVersion: TEMPLATE_VERSION, speaker: 'bot', quickReplies: [], actions: [], slots: run.slots, missing: run.missing, reason: '',
+      conflicts: run.conflicts, handoff: null, pending: null, subjectKind: kind, subject: input.subject, trace: run.trace, sideEffects: [], ...r,
+    }
+    // Bind everything the Buyer can tap to THIS response's subject, so a later change of the composer cannot redirect it.
+    res.quickReplies = res.quickReplies.map(c => ({ ...c, subject: c.subject ?? input.subject }))
+    res.pending = res.pending ? { ...res.pending, subjectKey: subjectKey(input.subject) } : null
+    return res
+  }
   const say = (id: TemplateId, slots: Record<string, string>, r: Omit<Partial<BotResult>, 'text' | 'templateId'> & { kind: ResultKind }) =>
     base({ ...r, templateId: id, text: render(id, slots), speaker: id.startsWith('UI-') ? 'ui' : 'bot' })
   const offer = (id: TemplateId, slots: Record<string, string>, r: Omit<Partial<BotResult>, 'text' | 'templateId' | 'kind' | 'pending'> & { reason: string }) =>
@@ -83,7 +89,7 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
       if (input.subject.productId) {
         product = world.product(seller.id, input.subject.productId)
         if (!product || product.sellerId !== seller.id) return denied('Product not found for this Seller')
-        if (scene && !scene.products.some(p => p.id === product!.id) && scene.viewable) return denied('Product is not tagged in the stated Scene')
+        if (scene && scene.viewable && scene.revision === input.subject.scene!.revision && !scene.products.some(p => p.id === product!.id)) return denied('Product is not tagged in the stated Scene')
       }
     } catch (error) { readFailure = error }
     const text = (input.text ?? '').trim()
@@ -99,11 +105,14 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
     }
     run.trace.push(`subject: ${kind}${product ? ` ${product.id}` : ''}${scene ? ` in scene ${scene.id}@${input.subject.scene!.revision}` : ''}`)
     const p = product
+    // A clarification raised for another subject is dropped, never reapplied to this one.
+    let pend = state.pending ?? null
+    if (pend && pend.kind !== 'offer-handoff' && pend.subjectKey && pend.subjectKey !== subjectKey(input.subject)) { run.trace.push('pending clarification belongs to an earlier Message about a different subject, so it is dropped'); pend = null }
 
     // ---- chips (canonical quick replies) ----
     const goHuman = (originalId: string, offered: boolean) => handoff(offered ? 'T-HANDOFF-SENT' : 'T-HANDOFF', originalId, { intent: 'X02', reason: 'BUYER_ASKED_FOR_SELLER', dialogue: offered ? ['C-06', 'C-14', 'C-18'] : ['C-17'] })
     if (chip === 'talk-to-seller' || chip === 'send-offer') {
-      const pending = state.pending?.kind === 'offer-handoff' ? state.pending : null
+      const pending = pend?.kind === 'offer-handoff' ? pend : null
       run.trace.push('chip: talk to seller')
       return goHuman(pending?.messageId ?? input.messageId, !!pending)
     }
@@ -118,11 +127,11 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
       return handoff('T-HANDOFF', input.messageId, { intent: 'X02', reason: 'UNSUPPORTED_LANGUAGE', dialogue: ['C-17'] })
     }
     const confirm = RULES.confirmYes.test(t) || RULES.sendOffer.test(t) || RULES.talk.test(t)
-    if (confirm && state.pending?.kind === 'offer-handoff') {
+    if (confirm && pend?.kind === 'offer-handoff') {
       run.trace.push('confirmation of the offer to send the earlier question to the Seller')
-      return goHuman(state.pending.messageId, true)
+      return goHuman(pend.messageId, true)
     }
-    if (RULES.talk.test(t) && !chipIntent) return goHuman(state.pending?.kind === 'offer-handoff' ? state.pending.messageId : input.messageId, state.pending?.kind === 'offer-handoff')
+    if (RULES.talk.test(t) && !chipIntent) return goHuman(pend?.kind === 'offer-handoff' ? pend.messageId : input.messageId, pend?.kind === 'offer-handoff')
     if (!chipIntent && RULES.unsafe.test(t)) { run.trace.push('rule: unsafe or prompt-injection request'); return say('T-UNSAFE', {}, { kind: 'denied', intent: 'X03', reason: 'UNSAFE_REQUEST', dialogue: ['C-19'], quickReplies: [TALK] }) }
     if (!chipIntent && RULES.sensitive.test(t)) { run.trace.push('rule: sensitive financial detail'); return say('T-SENSITIVE', {}, { kind: 'denied', intent: 'X03', reason: 'SENSITIVE_DETAILS', dialogue: ['C-16'], quickReplies: [TALK] }) }
     if (!chipIntent && RULES.reserve.test(t)) { run.trace.push('rule: reservation request'); return say('T-NO-RESERVE', {}, { kind: 'deferred', intent: 'X01', reason: 'NO_RESERVATIONS', dialogue: ['C-03'], quickReplies: [{ id: 'open-cart', label: 'Review in Cart' }, TALK], actions: [{ kind: 'open-cart', productId: p?.id }] }) }
@@ -148,12 +157,16 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
     }
 
     if (readFailure) throw readFailure
+    if (scene && scene.viewable && input.subject.scene && input.subject.scene.revision !== scene.revision) {
+      run.trace.push(`Scene revision ${input.subject.scene.revision} is stale (live revision ${scene.revision})`)
+      return say('T-SCENE-REVISED', {}, { kind: 'clarify', intent: 'C02', reason: 'SCENE_REVISION_STALE', dialogue: ['C-07', 'C-09'], quickReplies: [{ id: 'reopen-scene', label: 'Reopen the Scene' }, TALK] })
+    }
     // pending clarifications that consume the next message
-    if (state.pending?.kind === 'need-device' && !chipIntent) {
+    if (pend?.kind === 'need-device' && !chipIntent) {
       run.trace.push('pending: device named for a compatibility check')
       return answerDevice(t, p)
     }
-    if (state.pending?.kind === 'need-area' || (/^area:/.test(chip))) {
+    if (pend?.kind === 'need-area' || (/^area:/.test(chip))) {
       const area = /^area:/.test(chip) ? chip.slice(5) : areaIn(t, seller) ?? input.subject.area
       if (area && seller.knownAreas.some(a => eq(a, area))) return answerArea(seller, area, p)
     }
@@ -230,8 +243,7 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
         const absent = need.filter(k => !r?.[k]?.trim())
         if (!r || absent.length) {
           run.missing.push(...(r ? absent.map(a => `returns.${a}`) : ['returns policy']))
-          const supp = supplementary(t, seller, run)
-          if (supp) return say('T-SUPPLEMENTARY', { seller_answer: supp.answer }, { kind: 'answer', intent, dialogue: ['C-12'], reason: 'SUPPLEMENTARY_RETURNS' })
+          // A restricted policy is answered only from its complete structured configuration: a Seller note never fills the gap.
           return offer('T-ATTR-UNKNOWN', {}, { intent, reason: 'RETURNS_POLICY_INCOMPLETE', dialogue: ['C-12'] })
         }
         need.forEach(k => run.slot(k, r[k]!, 'Seller policy: returns and exchanges'))
@@ -241,8 +253,6 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
         const summary = p?.knowledge.warranty?.trim() || seller.warranty?.summary.trim()
         if (!summary) {
           run.missing.push('warranty')
-          const supp = supplementary(t, seller, run)
-          if (supp) return say('T-SUPPLEMENTARY', { seller_answer: supp.answer }, { kind: 'answer', intent, dialogue: ['C-13'], reason: 'SUPPLEMENTARY_WARRANTY' })
           return offer('T-ATTR-UNKNOWN', {}, { intent, reason: 'WARRANTY_NOT_CONFIGURED', dialogue: ['C-13'] })
         }
         run.slot('approved_warranty_summary', summary, p?.knowledge.warranty ? 'Product knowledge: warranty' : 'Seller policy: warranty')
@@ -331,23 +341,24 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
         const labelled = prod.attributes.find(a => /^(care|usage|how to use|instructions?)/i.test(a.label) && a.value.trim())
         if (/\binstructions?\b|how (do|to|should|can) i (use|apply)|directions|show/i.test(t)) {
           const ins = prod.knowledge.instructions?.trim() || prod.knowledge.usage?.trim() || labelled?.value
-          if (ins) { run.slot('approved_label_instructions', ins, 'Product knowledge: instructions'); return say('T-INSTRUCTIONS', { approved_label_instructions: ins.replace(/[.\s]+$/, '') }, { kind: 'answer', intent, dialogue: ['C-21'], reason: 'INSTRUCTIONS' }) }
+          if (ins) { noteClash(/\b(use|usage|instruction|apply|direction|how)\b/i, ins); run.slot('approved_label_instructions', ins, 'Product knowledge: instructions'); return say('T-INSTRUCTIONS', { approved_label_instructions: ins.replace(/[.\s]+$/, '') }, { kind: 'answer', intent, dialogue: ['C-21'], reason: 'INSTRUCTIONS' }) }
         }
         if (care) {
           const value = labelled?.value || prod.knowledge.care?.trim()
           if (value) {
+            noteClash(/\b(care|wash|clean|iron|dry|launder)/i, value)
             run.slot('care', value, labelled ? `Taxonomy attribute: ${labelled.label}` : 'Product knowledge: care')
             return say('T-ATTR', { attribute_label: labelled?.label ?? 'Care', attribute_value: value, product_or_variant: 'this item' }, { kind: 'answer', intent, dialogue: dlg('C-06'), reason: 'CARE_LISTED' })
           }
           const careLine = prod.listedDetails.find(d => /\b(wash|care|clean|iron|dry|tumble)\b/i.test(d))
-          if (careLine) { run.slot('care', careLine, 'Product record: Seller detail line (unlabelled)'); return say('T-DETAILS-LISTED', { product: prod.name, details: careLine }, { kind: 'answer', intent, dialogue: dlg('C-06'), reason: 'UNLABELLED_CARE_LINE' }) }
+          if (careLine) { noteClash(/\b(care|wash|clean|iron|dry|launder)/i, careLine); run.slot('care', careLine, 'Product record: Seller detail line (unlabelled)'); return say('T-DETAILS-LISTED', { product: prod.name, details: careLine }, { kind: 'answer', intent, dialogue: dlg('C-06'), reason: 'UNLABELLED_CARE_LINE' }) }
           const supp = supplementary(t, seller, run, prod)
           if (supp) return say('T-SUPPLEMENTARY', { seller_answer: supp.answer }, { kind: 'answer', intent, dialogue: dlg('C-06'), reason: 'SUPPLEMENTARY_CARE' })
           run.missing.push('care')
           return offer(prod.taxonomyLabels.length ? 'T-CARE-MISSING' : 'T-ATTR-UNKNOWN', {}, { intent, reason: 'CARE_NOT_LISTED', dialogue: dlg('C-06') })
         }
         const usage = prod.knowledge.usage?.trim() || labelled?.value
-        if (usage) { run.slot('usage', usage, 'Product knowledge: usage'); return say('T-INSTRUCTIONS', { approved_label_instructions: usage.replace(/[.\s]+$/, '') }, { kind: 'answer', intent, dialogue: dlg('C-21'), reason: 'USAGE_LISTED' }) }
+        if (usage) { noteClash(/\b(use|usage|instruction|apply|direction)/i, usage); run.slot('usage', usage, 'Product knowledge: usage'); return say('T-INSTRUCTIONS', { approved_label_instructions: usage.replace(/[.\s]+$/, '') }, { kind: 'answer', intent, dialogue: dlg('C-21'), reason: 'USAGE_LISTED' }) }
         return unknown('USAGE_NOT_LISTED', 'T-ATTR-UNKNOWN', dlg('C-21'))
       }
       case 'P06': {
@@ -358,8 +369,9 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
           if (!prod.taxonomyLabels.length) return unknown('CATEGORY_HAS_NO_DEFINED_FIELDS', 'T-ATTR-UNKNOWN', dlg('C-20'))
           return offer('T-COMPAT-UNCONFIRMED', {}, { intent, reason: 'NO_COMPATIBILITY_FACTS', dialogue: dlg('C-20') })
         }
-        const named = deviceMatch(t, list)
-        if (named) return say('T-COMPAT-MATCH', { device: named }, { kind: 'answer', intent, dialogue: dlg('C-20'), reason: 'COMPATIBILITY_LISTED' })
+        const m = matchDevice(t, list)
+        if (m.kind === 'match') return say('T-COMPAT-MATCH', { device: m.entry }, { kind: 'answer', intent, dialogue: dlg('C-20'), reason: 'COMPATIBILITY_LISTED' })
+        if (m.kind === 'ambiguous') return ambiguousDevice(m.entries)
         return say('T-ASK-DEVICE', {}, { kind: 'clarify', intent, reason: 'DEVICE_REQUIRED', dialogue: dlg('C-20'), pending: { kind: 'need-device', messageId: input.messageId }, quickReplies: [TALK] })
       }
       case 'P07': {
@@ -416,7 +428,7 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
         }
         if (own?.value.trim()) {
           const clash = supplementary(label, sel, run, pr, true)
-          if (clash && !clash.answer.toLowerCase().includes(own.value.trim().toLowerCase())) {
+          if (clash && !agrees(own.value, clash.answer)) {
             run.conflicts.push({ topic: clash.topic, canonical: own.value, supplementary: clash.answer })
             run.trace.push('conflict: Seller note disagrees with the Catalogue; the Catalogue value is used')
           }
@@ -451,10 +463,20 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
       if (delivers && covered && methods.length) return say('T-DELIVERY-OK', { area, methods: methods.join(', ') }, { kind: 'answer', intent: 'S03', reason: 'AREA_COVERED', dialogue: ['C-11'] })
       return say('T-DELIVERY-NO-AREA', {}, { kind: 'answer', intent: 'S03', reason: 'AREA_NOT_LISTED', dialogue: ['C-11'], quickReplies: [{ id: 'delivery-pickup', label: 'Collection options' }, TALK] })
     }
+    function ambiguousDevice(entries: string[]) {
+      run.trace.push(`device text is not an exact listed model (${entries.length} could match): ask for the exact model`)
+      return say('T-COMPAT-AMBIGUOUS', { candidates: entries.join(', ') }, { kind: 'clarify', intent: 'P06', reason: 'DEVICE_AMBIGUOUS', dialogue: ['C-20'], pending: { kind: 'need-device', messageId: input.messageId }, quickReplies: [{ id: 'talk-to-seller', label: 'Talk to seller' }] })
+    }
+    /** Reports a Seller note that disagrees with a canonical care or usage fact; the canonical fact is always the one used. */
+    function noteClash(topic: RegExp, canonical: string) {
+      const note = noteOnTopic(sel, topic)
+      if (note && !agrees(canonical, note.answer)) { run.conflicts.push({ topic: note.topic, canonical, supplementary: note.answer }); run.trace.push('conflict: a Seller note disagrees with the canonical fact; the canonical fact is used') }
+    }
     function answerDevice(device: string, pr: ProductFacts | null) {
       const list = pr?.knowledge.compatibility ?? []
-      const named = deviceMatch(device, list)
-      if (named) return say('T-COMPAT-MATCH', { device: named }, { kind: 'answer', intent: 'P06', reason: 'COMPATIBILITY_LISTED', dialogue: ['C-20'] })
+      const m = matchDevice(device, list)
+      if (m.kind === 'match') return say('T-COMPAT-MATCH', { device: m.entry }, { kind: 'answer', intent: 'P06', reason: 'COMPATIBILITY_LISTED', dialogue: ['C-20'] })
+      if (m.kind === 'ambiguous') return ambiguousDevice(m.entries)
       return offer('T-COMPAT-UNCONFIRMED', {}, { intent: 'P06', reason: 'DEVICE_NOT_ON_APPROVED_LIST', dialogue: ['C-20'] })
     }
   } catch (error) {
@@ -518,10 +540,35 @@ function detectVariant(text: string, product: ProductFacts): Detected[] {
   return found
 }
 
-function deviceMatch(text: string, list: string[]): string | null {
-  const t = normQuestion(text)
-  return list.find(entry => { const e = normQuestion(entry); return e && (t.includes(e) || e.split(' ').every(w => t.split(' ').includes(w))) }) ?? null
+/** Words that may follow a model name without extending it ("Acme Air 13 laptop"); any other following word makes it a different model. */
+const DEVICE_BOUNDARY = new Set('the a an is are do does will would can could it this that my your laptop computer notebook phone mobile tablet device model work works fit fits with for and or ok thanks please then bag case cover charger fit?'.split(' '))
+const deviceTokens = (text: string) => normQuestion(text).replace(/([a-z])(\d)/g, '$1 $2').replace(/(\d)([a-z])/g, '$1 $2').split(' ').filter(Boolean)
+function hasSpan(tokens: string[], seq: string[]): boolean {
+  for (let i = 0; i + seq.length <= tokens.length; i++) {
+    if (seq.every((w, j) => tokens[i + j] === w)) { const next = tokens[i + seq.length]; if (next === undefined || DEVICE_BOUNDARY.has(next)) return true }
+  }
+  return false
 }
+/**
+ * Exact normalised model matching (BOT-FIX-02). An entry may list aliases with "|". The whole model name must appear and must not be
+ * continued by another model word, so "Acme Air 13 Pro" never matches "Acme Air 13". A name that fits several entries only partly
+ * ("Acme Air") is ambiguous and needs the exact model; anything else is not confirmed.
+ */
+function matchDevice(text: string, list: string[]): { kind: 'match'; entry: string } | { kind: 'ambiguous'; entries: string[] } | { kind: 'none' } {
+  const tokens = deviceTokens(text)
+  const entries = list.map(raw => ({ label: raw.split('|')[0].trim(), aliases: raw.split('|').map(deviceTokens).filter(a => a.length) }))
+  const exact = entries.filter(e => e.aliases.some(a => hasSpan(tokens, a)))
+  if (exact.length === 1) return { kind: 'match', entry: exact[0].label }
+  if (exact.length > 1) return { kind: 'ambiguous', entries: exact.map(e => e.label) }
+  const partial = entries.filter(e => e.aliases.some(a => { for (let k = a.length - 1; k >= 2; k--) if (hasSpan(tokens, a.slice(0, k))) return true; return false }))
+  return partial.length ? { kind: 'ambiguous', entries: partial.map(e => e.label) } : { kind: 'none' }
+}
+
+/** A note agrees with a canonical value when every meaningful word of the value appears in the note. */
+const agrees = (canonical: string, note: string) => { const n = new Set(words(note)); return words(canonical).every(w => n.has(w)) }
+/** The Seller's supplementary note whose TOPIC concerns care or usage (never a restricted policy). */
+const RESTRICTED_POLICY = /\b(return|returns|refund|refunds|exchange|exchanges|warranty|warranties|guarantee|guarantees|after[- ]sales?|service cent(re|er)|repair|repairs)\b/i
+const noteOnTopic = (seller: SellerFacts, topic: RegExp) => seller.supplementary.find(e => topic.test(e.topic) && !RESTRICTED_POLICY.test(e.topic))
 
 /** The attribute label a Buyer question is about: a scripted phrase for this leaf first, then label-word and synonym overlap. */
 function pickLabel(question: string, candidates: string[], categoryId: string | null): string | null {
@@ -545,9 +592,12 @@ function pickLabel(question: string, candidates: string[], categoryId: string | 
 
 /** Supplementary Seller Q&A: topic words must cover at least half of the topic. Used only after canonical facts and configured policy. */
 function supplementary(text: string, seller: SellerFacts, run: Run, product?: ProductFacts, forConflict = false): { topic: string; answer: string } | null {
+  // Returns, refunds, exchanges, warranty and service are restricted policies: only their complete structured configuration may answer them.
+  if (RESTRICTED_POLICY.test(text)) return null
   const q = new Set(words(text))
   let best: { entry: SellerFacts['supplementary'][number]; score: number } | null = null
   for (const entry of seller.supplementary) {
+    if (RESTRICTED_POLICY.test(entry.topic)) continue
     const tw = words(entry.topic)
     if (!tw.length) continue
     const score = tw.filter(w => q.has(w)).length / tw.length
@@ -557,5 +607,8 @@ function supplementary(text: string, seller: SellerFacts, run: Run, product?: Pr
   if (!forConflict) { run.slot('seller_answer', best.entry.answer, `Seller-approved answer: “${best.entry.topic}” (supplementary)`); void product }
   return { topic: best.entry.topic, answer: best.entry.answer }
 }
+
+/** Identifies the subject a clarification or quick reply belongs to: Seller, Scene and its revision, Product. */
+export const subjectKey = (s: MessageSubject) => `${s.sellerId}|${s.scene ? `${s.scene.id}@${s.scene.revision}` : ''}|${s.productId ?? ''}`
 
 export type { Pending }

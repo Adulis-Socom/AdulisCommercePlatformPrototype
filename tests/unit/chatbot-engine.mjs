@@ -7,7 +7,7 @@ import { FIXTURE_SELLER, makeFixture, product } from '../../src/chatbot/coverage
 const all = JSON.parse(readFileSync('src/demo-data/taxonomy-attributes.json', 'utf8'))
 const labels = Object.fromEntries(Object.entries(all).map(([leaf, attrs]) => [leaf, attrs.map(a => a.name)]))
 let pass = 0, fail = 0
-const ck = (label, ok, detail) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${ok ? '' : ' — ' + JSON.stringify(detail).slice(0, 400)}`); ok ? pass++ : fail++ }
+const ck = (label, ok, detail) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${ok ? '' : ' — ' + String(JSON.stringify(detail)).slice(0, 400)}`); ok ? pass++ : fail++ }
 const ask = (fx, text, subject = {}, state = {}, extra = {}) => respond({ messageId: 'm' + Math.random().toString(36).slice(2, 7), conversationSellerId: FIXTURE_SELLER, text, subject: { sellerId: FIXTURE_SELLER, ...subject }, ...extra }, { mode: 'bot', pending: null, ...state }, fx.world)
 const fx = makeFixture(labels)
 const tops = labels['fashion/womens-clothing/tops']
@@ -102,6 +102,57 @@ const offerMsg = ask(fx, 'Is it machine washable?', { productId: 'NOCARE' })
 const confirmed = ask(fx, 'yes please', { productId: 'NOCARE' }, { pending: offerMsg.pending })
 ck('confirming an offer forwards the ORIGINAL question, not "yes please"', confirmed.handoff?.originalMessageId === offerMsg.pending.messageId)
 ck('talk to seller is always available as a chip', ask(fx, '', { productId: 'PA' }, {}, { chip: 'talk-to-seller' }).kind === 'handoff')
+
+
+// ---- BOT-FIX-01: context integrity ----
+const stale = ask(fx, 'Is Medium available?', { scene: { id: 'S1', revision: 2 }, productId: 'TOP' })
+ck('a stale Scene revision is reported, not answered', stale.templateId === 'T-SCENE-REVISED' && stale.reason === 'SCENE_REVISION_STALE' && stale.kind === 'clarify', stale)
+ck('a stale Scene revision with a Product no longer tagged is still "stale", not a forged-subject denial', ask(fx, 'How much?', { scene: { id: 'S1', revision: 1 }, productId: 'PA' }).templateId === 'T-SCENE-REVISED')
+ck('the current revision is answered', ask(fx, 'Is Medium available?', { scene: { id: 'S1', revision: 3 }, productId: 'TOP' }).templateId === 'T-SCENE-OPTION')
+ck('a stale Scene still lets the Buyer reach the Seller', ask(fx, '', { scene: { id: 'S1', revision: 2 } }, {}, { chip: 'talk-to-seller' }).kind === 'handoff')
+ck('the stale reply offers Reopen the Scene', stale.quickReplies.some(c => c.id === 'reopen-scene'))
+const multiA = ask(fx, 'How much, is it original, and will it fit my laptop?', { productId: 'LAPTOP' })
+ck('every quick reply carries the subject of the response that offered it', multiA.quickReplies.length >= 3 && multiA.quickReplies.every(c => c.subject?.productId === 'LAPTOP') && multiA.subject.productId === 'LAPTOP', multiA.quickReplies)
+const chipOnA = ask(fx, '', multiA.quickReplies.find(c => c.id === 'intent:P01').subject, { pending: multiA.pending }, { chip: 'intent:P01' })
+ck('tapping it after the composer moved on answers for the ORIGINAL Product', /Fixture Laptop Bag/.test(chipOnA.text) && chipOnA.subject.productId === 'LAPTOP', chipOnA.text)
+const askDevice = ask(fx, 'Compatibility', { productId: 'LAPTOP' })
+ck('a clarification is bound to its Message\u2019s subject', askDevice.pending?.kind === 'need-device' && /LAPTOP/.test(askDevice.pending.subjectKey))
+const reply = ask(fx, 'It is an Acme Air 13', { productId: 'PA' }, { pending: askDevice.pending })
+ck('after a Product switch the old clarification is dropped, never reapplied', !/compatib/i.test(reply.text ?? '') && reply.trace.some(t => /dropped/.test(t)), reply)
+const samePending = ask(fx, 'It is an Acme Air 13', { productId: 'LAPTOP' }, { pending: askDevice.pending })
+ck('on the same subject the clarification is still consumed', samePending.templateId === 'T-COMPAT-UNCONFIRMED' || samePending.templateId === 'T-COMPAT-MATCH')
+const sceneSwitch = ask(fx, 'It is an Acme Air 13', { productId: 'LAPTOP', scene: { id: 'S1', revision: 3 } }, { pending: askDevice.pending })
+ck('a Scene added to the subject also drops the pending clarification', sceneSwitch.trace.some(t => /dropped|Product is not tagged/.test(t)) || sceneSwitch.kind === 'denied')
+const offerA = ask(fx, 'Is it machine washable?', { productId: 'NOCARE' })
+ck('a handoff offer survives a Product switch and still forwards the ORIGINAL question', ask(fx, 'yes please', { productId: 'PA' }, { pending: offerA.pending }).handoff?.originalMessageId === offerA.pending.messageId)
+ck('a hidden or removed subject is refused even through an old quick reply', ask(fx, '', { productId: 'HIDDEN' }, {}, { chip: 'view-options' }).templateId === 'T-SUBJECT-UNAVAILABLE')
+
+// ---- BOT-FIX-02: exact device matching ----
+const dev = makeFixture(labels, [product({ id: 'LAP2', name: 'Fixture Sleeve', taxonomyLabels: tops, knowledge: { compatibility: ['Acme Air 13 | Acme Air13 | AA13', 'Acme Air 15', 'Beta Pro 14'] } })])
+const dv = text => ask(dev, text, { productId: 'LAP2' })
+ck('an exact listed model matches inside a sentence', dv('Will it fit my Acme Air 13 laptop?').templateId === 'T-COMPAT-MATCH')
+ck('a listed alias matches ("Acme Air13", "AA13")', dv('Does it fit an Acme Air13?').templateId === 'T-COMPAT-MATCH' && dv('Will it fit the AA13?').templateId === 'T-COMPAT-MATCH')
+ck('a similar but different model never matches ("Acme Air 13 Pro", "Acme Air 130", "Beta Pro 140")', ['Will it fit my Acme Air 13 Pro?', 'Will it fit my Acme Air 130?', 'Will it fit a Beta Pro 140?'].every(q => { const r = dv(q); return r.templateId !== 'T-COMPAT-MATCH' }), ['Will it fit my Acme Air 13 Pro?', 'Will it fit my Acme Air 130?', 'Will it fit a Beta Pro 140?'].map(q => dv(q).templateId))
+const amb = dv('Will it fit my Acme Air?')
+ck('an incomplete name that fits several listed models needs the exact model', amb.templateId === 'T-COMPAT-AMBIGUOUS' && /Acme Air 13/.test(amb.text) && /Acme Air 15/.test(amb.text) && amb.pending?.kind === 'need-device', amb)
+ck('after asking, an unlisted model goes to the Seller', ask(dev, 'Acme Air 13 Pro', { productId: 'LAP2' }, { pending: amb.pending }).templateId === 'T-COMPAT-UNCONFIRMED')
+ck('after asking, the exact model is confirmed', ask(dev, 'Acme Air 15', { productId: 'LAP2' }, { pending: amb.pending }).templateId === 'T-COMPAT-MATCH')
+ck('an unlisted model is not confirmed (offered to the Seller)', dv('Will it fit my Zeta Z1?').templateId !== 'T-COMPAT-MATCH')
+
+// ---- BOT-FIX-02: restricted policies are structured only; canonical care wins ----
+const partial = makeFixture(labels, [], { returns: { window: '7 days' }, warranty: null, supplementary: [{ id: 'a', topic: 'Exchange policy', answer: 'Exchange any time, no questions' }, { id: 'b', topic: 'Warranty', answer: 'Lifetime warranty on everything' }, { id: 'c', topic: 'Guarantee period', answer: 'Two years guaranteed' }] })
+for (const q of ['Can I exchange this?', 'What is your refund policy?', 'Is there a warranty?', 'What is your guarantee period?', 'Do you offer repairs?']) {
+  const r = ask(partial, q, { productId: 'PA' })
+  ck('a Seller note cannot answer a restricted policy that is not fully configured: ' + q, r.templateId === 'T-ATTR-UNKNOWN' && !/any time|Lifetime|Two years/.test(r.text), r.text)
+}
+const careFx = makeFixture(labels, [product({ id: 'CARE', name: 'Care Top', taxonomyLabels: tops, attributes: [{ label: 'Care', value: 'Machine wash cold' }] })], { supplementary: [{ id: 'k', topic: 'Washing and care', answer: 'Dry clean only' }] })
+const care = ask(careFx, 'How should I wash it?', { productId: 'CARE' })
+ck('canonical care prevails over a conflicting note, and the conflict is reported', /Machine wash cold/.test(care.text) && !/Dry clean/.test(care.text) && care.conflicts.length === 1 && care.conflicts[0].canonical === 'Machine wash cold', care)
+const careOk = ask(makeFixture(labels, [product({ id: 'CARE', name: 'Care Top', taxonomyLabels: tops, attributes: [{ label: 'Care', value: 'Machine wash cold' }] })], { supplementary: [{ id: 'k', topic: 'Washing and care', answer: 'Please machine wash cold, tumble dry low' }] }), 'How should I wash it?', { productId: 'CARE' })
+ck('an agreeing note is no conflict', careOk.conflicts.length === 0)
+const useFx = makeFixture(labels, [product({ id: 'USE', name: 'Cream', categoryId: 'cosmetics/skincare', knowledge: { instructions: 'Apply a thin layer at night' } })], { supplementary: [{ id: 'k', topic: 'How to use', answer: 'Apply three times a day' }] })
+const use = ask(useFx, 'Show the instructions.', { productId: 'USE' })
+ck('canonical usage prevails over conflicting usage guidance', /thin layer at night/.test(use.text) && !/three times/.test(use.text) && use.conflicts.length === 1, use)
 
 // ---- fuzz-lite: no battery of questions ever prints a placeholder, ETB 0, NaN or undefined ----
 const questions = ['How much is it?', 'price', 'what sizes?', 'is it available', 'what colour', 'material?', 'how long is it', 'do you deliver', 'where is the shop', 'opening hours', 'is it original', 'warranty', 'can I return it', 'does it work with my laptop', 'size guide', 'how do I wash it', 'is it new', 'what is in the picture', 'tell me about the look', 'hello', 'asdf qwer', '???', '', ' ', 'what?', 'x'.repeat(2000)]

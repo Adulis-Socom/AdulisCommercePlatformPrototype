@@ -4,6 +4,8 @@ import { TextInput } from '../../components/ui/Input'
 import type { Moment, SellerId } from '../../demo-data'
 import { respond } from '../../chatbot/engine'
 import { INTENT_LABEL } from '../../chatbot/intents'
+import { createFeedback, feedbackWorkflowChecks, validateFeedback, DECISION_LABEL } from '../../chatbot/feedback'
+import { isProvisional, type TemplateId } from '../../chatbot/templates'
 import { DIALOGUE_LIBRARY_VERSION, SCENARIOS } from '../../chatbot/library'
 import { useLeafLabels } from '../../chatbot/useLabels'
 import type { BotResult, ChatState, Chip, MessageSubject } from '../../chatbot/types'
@@ -17,12 +19,13 @@ import { Notice, SelectField } from './kit'
  * documented dialogue groups. Feedback here is a note for an authorised reviewer; it never edits a template or trains anything.
  */
 type Turn = { text: string; subjectLabel: string; result: BotResult; id: string }
-type Feedback = { id: string; signal: 'green' | 'yellow' | 'red'; note: string; expected: string; turn: string; template: string }
 const KIND: Record<BotResult['kind'], string> = { answer: 'Answered', clarify: 'Needs a choice', 'handoff-offer': 'Offered to the Seller', handoff: 'Handed to the Seller', denied: 'Refused', deferred: 'Not available yet', 'no-reply': 'Assistant silent' }
 const SIGNAL = { green: 'Correct', yellow: 'Needs review', red: 'Wrong or urgent' } as const
+type Signal = keyof typeof SIGNAL
 
 export function ChatbotTestLab({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
-  const { state } = useWorkspace()
+  const { state, dispatch } = useWorkspace()
+  const feedback = state.botFeedback.filter(f => f.sellerId === sellerId)
   const labels = useLeafLabels()
   const [mode, setMode] = useState<'general' | 'product' | 'scene'>('product')
   const [sceneId, setSceneId] = useState(''); const [productId, setProductId] = useState('')
@@ -30,8 +33,8 @@ export function ChatbotTestLab({ sellerId, at }: { sellerId: SellerId; at: Momen
   const [question, setQuestion] = useState('')
   const [turns, setTurns] = useState<Turn[]>([])
   const [chatState, setChatState] = useState<ChatState>({ mode: 'bot', pending: null })
-  const [feedback, setFeedback] = useState<Feedback[]>([])
-  const [signal, setSignal] = useState<Feedback['signal'] | null>(null)
+  const [signal, setSignal] = useState<Signal | null>(null)
+  const [workflow, setWorkflow] = useState<{ steps: number; passed: number; failures: string[] } | null>(null)
   const [note, setNote] = useState(''); const [expected, setExpected] = useState(''); const [noteError, setNoteError] = useState('')
   const [scenarioId, setScenarioId] = useState('')
   const [matrix, setMatrix] = useState<null | { id: string; group: string; title: string; page: number; how: string; steps: number; passed: number; failures: string[] }[]>(null)
@@ -54,7 +57,10 @@ export function ChatbotTestLab({ sellerId, at }: { sellerId: SellerId; at: Momen
   const run = (chip?: Chip) => {
     const text = chip ? chip.label : question.trim()
     if (!text) { setTurns(t => [...t, { id: `t${t.length}`, text: '', subjectLabel: subject().label, result: emptyResult() }]); return }
-    const { subject: s, label } = subject()
+    const live = subject()
+    const s = chip?.subject ?? live.subject
+    const label = chip?.subject ? `Subject of the response that offered “${chip.label}”` : live.label
+    if (chip && (chip.id === 'reopen-scene')) { return }
     if (chip && (chip.id.startsWith('select-product:') || chip.id === 'select-product' || chip.id === 'choose-product' || chip.id.startsWith('option:') || chip.id === 'open-product' || chip.id === 'open-cart')) {
       if (chip.id.startsWith('select-product:')) { setProductId(chip.id.slice(15)); setVariant({}) }
       return // a selector or navigation chip, not a message
@@ -69,8 +75,10 @@ export function ChatbotTestLab({ sellerId, at }: { sellerId: SellerId; at: Momen
   }
   const submitFeedback = () => {
     if (!last || !signal) return
-    if (signal !== 'green' && (note.trim().length < 5 || expected.trim().length < 5)) { setNoteError('Describe what happened and what the assistant should have answered.'); return }
-    setFeedback(f => [...f, { id: `fb${f.length + 1}`, signal, note: note.trim(), expected: expected.trim(), turn: last.text, template: `${last.result.templateId} v${last.result.templateVersion}` }])
+    const problem = validateFeedback(signal, note, expected)
+    if (problem) { setNoteError(problem); return }
+    // Kept in the shared workspace, bound to the response, subject, intent, template version and fact references; an Operator reviews it.
+    dispatch({ type: 'feedback-add', item: createFeedback({ seq: state.botFeedback.length + 1, sellerId, signal, note, expected, question: last.text, subjectLabel: last.subjectLabel, result: last.result }) })
     setSignal(null); setNote(''); setExpected(''); setNoteError('')
   }
   const loadScenario = (id: string) => {
@@ -83,9 +91,12 @@ export function ChatbotTestLab({ sellerId, at }: { sellerId: SellerId; at: Momen
     if (!labels) return
     const { runCoverage } = await import('../../chatbot/coverage')
     setMatrix(runCoverage(labels))
+    setWorkflow(feedbackWorkflowChecks(last?.result ?? emptyResult()))
   }
   const examples = ['How much is this?', 'Is it in stock?', 'What sizes does it come in?', 'What is it made of?', 'Do you deliver?', 'Can I return it?', 'Is there a warranty?', 'Can I pay with Telebirr?', 'Can you reduce the price?']
-  const summary = matrix && { ok: matrix.filter(r => r.how === 'ui' || (!r.failures.length && r.passed === r.steps)).length, total: matrix.length, steps: matrix.reduce((a, r) => a + r.steps, 0), passed: matrix.reduce((a, r) => a + r.passed, 0) }
+  // 113 groups are executed by the engine; C-22 (Seller feedback) is a workflow, counted and reported separately.
+  const engineRows = matrix?.filter(r => r.how === 'engine') ?? []
+  const summary = matrix && { ok: engineRows.filter(r => !r.failures.length && r.passed === r.steps).length, total: engineRows.length, steps: engineRows.reduce((a, r) => a + r.steps, 0), passed: engineRows.reduce((a, r) => a + r.passed, 0) }
 
   return (
     <div className="grid grid-cols-2 gap-5 max-lg:grid-cols-1">
@@ -111,9 +122,9 @@ export function ChatbotTestLab({ sellerId, at }: { sellerId: SellerId; at: Momen
         <details className="mt-4"><summary className="cursor-pointer text-sm font-semibold">Coverage of the 114 documented dialogue groups</summary>
           <p className="mt-2 text-xs text-text-muted">Runs every scripted Buyer line through the engine against synthetic fixture facts and compares each answer with the PDF's Bot line, character for character. C-22 (Seller feedback) is exercised in this Lab's feedback controls.</p>
           <Button size="sm" variant="secondary" onClick={() => void runMatrix()} disabled={!labels}>Run all groups</Button>
-          {summary && <p role="status" className="mt-2 text-sm font-semibold">{summary.ok} of {summary.total} groups pass · {summary.passed} of {summary.steps} steps</p>}
+          {summary && <p role="status" className="mt-2 text-sm font-semibold">{summary.ok} of {summary.total} engine-run groups pass · {summary.passed} of {summary.steps} steps{workflow ? <><br />C-22 feedback workflow (separate): {workflow.passed} of {workflow.steps} checks pass</> : null}</p>}
           {matrix && <div className="mt-2 max-h-72 overflow-auto rounded-lg border border-border"><table className="w-full text-left text-xs"><thead className="sticky top-0 bg-surface-raised"><tr><th className="p-1.5">ID</th><th className="p-1.5">Scenario</th><th className="p-1.5">PDF p.</th><th className="p-1.5">Steps</th><th className="p-1.5">Result</th></tr></thead><tbody>
-            {matrix.map(r => { const ok = r.how === 'ui' || (!r.failures.length && r.passed === r.steps); return <tr key={r.id} className="border-t border-border"><td className="p-1.5 font-mono">{r.id}</td><td className="p-1.5">{r.title}</td><td className="p-1.5">{r.page}</td><td className="p-1.5">{r.how === 'ui' ? 'feedback (below)' : `${r.passed}/${r.steps}`}</td><td className={`p-1.5 font-semibold ${ok ? 'text-success' : 'text-danger'}`} title={r.failures.join('\n')}>{ok ? (r.how === 'ui' ? 'Browser check' : 'Pass') : 'Fail'}</td></tr> })}
+            {matrix.map(r => { const ok = r.how === 'ui' ? !workflow || workflow.failures.length === 0 : !r.failures.length && r.passed === r.steps; return <tr key={r.id} className="border-t border-border"><td className="p-1.5 font-mono">{r.id}</td><td className="p-1.5">{r.title}</td><td className="p-1.5">{r.page}</td><td className="p-1.5">{r.how === 'ui' ? (workflow ? `workflow ${workflow.passed}/${workflow.steps}` : 'workflow (run all)') : `${r.passed}/${r.steps}`}</td><td className={`p-1.5 font-semibold ${ok ? 'text-success' : 'text-danger'}`} title={r.failures.join('\n')}>{ok ? (r.how === 'ui' ? 'Workflow' : 'Pass') : 'Fail'}</td></tr> })}
           </tbody></table></div>}
         </details>
       </section>
@@ -131,6 +142,7 @@ export function ChatbotTestLab({ sellerId, at }: { sellerId: SellerId; at: Momen
               <dt className="font-semibold text-text-muted">Matched intent</dt><dd>{last.result.intent ? `${last.result.intent} ${INTENT_LABEL[last.result.intent]}` : 'none'}</dd>
               <dt className="font-semibold text-text-muted">Dialogue</dt><dd>{last.result.dialogue.length ? [...new Set(last.result.dialogue)].join(', ') : 'none'}</dd>
               <dt className="font-semibold text-text-muted">Template</dt><dd className="font-mono">{last.result.templateId} v{last.result.templateVersion}</dd>
+              <dt className="font-semibold text-text-muted">Wording</dt><dd>{last.result.templateId !== 'NONE' && isProvisional(last.result.templateId as TemplateId) ? 'Provisional prototype wording, pending founder approval' : 'From the founder-review PDF'}</dd>
               <dt className="font-semibold text-text-muted">Reason</dt><dd className="font-mono">{last.result.reason || '—'}</dd>
             </dl>
             <div><div className="text-xs font-semibold text-text-muted">Resolved facts and where they came from</div>
@@ -144,7 +156,7 @@ export function ChatbotTestLab({ sellerId, at }: { sellerId: SellerId; at: Momen
               {signal && signal !== 'green' && <div className="mt-2 flex flex-col gap-2"><TextInput label="What happened?" value={note} onChange={e => setNote(e.target.value)} maxLength={300} /><TextInput label="What should the assistant have answered or done?" value={expected} onChange={e => setExpected(e.target.value)} maxLength={300} />{noteError && <p role="alert" className="text-xs text-danger">{noteError}</p>}</div>}
               {signal && <div className="mt-2"><Button size="sm" onClick={submitFeedback}>Save feedback</Button></div>}
               <p className="mt-2 text-[10px] text-text-muted">Feedback is kept for an authorised reviewer. It never edits a template, changes the live assistant or trains anything.</p>
-              {feedback.length > 0 && <ul aria-label="Feedback log" className="mt-2 text-xs">{feedback.map(f => <li key={f.id}>{SIGNAL[f.signal]} · {f.template} · “{f.turn}”{f.note ? ` · ${f.note}` : ''}{f.expected ? ` · expected: ${f.expected}` : ''}</li>)}</ul>}
+              {feedback.length > 0 && <ul aria-label="Feedback log" className="mt-2 text-xs">{feedback.map(f => <li key={f.id}>{f.id} · {SIGNAL[f.signal]}{f.priority === 'high' ? ' (high priority)' : ''} · {f.templateId} v{f.templateVersion} · “{f.question}”{f.note ? ` · ${f.note}` : ''}{f.expected ? ` · expected: ${f.expected}` : ''} · {f.status === 'reviewed' && f.review ? `reviewed: ${DECISION_LABEL[f.review.decision]}` : 'waiting for Operator review'}</li>)}</ul>}
             </fieldset>
           </div>
         )}
@@ -154,5 +166,5 @@ export function ChatbotTestLab({ sellerId, at }: { sellerId: SellerId; at: Momen
 }
 
 function emptyResult(): BotResult {
-  return { kind: 'clarify', intent: null, dialogue: [], templateId: 'NONE', templateVersion: '1.0.0', text: 'Type a Buyer question to test.', speaker: 'ui', quickReplies: [], actions: [], slots: [], missing: [], reason: 'EMPTY_MESSAGE', conflicts: [], handoff: null, pending: null, subjectKind: 'NONE', trace: [], sideEffects: [] }
+  return { kind: 'clarify', intent: null, subject: { sellerId: '' }, dialogue: [], templateId: 'NONE', templateVersion: '1.0.0', text: 'Type a Buyer question to test.', speaker: 'ui', quickReplies: [], actions: [], slots: [], missing: [], reason: 'EMPTY_MESSAGE', conflicts: [], handoff: null, pending: null, subjectKind: 'NONE', trace: [], sideEffects: [] }
 }

@@ -76,20 +76,22 @@ export function productFacts(state: WorkspaceState, labels: LeafLabels | null, a
 /** Public Scenes of a Seller (seeded and authored) with their eligible tagged Products, as the Buyer sees them now. */
 export function publicScenes(state: WorkspaceState, at: Moment, sellerId: string): SceneFacts[] {
   const config = botConfigOf(state, sellerId)
-  const eligible = new Set(linkableProducts(state, sellerId as SellerId, at, true).map(p => p.id))
+  // A tagged Product is projected only while it is viewable (published, Seller visible), once, in hotspot order; out-of-stock stays viewable.
+  const viewable = (id: string) => !!productFacts(state, null, at, sellerId, id)?.viewable
+  const dedupe = (ids: string[]) => ids.filter((id, i) => ids.indexOf(id) === i)
   const out: SceneFacts[] = []
   if (isSeededSeller(sellerId)) {
     for (const id of sellerPostsAt(sellerId, at)) {
       if (!isBuyerVisiblePostAt(id, at)) continue
       const post = SHOPPABLE_POSTS[id as ShoppablePostId]
-      out.push({ id, revision: 1, viewable: true, summary: config.scenes[id] ?? '', products: post.tags.filter(t => eligible.has(t)).map(t => ({ id: t, name: LIVE_PRODUCTS[t].name })) })
+      out.push({ id, revision: 1, viewable: true, summary: config.scenes[id] ?? '', products: dedupe([...post.tags]).filter(viewable).map(t => ({ id: t, name: LIVE_PRODUCTS[t as ProductId].name })) })
     }
   }
   for (const scene of Object.values(state.scenes)) {
     if (scene.seller !== sellerId) continue
     if (sceneVisibility(scene, state, at) !== 'public') continue
-    const names = new Map(linkableProducts(state, sellerId as SellerId, at, true).map(p => [p.id, p.name]))
-    out.push({ id: scene.id, revision: scene.updated, viewable: true, summary: config.scenes[scene.id] ?? '', products: scene.tags.filter(t => eligible.has(t.product)).map(t => ({ id: t.product, name: names.get(t.product) ?? t.product })) })
+    const ordered = scene.tags.map((t, i) => ({ id: t.product, n: t.n ?? i + 1 })).sort((a, b) => a.n - b.n).map(t => t.id)
+    out.push({ id: scene.id, revision: scene.updated, viewable: true, summary: config.scenes[scene.id] ?? '', products: dedupe(ordered).filter(viewable).map(id => ({ id, name: productFacts(state, null, at, sellerId, id)!.name })) })
   }
   return out
 }

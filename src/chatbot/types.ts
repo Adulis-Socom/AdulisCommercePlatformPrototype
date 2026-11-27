@@ -75,18 +75,21 @@ export interface World {
 }
 
 // ---- Engine input / output ----
-export type Pending =
+/** A clarification belongs to the Message that raised it and to that Message's subject (`subjectKey`); it is never reapplied to another subject. */
+export type Pending = (
   | { kind: 'offer-handoff'; messageId: string }
   | { kind: 'pick-intent'; intents: IntentId[]; messageId: string }
   | { kind: 'need-device'; messageId: string }
   | { kind: 'need-area'; messageId: string }
+) & { subjectKey?: string }
 export interface ChatState { mode: 'bot' | 'human_takeover' | 'bot_disabled'; pending?: Pending | null }
 export interface BotInput {
   messageId: string; conversationSellerId: string; text?: string; chip?: string; subject: MessageSubject
   /** True when the previous Buyer message in this conversation was about a different Product: the answer then names its Product. */
   contextShift?: boolean
 }
-export interface Chip { id: string; label: string }
+/** A quick reply is bound to the subject of the response that offered it, not to whatever the composer shows when it is tapped. */
+export interface Chip { id: string; label: string; subject?: MessageSubject }
 export type BotAction = { kind: 'open-product'; productId: string } | { kind: 'open-cart'; productId?: string } | { kind: 'show-size-guide' } | { kind: 'select-product' } | { kind: 'select-option'; names: string[] } | { kind: 'select-area' }
 export interface Slot { name: string; value: string; source: string }
 export type ResultKind = 'answer' | 'clarify' | 'handoff-offer' | 'handoff' | 'denied' | 'deferred' | 'no-reply'
@@ -101,6 +104,8 @@ export interface BotResult {
   speaker: 'bot' | 'ui'
   quickReplies: Chip[]; actions: BotAction[]
   slots: Slot[]; missing: string[]; reason: string
+  /** The subject of the Message this result answers (what its quick replies and actions act on). */
+  subject: MessageSubject
   conflicts: { topic: string; canonical: string; supplementary: string }[]
   handoff: { originalMessageId: string } | null
   pending: Pending | null

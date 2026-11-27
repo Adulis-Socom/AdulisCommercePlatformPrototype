@@ -6,6 +6,7 @@ import type { Knowledge } from './sections/console/chatbot-engine'
 import type { BotConfig } from './chatbot/config'
 import type { ChatMsg, Conversation } from './chatbot/chat'
 import type { Pending } from './chatbot/types'
+import type { BotFeedback } from './chatbot/feedback'
 
 /**
  * Seller workspace (SC-001..SC-006): what a Seller authors in the Seller Console during a session (store setup, Products,
@@ -46,6 +47,8 @@ export interface WorkspaceState {
   bot: Partial<Record<SellerId, BotConfig>>
   /** BOT-006: conversations keyed by Buyer|Seller|Market, shared by the Buyer app and the Seller Inbox. */
   chats: Record<string, Conversation>
+  /** BOT-FIX-03: Seller feedback on assistant answers, reviewed by an Operator. Never edits a template. */
+  botFeedback: BotFeedback[]
   /** Prototype hours since the session began; Story lifetimes read it, so expiry is deterministic and demonstrable. */
   clockHours: number
 }
@@ -54,13 +57,15 @@ type Action =
   | { type: 'remove'; collection: 'products' | 'scenes' | 'stories'; id: string }
   | { type: 'restrict'; scene: string; reason: string | null }
   | { type: 'bot'; seller: SellerId; config: BotConfig }
+  | { type: 'feedback-add'; item: BotFeedback }
+  | { type: 'feedback-review'; id: string; review: NonNullable<BotFeedback['review']> }
   | { type: 'chat-exchange'; conversation: Conversation; messages: ChatMsg[]; pending: Pending | null; escalate?: string; waiting?: boolean }
   | { type: 'chat-seller'; key: string; message: ChatMsg }
   | { type: 'chat-mode'; key: string; mode: Conversation['mode'] }
   | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'knowledge'; seller: SellerId; entries: Knowledge[] } | { type: 'clock'; hours: number } | { type: 'reset' }
 
 const KEY = 'adulis.seller-workspace.v1'
-const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, clockHours: 0 }
+const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, botFeedback: [], clockHours: 0 }
 
 function reducer(state: WorkspaceState, action: Action): WorkspaceState {
   switch (action.type) {
@@ -69,6 +74,8 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
     case 'story': return { ...state, stories: { ...state.stories, [action.item.id]: action.item } }
     case 'remove': { const next = { ...state[action.collection] }; delete next[action.id]; return { ...state, [action.collection]: next } }
     case 'setup': return { ...state, setup: { ...state.setup, [action.seller]: action.setup } }
+    case 'feedback-add': return { ...state, botFeedback: [...state.botFeedback, action.item] }
+    case 'feedback-review': return { ...state, botFeedback: state.botFeedback.map(f => (f.id === action.id ? { ...f, status: 'reviewed' as const, review: action.review } : f)) }
     case 'bot': return { ...state, bot: { ...state.bot, [action.seller]: action.config } }
     case 'chat-exchange': {
       const base = state.chats[action.conversation.key] ?? action.conversation
