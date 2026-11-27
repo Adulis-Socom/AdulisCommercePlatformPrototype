@@ -14,7 +14,12 @@ import type { BotFeedback } from './chatbot/feedback'
  * thumbnails, nothing uploaded. Seeded DEMO_DATA records are never mutated: editing one stores an override under its id.
  */
 export type Fulfilment = 'Buyer Collection' | 'Seller Delivery' | 'Courier Delivery'
-export interface WsVariant { key: string; label: string; price: string; stock: string }
+/** `values` is the exact Variant identity: one value per option, in option order (absent only on Variants saved before it existed, which fall back to the label). */
+export interface WsVariant { key: string; label: string; price: string; stock: string; values?: string[] }
+/** The most Variants one Product may list. Combinations are never silently dropped: the Seller must reduce options or values first. */
+export const MAX_VARIANTS = 60
+/** A Variant's values in option order. */
+export const variantValues = (v: WsVariant): string[] => v.values ?? v.label.split(' / ')
 export interface WsProduct {
   id: string; seller: SellerId; seeded?: boolean; status: 'draft' | 'published'
   name: string; description: string; category: string | null
@@ -193,7 +198,7 @@ export function effectiveOverlay(state: WorkspaceState): { products: Record<stri
 export function exactVariants(p: WsProduct): { values: Record<string, string>; label: string; price: number | null; stock: number }[] | null {
   if (!p.options.length || !p.variants.length) return null
   return p.variants.map(v => {
-    const parts = v.label.split(' / ')
+    const parts = variantValues(v)
     return { values: Object.fromEntries(p.options.map((o, i) => [o.name, parts[i] ?? ''])), label: v.label, price: variantPrice(p, v), stock: parseCount(v.stock) ?? 0 }
   })
 }
@@ -255,9 +260,11 @@ export function publicationIssues(p: WsProduct): Issue[] {
     const seen = new Set<string>()
     o.values.forEach(value => { const k = norm(value); if (seen.has(k)) issues.push({ field: 'variants', message: `${o.name.trim() || `Option ${i + 1}`} lists “${value}” more than once.` }); seen.add(k) })
   })
+  const expected = p.options.length && p.options.every(o => o.name.trim() && o.values.length) ? p.options.reduce((n, o) => n * o.values.length, 1) : 0
+  if (expected > MAX_VARIANTS || expected > p.variants.length) issues.push({ field: 'variants', message: `The options make ${expected} combinations but only ${p.variants.length} are listed (at most ${MAX_VARIANTS} are allowed). Remove an option value so every combination is listed.` })
   const combos = new Set<string>()
   p.variants.forEach(v => {
-    const k = v.label.split(' / ').map(norm).join('|')
+    const k = JSON.stringify(variantValues(v).map(norm))
     if (combos.has(k)) issues.push({ field: `variant:${v.key}`, message: `${v.label}: this combination appears twice.` })
     combos.add(k)
     if (v.price.trim() && parseMoney(v.price) === null) issues.push({ field: `variant:${v.key}`, message: `${v.label}: price must be above zero and at most ${MAX_PRICE_BIRR.toLocaleString('en-US')}.` })

@@ -2,7 +2,7 @@
 // and Scenes, the Seller's Store setup and the chatbot configuration. Nothing is copied or re-entered; every call reads current state.
 import { LIVE_PRODUCTS, LIVE_SELLERS } from '../demo-data/live'
 import {
-  CHATBOTS, MARKET, SHOPPABLE_POSTS, buyerVisibleProductsAt, buyerVisibleSellers, currentPrice, isBuyerVisiblePostAt,
+  CHATBOTS, MARKET, PRODUCTS, SHOPPABLE_POSTS, buyerVisibleProductsAt, currentPrice, isBuyerVisiblePostAt,
   sellerPostsAt, type Moment, type ProductId, type SellerId, type ShoppablePostId,
 } from '../demo-data'
 import { COVERAGE_AREAS, exactVariants, linkableProducts, parseMoney, productPrices, productStock, sceneVisibility, type WorkspaceState } from '../seller-workspace'
@@ -11,7 +11,7 @@ import type { LeafLabels } from './taxonomy-labels'
 import type { ProductFacts, SceneFacts, SellerFacts, World } from './types'
 
 export const botConfigOf = (state: WorkspaceState, seller: string): BotConfig => ({ ...blankBotConfig(), ...state.bot[seller as SellerId] })
-const isSeededProduct = (id: string): id is ProductId => id in LIVE_PRODUCTS
+const isSeededProduct = (id: string): id is ProductId => id in PRODUCTS
 const isSeededSeller = (id: string): id is SellerId => id in LIVE_SELLERS
 
 const variantRows = exactVariants
@@ -40,28 +40,25 @@ export function sellerFacts(state: WorkspaceState, id: string): SellerFacts | nu
 export function productFacts(state: WorkspaceState, labels: LeafLabels | null, at: Moment, sellerId: string, id: string): ProductFacts | null {
   const knowledge = botConfigOf(state, sellerId).products[id] ?? {}
   const own = state.products[id]
-  if (isSeededProduct(id)) {
-    const rec = LIVE_PRODUCTS[id]
-    if (rec.seller !== sellerId) return null
-    const rows = own ? variantRows(own) : null
-    const viewable = buyerVisibleProductsAt(at).includes(id) && (!own || own.status === 'published')
-    const price = own && own.variants.length ? Math.min(...productPrices(own)) : currentPrice(id)
-    return {
-      id, sellerId, name: rec.name, description: rec.description ?? '', categoryId: null, categoryPath: '', taxonomyLabels: [], attributes: [], listedDetails: [...rec.attributes],
-      options: rec.variants.map(v => ({ name: v.name ?? 'Option', values: [...v.options] })), variants: rows,
-      price: Number.isFinite(price) ? price : null, regularPrice: rec.price, stock: own ? productStock(own) : rec.stock,
-      fulfilment: sellerFacts(state, sellerId)?.methods ?? [], knowledge, viewable,
-    }
-  }
-  if (!own || own.seller !== sellerId || own.seeded) return null
-  const prices = productPrices(own)
-  const tax = own.category ? (labels?.[own.category] ?? []) : []
+  // DATA-FIX-01: one effective-fact path. "Seeded" means the id is in the seeded DEMO_DATA (never "is in the live registry", which also
+  // holds the Products a Seller authored). The live record gives price, stock and discount; the Seller's workspace record gives taxonomy,
+  // attributes and Variants for seeded edits and authored Products alike.
+  const seeded = isSeededProduct(id)
+  if (seeded ? LIVE_PRODUCTS[id].seller !== sellerId : !own || own.seller !== sellerId || own.seeded) return null
+  const rec = id in LIVE_PRODUCTS ? LIVE_PRODUCTS[id as ProductId] : null
+  const prices = own ? productPrices(own) : []
+  const price = rec ? currentPrice(id as ProductId) : prices.length ? Math.min(...prices) : own ? parseMoney(own.price) : null
+  const tax = own?.category ? (labels?.[own.category] ?? []) : []
+  const options = own && own.options.length ? own.options.map(o => ({ name: o.name, values: [...o.values] })) : (rec?.variants ?? []).map(v => ({ name: v.name ?? 'Option', values: [...v.options] }))
   return {
-    id, sellerId, name: own.name, description: own.description, categoryId: own.category, categoryPath: own.category ?? '', taxonomyLabels: tax,
-    attributes: [...Object.entries(own.attributes).filter(([, v]) => v.trim()).map(([label, value]) => ({ label, value })), ...own.customAttributes.filter(a => a.name.trim() && a.value.trim()).map(a => ({ label: a.name, value: a.value }))],
-    listedDetails: [], options: own.options.map(o => ({ name: o.name, values: [...o.values] })), variants: variantRows(own),
-    price: prices.length ? Math.min(...prices) : parseMoney(own.price), regularPrice: null, stock: productStock(own), fulfilment: [...own.fulfilment], knowledge,
-    viewable: own.status === 'published' && buyerVisibleSellers().includes(sellerId as SellerId),
+    id, sellerId, name: rec?.name ?? own!.name, description: rec?.description ?? own?.description ?? '',
+    categoryId: own?.category ?? null, categoryPath: own?.category ?? '', taxonomyLabels: tax,
+    attributes: own ? [...Object.entries(own.attributes).filter(([, v]) => v.trim()).map(([label, value]) => ({ label, value })), ...own.customAttributes.filter(a => a.name.trim() && a.value.trim()).map(a => ({ label: a.name, value: a.value }))] : [],
+    listedDetails: !seeded ? [] : own ? own.customAttributes.filter(a => !a.name.trim() && a.value.trim()).map(a => a.value) : [...(rec?.attributes ?? [])], options, variants: own ? variantRows(own) : null,
+    price: price !== null && Number.isFinite(price) ? price : null, regularPrice: seeded && rec ? rec.price : null,
+    stock: rec ? rec.stock : own ? productStock(own) : 0,
+    fulfilment: own && !seeded ? [...own.fulfilment] : sellerFacts(state, sellerId)?.methods ?? [], knowledge,
+    viewable: !!rec && buyerVisibleProductsAt(at).includes(id as ProductId) && (!own || own.status === 'published'),
   }
 }
 

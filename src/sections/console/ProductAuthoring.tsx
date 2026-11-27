@@ -5,13 +5,12 @@ import { ProductMediaEditor } from '../ProductMediaEditor'
 import { PRODUCTS, activeDiscount, fulfilmentOptionsAt, sellerProductsAt, type Moment, type ProductId, type SellerId } from '../../demo-data'
 import { LIVE_PRODUCTS } from '../../demo-data/live'
 import { TAXONOMY, attributesFor, findTaxonomy, type TaxonomyAttribute } from '../../demo-data/taxonomy'
-import { LOW_STOCK_AT, formatBirr, parseCount, parseMoney, productPrices, productStock, publicationIssues, stockState, toThumbnail, useWorkspace, type Fulfilment, type WorkspaceState, type WsProduct, type WsVariant } from '../../seller-workspace'
+import { LOW_STOCK_AT, MAX_VARIANTS, formatBirr, parseCount, parseMoney, productPrices, variantValues, productStock, publicationIssues, stockState, toThumbnail, useWorkspace, type Fulfilment, type WorkspaceState, type WsProduct, type WsVariant } from '../../seller-workspace'
 import { Card, Check, Notice, Page, SelectField, Thumb, focusField } from './kit'
 
 /** SC-002 / SC-003: Product authoring with drafts, category-driven attributes, options, Variants, stock and simulated publication. */
 
 const FULFILMENT: Fulfilment[] = ['Buyer Collection', 'Seller Delivery', 'Courier Delivery']
-const MAX_VARIANTS = 60
 const MAX_OPTIONS = 3
 
 function offered(state: WorkspaceState, seller: SellerId, at: Moment): Fulfilment[] {
@@ -31,15 +30,18 @@ export function fromSeed(id: ProductId, seller: SellerId, state: WorkspaceState,
   return { id, seller, seeded: true, status: 'published', name: seed.name, description: seed.description ?? '', category: null, attributes: {}, customAttributes: seed.attributes.map(a => ({ name: '', value: a })), options: [], variants: [], price: String(seed.price / 100), stock: String(seed.stock), photos: [], fulfilment: offered(state, seller, at), locallyMade: seed.locallyMade, updated: 0 }
 }
 
-/** Every combination of the options' values, keeping the price and stock already entered for a combination that still exists. */
+/** How many combinations the usable options make. */
+const comboCount = (options: WsProduct['options']) => { const usable = options.filter(o => o.name.trim() && o.values.length); return usable.length ? usable.reduce((n, o) => n * o.values.length, 1) : 0 }
+
+/** Every combination of the options' values (never truncated: the caller refuses a change above MAX_VARIANTS), keeping the price and stock already entered for a combination that still exists. */
 function regenerate(options: WsProduct['options'], old: WsVariant[]): WsVariant[] {
   const usable = options.filter(o => o.name.trim() && o.values.length)
   if (!usable.length) return []
   let combos: string[][] = [[]]
   for (const option of usable) combos = combos.flatMap(c => option.values.map(v => [...c, v]))
-  return combos.slice(0, MAX_VARIANTS).map(values => {
-    const key = values.join('|'); const prior = old.find(v => v.key === key)
-    return { key, label: values.join(' / '), price: prior?.price ?? '', stock: prior?.stock ?? '' }
+  return combos.map(values => {
+    const key = JSON.stringify(values); const prior = old.find(v => variantValues(v).length === values.length && variantValues(v).every((x, i) => x === values[i]))
+    return { key, values, label: values.join(' / '), price: prior?.price ?? '', stock: prior?.stock ?? '' }
   })
 }
 
@@ -161,7 +163,13 @@ function ProductEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: M
   }
   const back = () => { if (dirty) setConfirm('discard'); else onBack() }
 
-  const setOptions = (options: WsProduct['options']) => set({ options, variants: regenerate(options, p.variants) })
+  // Never truncate: a change that would make more than MAX_VARIANTS combinations is refused (a reduction of an already oversized Product is allowed).
+  const [limitNote, setLimitNote] = useState('')
+  const setOptions = (options: WsProduct['options']) => {
+    const count = comboCount(options)
+    if (count > MAX_VARIANTS && count >= comboCount(p.options)) { setLimitNote(`That would make ${count} combinations. A Product can list at most ${MAX_VARIANTS}: remove a value or an option first.`); return }
+    setLimitNote(''); set({ options, variants: regenerate(options, p.variants) })
+  }
   const setVariant = (key: string, patch: Partial<WsVariant>) => set({ variants: p.variants.map(v => (v.key === key ? { ...v, ...patch } : v)) })
   const category = taxonomy?.category
   const majorId = p.category?.split('/')[0] ?? ''
@@ -245,7 +253,8 @@ function ProductEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: M
                   </table>
                 </div>
               )}
-              {p.options.filter(o => o.name.trim() && o.values.length).reduce((n, o) => n * o.values.length, 1) > MAX_VARIANTS && <Notice tone="warning" role="alert">Only the first {MAX_VARIANTS} combinations are kept. Remove a value to keep them all.</Notice>}
+              {limitNote && <Notice tone="warning" role="alert">{limitNote}</Notice>}
+              {comboCount(p.options) > MAX_VARIANTS && <Notice tone="warning" role="alert">These options make {comboCount(p.options)} combinations; at most {MAX_VARIANTS} are allowed. Remove a value to publish.</Notice>}
             </div>
           </Card>
           <Card step="05" title="Price and inventory">

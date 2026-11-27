@@ -525,15 +525,25 @@ function quantityIn(text: string): number | null {
 /** Option values the Buyer named in THIS Message ("size M in black", "Medium"). A single-letter size needs a capital or the word "size". */
 function detectVariant(text: string, product: ProductFacts): Detected[] {
   const found: Detected[] = []
-  const esc = (v: string) => v.replace(/[.*+?^${}()|[]\]/g, '\$&')
+  const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const bare = (alias: string) => alias.length === 1
+    ? new RegExp(`\\bsize\\s+${esc(alias)}\\b`, 'i').exec(text) ?? new RegExp(`(?<![A-Za-z'])${esc(alias.toUpperCase())}(?![A-Za-z'])`).exec(text)
+    : new RegExp(`(?<![A-Za-z'])${esc(alias)}(?![A-Za-z'])`, 'i').exec(text)
   for (const option of product.options) {
-    for (const value of option.values) {
+    // A value that two options share ("Plain" as a Tier and as a Grade) is never guessed: it counts only beside its option's own name,
+    // "Tier Plain" first, "Plain tier" only when no "name value" pairing was written.
+    const named = (value: string, valueFirst: boolean) => new RegExp(valueFirst
+      ? `(?<![A-Za-z'])${esc(value)}\\s+${esc(option.name)}(?![A-Za-z'])`
+      : `(?<![A-Za-z'])${esc(option.name)}\\s*[:=-]?\\s*${esc(value)}(?![A-Za-z'])`, 'i').exec(text)
+    const shared = (value: string) => product.options.some(o => o !== option && o.values.some(v => eq(v, value)))
+    for (const valueFirst of [false, true]) {
       if (found.some(f => f.option === option.name)) break
-      for (const alias of [value, ...(SIZE_ALIASES[value.toUpperCase()] ?? [])]) {
-        const m = alias.length === 1
-          ? new RegExp(`\bsize\s+${esc(alias)}\b`, 'i').exec(text) ?? new RegExp(`(?<![A-Za-z'])${esc(alias.toUpperCase())}(?![A-Za-z'])`).exec(text)
-          : new RegExp(`(?<![A-Za-z'])${esc(alias)}(?![A-Za-z'])`, 'i').exec(text)
-        if (m) { found.push({ option: option.name, value, said: alias.length === 1 ? value : m[0].replace(/^./, c => c.toUpperCase()) }); break }
+      for (const value of option.values) {
+        if (found.some(f => f.option === option.name)) break
+        for (const alias of [value, ...(SIZE_ALIASES[value.toUpperCase()] ?? [])]) {
+          const m = shared(value) ? named(value, valueFirst) : valueFirst ? null : bare(alias)
+          if (m) { found.push({ option: option.name, value, said: alias.length === 1 || shared(value) ? value : m[0].replace(/^./, c => c.toUpperCase()) }); break }
+        }
       }
     }
   }

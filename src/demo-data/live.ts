@@ -107,9 +107,12 @@ export const livePhoto = (id: ProductId) => authored.products[id]?.photos[0] ?? 
 export const liveScenePhoto = (id: ShoppablePostId) => authored.scenes[id]?.image ?? undefined
 /** The exact price (santim) of the chosen options, from the Variants the Seller listed; null when the Product keeps no such row. */
 export function liveVariantRow(id: string, options: readonly string[]) {
-  const rows = authored.products[id]?.rows
-  if (!rows) return null
-  return rows.find(r => Object.values(r.values).length === options.length && Object.values(r.values).every(v => options.includes(v))) ?? null
+  const own = authored.products[id]
+  if (!own?.rows) return null
+  // Exact match: the chosen value of each option group, by that group's name and position (never by value alone: two options may share a value).
+  const groups = own.record.variants
+  if (groups.length !== options.length) return null
+  return own.rows.find(r => groups.every((g, i) => r.values[g.name ?? ''] === options[i])) ?? null
 }
 /** Seeded Products the Seller returned to draft: Buyers cannot see them. */
 export const isUnpublishedSeeded = (id: ProductId) => products[id]?.published === false
