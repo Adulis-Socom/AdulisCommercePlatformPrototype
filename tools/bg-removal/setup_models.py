@@ -24,6 +24,9 @@ def main() -> int:
     manifest = json.loads((HERE / "models.json").read_text(encoding="utf-8"))
     status = 0
     for name, entry in manifest["models"].items():
+        if entry.get("status") != "admitted" or not entry.get("file"):  # fail closed: never download a blocked or unregistered model
+            print(f"{name}: skipped (status {entry.get('status')}; not admitted)")
+            continue
         target = HERE / "models" / entry["file"]
         if target.exists() and sha256_of(target) == entry["sha256"]:
             print(f"{name}: already present, SHA-256 verified")

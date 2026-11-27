@@ -1,0 +1,426 @@
+{
+  "rembg_version": "2.0.88",
+  "count": 23,
+  "sessions": [
+    {
+      "class": "BiRefNetSessionGeneral",
+      "id": "birefnet-general",
+      "file": "birefnet_general.py",
+      "base": "BaseSession",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-general-epoch_244.onnx"
+      ],
+      "checksums": [
+        "md5:7a35a0141cbbc80de11d9c9a28f52697"
+      ],
+      "input_size": [
+        1024,
+        1024
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "BiRefNetSessionGeneralLite",
+      "id": "birefnet-general-lite",
+      "file": "birefnet_general_lite.py",
+      "base": "BiRefNetSessionGeneral",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx"
+      ],
+      "checksums": [
+        "md5:4fab47adc4ff364be1713e97b7e66334"
+      ],
+      "input_size": null,
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "BiRefNetSessionGeneralFP16",
+      "id": "birefnet-general-fp16",
+      "file": "birefnet_general_fp16.py",
+      "base": "BiRefNetSessionGeneral",
+      "urls": [],
+      "checksums": [],
+      "input_size": null,
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": false,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "BiRefNetSessionPortrait",
+      "id": "birefnet-portrait",
+      "file": "birefnet_portrait.py",
+      "base": "BiRefNetSessionGeneral",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-portrait-epoch_150.onnx"
+      ],
+      "checksums": [
+        "md5:c3a64a6abf20250d090cd055f12a3b67"
+      ],
+      "input_size": null,
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "BiRefNetSessionDIS",
+      "id": "birefnet-dis",
+      "file": "birefnet_dis.py",
+      "base": "BiRefNetSessionGeneral",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-DIS-epoch_590.onnx"
+      ],
+      "checksums": [
+        "md5:2d4d44102b446f33a4ebb2e56c051f2b"
+      ],
+      "input_size": null,
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "BiRefNetSessionHRSOD",
+      "id": "birefnet-hrsod",
+      "file": "birefnet_hrsod.py",
+      "base": "BiRefNetSessionGeneral",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-HRSOD_DHU-epoch_115.onnx"
+      ],
+      "checksums": [
+        "md5:c017ade5de8a50ff0fd74d790d268dda"
+      ],
+      "input_size": null,
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "BiRefNetSessionCOD",
+      "id": "birefnet-cod",
+      "file": "birefnet_cod.py",
+      "base": "BiRefNetSessionGeneral",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-COD-epoch_125.onnx"
+      ],
+      "checksums": [
+        "md5:f6d0d21ca89d287f17e7afe9f5fd3b45"
+      ],
+      "input_size": null,
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "BiRefNetSessionMassive",
+      "id": "birefnet-massive",
+      "file": "birefnet_massive.py",
+      "base": "BiRefNetSessionGeneral",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-massive-TR_DIS5K_TR_TEs-epoch_420.onnx"
+      ],
+      "checksums": [
+        "md5:33e726a2136a3d59eb0fdf613e31e3e9"
+      ],
+      "input_size": null,
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "BiRefNetSessionDynamic",
+      "id": "birefnet-dynamic",
+      "file": "birefnet_dynamic.py",
+      "base": "BiRefNetSessionGeneral",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet_dynamic-1024x1024.onnx"
+      ],
+      "checksums": [
+        "md5:4f9c4b2d2e16fe1788f98184e7f43d2b"
+      ],
+      "input_size": null,
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "DisSession",
+      "id": "isnet-anime",
+      "file": "dis_anime.py",
+      "base": "BaseSession",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-anime.onnx"
+      ],
+      "checksums": [
+        "md5:6f184e756bb3bd901c8849220a83e38e"
+      ],
+      "input_size": [
+        1024,
+        1024
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "DisCustomSession",
+      "id": "dis_custom",
+      "file": "dis_custom.py",
+      "base": "BaseSession",
+      "urls": [],
+      "checksums": [],
+      "input_size": [
+        1024,
+        1024
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": false,
+      "has_custom_checkpoint_env": true
+    },
+    {
+      "class": "DisSessionGeneralUse",
+      "id": "isnet-general-use",
+      "file": "dis_general_use.py",
+      "base": null,
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx"
+      ],
+      "checksums": [
+        "md5:fc16ebd8b0c10d971d3513d564d01e29"
+      ],
+      "input_size": [
+        1024,
+        1024
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "SamSession",
+      "id": "sam",
+      "file": "sam.py",
+      "base": "BaseSession",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/sam_vit_h_4b8939.encoder_data.{i}.bin",
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/{fname_encoder}",
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/{fname_decoder}",
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/sam_vit_h_4b8939.encoder_data.{i}.bin"
+      ],
+      "checksums": [
+        "md5:a780f8ba09bceceaa1435724ed354848",
+        "md5:c4218b16ec1cb09889fcd6eb7a42a7c9",
+        "md5:26fc0e01d2fa34ed2d3f91259118482d",
+        "md5:45391530307d1aee79b2a1507769e6c7",
+        "md5:6e7c5e3e97b50a9e833e55062ae35182",
+        "md5:dc760a2912862c05ec3ac2658162a1b5",
+        "md5:83f7fe08c2f8b94b6d08c3e44cf1de0e",
+        "md5:e78ca201f5ae92288945623f48088b7c",
+        "md5:2630bbbf7f256ff82455ecce70467734",
+        "md5:2241a15c7c5e5b6ac018223d1a795a94",
+        "md5:391503beb5e5d7d1ae6f55d0cecabd50",
+        "md5:4c86ebeecbe2e6325203b641b8702a5b",
+        "md5:22316455879cd64f1414bc2cc84772ab",
+        "md5:3ca4efe12cd9a686e60364a628546440",
+        "md5:635041e6eac1c3e6ac7eceeef1ed1f38"
+      ],
+      "input_size": null,
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "SiluetaSession",
+      "id": "silueta",
+      "file": "silueta.py",
+      "base": "BaseSession",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/silueta.onnx"
+      ],
+      "checksums": [
+        "md5:55e59e0d8062d2f5d013f4725ee84782"
+      ],
+      "input_size": [
+        320,
+        320
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "Unet2ClothSession",
+      "id": "u2net_cloth_seg",
+      "file": "u2net_cloth_seg.py",
+      "base": "BaseSession",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_cloth_seg.onnx"
+      ],
+      "checksums": [
+        "md5:2434d1f3cb744e0e49386c906e5a08bb"
+      ],
+      "input_size": [
+        768,
+        768
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "U2netCustomSession",
+      "id": "u2net_custom",
+      "file": "u2net_custom.py",
+      "base": "BaseSession",
+      "urls": [],
+      "checksums": [],
+      "input_size": [
+        320,
+        320
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": false,
+      "has_custom_checkpoint_env": true
+    },
+    {
+      "class": "U2netHumanSegSession",
+      "id": "u2net_human_seg",
+      "file": "u2net_human_seg.py",
+      "base": "BaseSession",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx"
+      ],
+      "checksums": [
+        "md5:c09ddc2e0104f800e3e1bb4652583d1f"
+      ],
+      "input_size": [
+        320,
+        320
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "U2netSession",
+      "id": "u2net",
+      "file": "u2net.py",
+      "base": "BaseSession",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx"
+      ],
+      "checksums": [
+        "md5:60024c5c889badc19c04ad937298a77b"
+      ],
+      "input_size": [
+        320,
+        320
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "U2netpSession",
+      "id": "u2netp",
+      "file": "u2netp.py",
+      "base": "BaseSession",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx"
+      ],
+      "checksums": [
+        "md5:8e83ca70e441ab06c318d82300c84806"
+      ],
+      "input_size": [
+        320,
+        320
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "BriaRmBgSession",
+      "id": "bria-rmbg",
+      "file": "bria_rmbg.py",
+      "base": "BaseSession",
+      "urls": [
+        "https://github.com/danielgatis/rembg/releases/download/v0.0.0/bria-rmbg-2.0.onnx"
+      ],
+      "checksums": [
+        "sha256:5b486f08200f513f460da46dd701db5fbb47d79b4be4b708a19444bcd4e79958"
+      ],
+      "input_size": [
+        1024,
+        1024
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": true,
+      "has_custom_checkpoint_env": false
+    },
+    {
+      "class": "BenCustomSession",
+      "id": "ben_custom",
+      "file": "ben_custom.py",
+      "base": "BaseSession",
+      "urls": [],
+      "checksums": [],
+      "input_size": [
+        1024,
+        1024
+      ],
+      "is_local": true,
+      "requires_credentials": false,
+      "downloads_a_checkpoint": false,
+      "has_custom_checkpoint_env": true
+    },
+    {
+      "class": "WithoutBgSession",
+      "id": "withoutbg",
+      "file": "withoutbg.py",
+      "base": "BaseSession",
+      "urls": [],
+      "checksums": [],
+      "input_size": null,
+      "is_local": false,
+      "requires_credentials": true,
+      "downloads_a_checkpoint": false,
+      "has_custom_checkpoint_env": true
+    },
+    {
+      "class": "AtlasCloudSession",
+      "id": "atlascloud",
+      "file": "atlascloud.py",
+      "base": "BaseSession",
+      "urls": [],
+      "checksums": [],
+      "input_size": null,
+      "is_local": false,
+      "requires_credentials": true,
+      "downloads_a_checkpoint": false,
+      "has_custom_checkpoint_env": true
+    }
+  ]
+}

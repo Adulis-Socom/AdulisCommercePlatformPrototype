@@ -73,7 +73,9 @@ class AdapterTest(unittest.TestCase):
     def test_health_lists_only_allowlisted_models(self):
         status, data, _ = self.get("/health")
         self.assertEqual(status, 200)
-        self.assertEqual([m["id"] for m in json.loads(data)["models"]], ["u2netp"])
+        ids = [m["id"] for m in json.loads(data)["models"]]
+        self.assertEqual(len(ids), 23)
+        self.assertEqual(ids, list(json.loads((HERE / "models.json").read_text(encoding="utf-8"))["models"]))
 
     def get(self, path, host=None, origin=ORIGIN):
         connection = http.client.HTTPConnection("127.0.0.1", PORT, timeout=10)
@@ -92,11 +94,17 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(self.get("/health", origin="https://evil.example")[0], 403)
         self.assertEqual(self.get("/health", host="evil.example")[0], 403)
 
-    def test_unknown_and_restricted_models_never_execute(self):
-        for model in ("bria-rmbg", "u2net", "birefnet-general", "isnet-general-use", "silueta", "../u2netp", "u2netp.onnx", "C:/x.onnx", ""):
+    def test_unknown_models_are_refused_and_registered_but_blocked_models_never_execute(self):
+        for model in ("../u2netp", "u2netp.onnx", "C:/x.onnx", "unknown-model", ""):
             status, data, _ = self.post(png(), model=model)
             self.assertEqual(status, 400, model)
             self.assertIn("allowlist", json.loads(data)["error"])
+        blocked = [k for k, e in json.loads((HERE / "models.json").read_text(encoding="utf-8"))["models"].items() if e["status"] != "admitted"]
+        self.assertGreaterEqual(len(blocked), 23)  # nothing is admitted today
+        for model in blocked:
+            status, data, _ = self.post(png(), model=model)
+            self.assertEqual(status, 403, model)
+            self.assertIn("unavailable", json.loads(data)["error"])
 
     def test_refusals_stay_readable_while_a_large_photo_is_still_uploading(self):
         # Regression: refusing without reading the body made browsers see a reset (fetch TypeError) instead of the error.
@@ -104,7 +112,7 @@ class AdapterTest(unittest.TestCase):
         status, data, _ = self.post(big, token="wrong")
         self.assertEqual((status, json.loads(data)["error"]), (401, "Missing or wrong adapter token."))
         status, data, _ = self.post(big, model="bria-rmbg")
-        self.assertEqual(status, 400)
+        self.assertIn(status, (400, 403))  # readable either way; the 6 MB of zeros is not an image, and bria-rmbg is blocked
 
     def test_only_the_remove_path_exists_and_no_url_or_path_input(self):
         self.assertEqual(self.post(png(), path="/api/remove")[0], 404)
@@ -148,7 +156,7 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(status, 403)
         self.assertIn("unavailable", json.loads(data)["error"])
         status, data, _ = self.get("/health")
-        entry = json.loads(data)["models"][0]
+        entry = next(m for m in json.loads(data)["models"] if m["id"] == "u2netp")
         self.assertEqual((entry["id"], entry["status"], entry["ready"]), ("u2netp", "unresolved", False))
 
     def test_only_an_admitted_status_may_load_and_there_is_no_bypass(self):
