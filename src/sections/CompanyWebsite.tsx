@@ -2,6 +2,7 @@ import { Fragment, useEffect, useId, useRef, useState, FormEvent } from 'react'
 import { AdulisLogo } from '../App'
 import { useStory } from '../StoryClock'
 import { BUYERS, DELETION_CONSEQUENCES, DELETION_REASONS, PRODUCTS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS, accountDeletionPreviewAt, formatClockShort, formatEtb, forYouAt, initials, issueAccountDeletionCapability, issueReportSubmissionCapability, requestAccountDeletionAt, sellerProductsAt, submitContentReport, trustAt, trustLabel, type AccountDeletionCapability, type DeletionBlocker, type ReportSubmissionCapability } from '../demo-data'
+import { usePrototypeMode } from '../prototype-mode'
 
 /* ─── Page routing ─── */
 type PageKey =
@@ -37,6 +38,18 @@ const NAV_LINKS: { key: PageKey; label: string }[] = [
 const MOBILE_PAGES: PageKey[] = ['home', 'how-it-works', 'for-sellers', 'waitlist', 'trust']
 
 /* ─── Main component ─── */
+/**
+ * WEB-001: Release 1 (the current MVP) has no payment, paid Orders, Courier handoff, purchased Reviews or Claims. In MVP mode a card,
+ * step or list item that describes them is left out; the internal simulation keeps the historical copy.
+ */
+const OBSOLETE = /gateway|payment|\bpaid\b|\bQR\b|handoff|courier|claim|checkout|GMV|cash on delivery|\borders?\b|pay when|prepar/i
+const OBSOLETE_STEP = new RegExp(OBSOLETE.source + '|review', 'i')
+const MVP_SELLER_COPY: Record<string, string> = {
+  'Inventory Management': 'Set stock levels per variant. Receive low-stock alerts before you run out.',
+  Analytics: 'Track product views, Scene impressions, product-tag click-through rate and storefront visits. Content performance per Scene.',
+  Trust: 'Your Trust level is built through your record and review scores. Visible on your storefront. Cannot be purchased.',
+}
+
 export default function CompanyWebsite({ demoTarget }: { demoTarget?: string }) {
   const [page, setPage]           = useState<PageKey>((demoTarget as PageKey) || 'home')
   const [view, setView]           = useState<'desktop' | 'mobile'>(() => typeof window !== 'undefined' && window.innerWidth <= 640 ? 'mobile' : 'desktop')
@@ -265,7 +278,17 @@ function MobileFrame({ page, navigate }: { page: PageKey; navigate: (p: PageKey)
 }
 
 /* ─── Page router ─── */
-function PageRouter({ page, navigate }: { page: PageKey; navigate: (p: PageKey) => void }) {
+function ReleaseBanner() {
+  const { simulation } = usePrototypeMode()
+  if (simulation) return null
+  return <div role="note" style={{ background: 'var(--color-info-bg)', color: 'var(--color-info)', fontSize: 13, lineHeight: 1.5, padding: '10px 24px', textAlign: 'center' }}>Release 1 preview: Adulis currently offers Scenes, Stories, Products, Seller storefronts, messaging and a separate cart per Seller. Ordering, payment, delivery and Claims are not available yet.</div>
+}
+
+function PageRouter(props: { page: PageKey; navigate: (p: PageKey) => void }) {
+  return <><ReleaseBanner /><RoutedPage {...props} /></>
+}
+
+function RoutedPage({ page, navigate }: { page: PageKey; navigate: (p: PageKey) => void }) {
   switch (page) {
     case 'home':            return <HomePage navigate={navigate} />
     case 'how-it-works':   return <HowItWorksPage navigate={navigate} />
@@ -288,7 +311,11 @@ function PageRouter({ page, navigate }: { page: PageKey; navigate: (p: PageKey) 
   }
 }
 
-function MobilePageContent({ page, navigate }: { page: PageKey; navigate: (p: PageKey) => void }) {
+function MobilePageContent(props: { page: PageKey; navigate: (p: PageKey) => void }) {
+  return <><ReleaseBanner /><MobileRoutedPage {...props} /></>
+}
+
+function MobileRoutedPage({ page, navigate }: { page: PageKey; navigate: (p: PageKey) => void }) {
   switch (page) {
     case 'home':        return <MobileHomePage navigate={navigate} />
     case 'how-it-works': return <MobileHowItWorks navigate={navigate} />
@@ -303,6 +330,7 @@ function MobilePageContent({ page, navigate }: { page: PageKey; navigate: (p: Pa
    HOMEPAGE
 ══════════════════════════════════ */
 function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   return (
     <div>
       {/* Hero */}
@@ -364,7 +392,7 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
         <SectionLabel>The Adulis Model</SectionLabel>
         <SectionTitle>Content that is commerce. Commerce that is trustworthy.</SectionTitle>
         <p style={{ fontSize: 16, lineHeight: 1.7, color: 'var(--color-text-secondary)', maxWidth: 640, margin: '16px auto 0', textAlign: 'center' }}>
-          Adulis separates the discovery layer from the transaction layer — without losing connection between them. Sellers publish rich content. Buyers act on what they see. Every transaction flows through a gateway. Every delivery generates verifiable evidence.
+          Adulis separates the discovery layer from the transaction layer — without losing connection between them. {sim ? 'Sellers publish rich content. Buyers act on what they see. Every transaction flows through a gateway. Every delivery generates verifiable evidence.' : 'Sellers publish rich content. Buyers explore what they see, message the Seller and keep a separate cart per Seller. Ordering is not available yet.'}
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24, marginTop: 48 }}>
           {[
@@ -374,16 +402,15 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
             },
             {
               title: 'Scenes',
-              desc: 'Creative scenes where products appear in context. Viewers can tap a tag, see the product, and move directly to purchase without leaving the content.',
+              desc: sim ? 'Creative scenes where products appear in context. Viewers can tap a tag, see the product, and move directly to purchase without leaving the content.' : 'Creative scenes where products appear in context. Viewers can tap a tag and open the product without leaving the content.',
             },
             {
               title: 'Verified Storefronts',
               desc: 'Every seller has a public storefront showing their full catalogue, Trust level, and review history. Accessible without an account.',
             },
-            {
-              title: 'Gateway Payments',
-              desc: 'Adulis never holds funds. All transactions flow through established payment infrastructure, and payment is confirmed before the seller prepares the order.',
-            },
+            sim
+              ? { title: 'Gateway Payments', desc: 'Adulis never holds funds. All transactions flow through established payment infrastructure, and payment is confirmed before the seller prepares the order.' }
+              : { title: 'Seller-separated Cart', desc: 'Items from each Seller stay in their own cart, so it is always clear what you are choosing from whom.' },
           ].map(c => (
             <div key={c.title} style={{ padding: 28, background: 'var(--color-surface)', borderRadius: 16, border: '1px solid var(--color-border)' }}>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 10px' }}>{c.title}</h3>
@@ -437,14 +464,19 @@ function HomePage({ navigate }: { navigate: (p: PageKey) => void }) {
       {/* Trust & Safety section */}
       <Section bg="var(--color-surface)">
         <SectionLabel>Trust & Safety</SectionLabel>
-        <SectionTitle>Accountability at every step, not just at checkout.</SectionTitle>
-        <PhotoSlot brief="A courier handing a delivery to a buyer" tone="stone" style={{ marginTop: 48, aspectRatio: '12 / 5', minHeight: 220 }} />
+        <SectionTitle>{sim ? 'Accountability at every step, not just at checkout.' : 'Accountability you can see at every step.'}</SectionTitle>
+        <PhotoSlot brief={sim ? 'A courier handing a delivery to a buyer' : 'A Buyer browsing a Seller\'s Scenes'} tone="stone" style={{ marginTop: 48, aspectRatio: '12 / 5', minHeight: 220 }} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginTop: 24 }}>
           {[
             { label: 'Seller Admission', desc: 'Sellers are admitted, not self-served. Social presence, business intent, and seller history are reviewed.' },
-            { label: 'Trust Ladder', desc: 'Every seller has a verified Trust level based on their fulfilment record, reviews, and claims history.' },
-            { label: 'Gateway Payment', desc: 'No cash on delivery. Payments flow through established providers and are confirmed before the seller prepares the order.' },
-            { label: 'Handoff Evidence', desc: 'Pickup QR and Delivery QR create verifiable evidence at both ends of every delivery.' },
+            { label: 'Trust Ladder', desc: sim ? 'Every seller has a verified Trust level based on their fulfilment record, reviews, and claims history.' : 'Every seller has a verified Trust level based on their record and reviews.' },
+            ...(sim ? [
+              { label: 'Gateway Payment', desc: 'No cash on delivery. Payments flow through established providers and are confirmed before the seller prepares the order.' },
+              { label: 'Handoff Evidence', desc: 'Pickup QR and Delivery QR create verifiable evidence at both ends of every delivery.' },
+            ] : [
+              { label: 'Seller Information', desc: 'Each Seller shows where they serve and how Buyers can collect or receive an item.' },
+              { label: 'Your Choice', desc: 'Browse, save and message Sellers. Nothing is ordered or paid in Release 1.' },
+            ]),
           ].map(c => (
             <div key={c.label} style={{ padding: 22, background: 'var(--color-surface-raised)', borderRadius: 14 }}>
               <h4 style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)', margin: '0 0 8px' }}>{c.label}</h4>
@@ -645,6 +677,7 @@ function StorefrontIllustration() {
 }
 
 function HowCommerceWorksMini({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   const steps = [
     { n: 1, label: 'Discover' },
     { n: 2, label: 'Product' },
@@ -655,7 +688,7 @@ function HowCommerceWorksMini({ navigate }: { navigate: (p: PageKey) => void }) 
     { n: 7, label: 'Courier Picks Up' },
     { n: 8, label: 'Handoff + QR' },
     { n: 9, label: 'Review' },
-  ]
+  ].filter(step => sim || !OBSOLETE_STEP.test(step.label)).map((step, i) => ({ ...step, n: i + 1 }))
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: 44, overflowX: 'auto', justifyContent: 'center' }}>
@@ -686,6 +719,7 @@ function HowCommerceWorksMini({ navigate }: { navigate: (p: PageKey) => void }) 
    HOW IT WORKS
 ══════════════════════════════════ */
 function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   const steps = [
     { n: '01', title: 'Discover', color: '#F0DDD1',
       body: 'Open Adulis and scroll your For You feed — a curated stream of Scenes from sellers and categories you\'ve engaged with. Image-led content, not endless video.',
@@ -694,7 +728,7 @@ function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
       body: 'Tap a tagged product in a Scene, or visit a seller\'s storefront directly. The Product page shows a full gallery, accurate variants, live inventory, and the seller\'s Trust level.',
       detail: null },
     { n: '03', title: 'Cart', color: '#E8EFF0',
-      body: 'Add to your cart. Each seller has a separate cart — your carts are clearly separated so you know exactly what you\'re ordering from whom.',
+      body: sim ? 'Add to your cart. Each seller has a separate cart — your carts are clearly separated so you know exactly what you\'re ordering from whom.' : 'Add to your cart. Each seller has a separate cart, so you always know what you are choosing from whom. Ordering is not available yet.',
       detail: null },
     { n: '04', title: 'Checkout', color: '#EDE8F0',
       body: 'Review your order before you pay: every charge is itemised, including the delivery charge for your fulfilment choice. Select your fulfilment preference. Proceed to payment.',
@@ -714,7 +748,7 @@ function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
     { n: '09', title: 'Review', color: '#F0EDE8',
       body: 'Leave a review for Product Quality and Seller Service separately. Both scores are public and contribute to the seller\'s Trust level over time.',
       detail: 'You can also raise a Claim if the order didn\'t match what was described. Claims are reviewed by Adulis Operators against documented evidence.' },
-  ]
+  ].filter(step => sim || !OBSOLETE_STEP.test(step.title + ' ' + step.body)).map((step, i) => ({ ...step, n: String(i + 1).padStart(2, '0') }))
 
   return (
     <div>
@@ -726,7 +760,7 @@ function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
             Nine steps. Every one accountable.
           </h1>
           <p style={{ fontSize: 17, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: '0 0 32px' }}>
-            Adulis is designed so that every step of the buyer journey has a clear owner, verifiable evidence, and a path to resolution if something goes wrong.
+            {sim ? 'Adulis is designed so that every step of the buyer journey has a clear owner, verifiable evidence, and a path to resolution if something goes wrong.' : 'Adulis is designed so that every step of the Buyer journey has a clear owner.'}
           </p>
           <div style={{ display: 'flex', gap: 14, justifyContent: 'center' }}>
             <button onClick={() => navigate('for-buyers')} style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', borderRadius: 999, padding: '12px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>For Buyers</button>
@@ -770,6 +804,7 @@ function HowItWorksPage({ navigate }: { navigate: (p: PageKey) => void }) {
    FOR SELLERS
 ══════════════════════════════════ */
 function ForSellersPage({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   const features = [
     { title: 'Products', body: 'Publish each product on its own page: multi-image gallery, name, category, description, attributes, variants, price, and live inventory. Your product is always shown in full context.' },
     { title: 'Scenes', body: 'Publish creative content — room scenes, outfit photos, lifestyle images — and tag products within them. Viewers tap a hotspot and go directly to the product. Scenes without tagged products are allowed and still published to your storefront.' },
@@ -780,7 +815,7 @@ function ForSellersPage({ navigate }: { navigate: (p: PageKey) => void }) {
     { title: 'Courier Fulfilment', body: 'Build your own courier pool. Approve couriers, set compensation, and invite them to your orders. A Pickup QR verifies collection. At final Courier delivery, the Courier displays the Delivery QR and the Buyer or authorized delegate scans it.' },
     { title: 'Analytics', body: 'Track paid orders, GMV, product views, Scene impressions, product-tag click-through rate, storefront visits, claims rate, and fulfilment reliability. Content performance per Scene.' },
     { title: 'Trust', body: 'Your Trust level is built through your fulfilment record, review scores, and claims history. Visible on your storefront. Increases as you earn it. Cannot be purchased.' },
-  ]
+  ].map(f => (sim || !MVP_SELLER_COPY[f.title] ? f : { ...f, body: MVP_SELLER_COPY[f.title] })).filter(f => sim || !OBSOLETE.test(f.title + ' ' + f.body))
 
   return (
     <div>
@@ -830,6 +865,7 @@ function ForSellersPage({ navigate }: { navigate: (p: PageKey) => void }) {
    FOR BUYERS
 ══════════════════════════════════ */
 function ForBuyersPage({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   const features = [
     { title: 'For You Feed', body: 'A curated feed of Scenes from sellers whose work you\'ve engaged with. Image-led. Scroll at your own pace. No aggressive video autoplay.' },
     { title: 'Product Truth', body: 'Every Product shows exactly what you\'re buying: full gallery, accurate variants, real inventory, and clearly stated fulfilment options. No phantom stock.' },
@@ -840,7 +876,7 @@ function ForBuyersPage({ navigate }: { navigate: (p: PageKey) => void }) {
     { title: 'Checkout', body: 'Separate carts per seller. Every charge is itemised before you pay, including the delivery charge. Gateway payment — not cash on delivery.' },
     { title: 'Verified Handoff', body: 'Your courier arrives and shows you a Delivery QR. You scan it to confirm receipt. This creates verifiable evidence that you received your order.' },
     { title: 'Reviews', body: 'Rate Product Quality and Seller Service separately. Your review contributes to the seller\'s public Trust level. You can also raise a Claim if something isn\'t right.' },
-  ]
+  ].filter(f => sim || !OBSOLETE.test(f.title + ' ' + f.body))
 
   return (
     <div>
@@ -877,6 +913,7 @@ function ForBuyersPage({ navigate }: { navigate: (p: PageKey) => void }) {
    TRUST & SAFETY
 ══════════════════════════════════ */
 function TrustPage({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   return (
     <div>
       <section style={{ background: 'linear-gradient(170deg, var(--color-brand-muted) 0%, var(--color-surface) 100%)', padding: '72px 48px 64px', textAlign: 'center' }}>
@@ -886,7 +923,7 @@ function TrustPage({ navigate }: { navigate: (p: PageKey) => void }) {
             Accountability built in, not bolted on.
           </h1>
           <p style={{ fontSize: 17, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>
-            Trust on Adulis is earned through behaviour, not declared through documents. Every seller's record is visible. Every delivery generates evidence.
+            Trust on Adulis is earned through behaviour, not declared through documents. Every seller's record is visible.{sim && ' Every delivery generates evidence.'}
           </p>
         </div>
         <div style={{ maxWidth: 1024, margin: '48px auto 0' }}>
@@ -905,21 +942,21 @@ function TrustPage({ navigate }: { navigate: (p: PageKey) => void }) {
               <li>A completed store profile describing the business and its fulfilment capability</li>
             </ul>
             <p>A physical shop is not required. A Seller may add a verifiable business or store location where one applies, and no Seller is asked to publish a home or residential address.</p>
-            <p>Adulis does not require government-issued ID for Seller admission. Payment-provider KYC, where required, is separate.</p>
+            <p>Adulis does not require government-issued ID for Seller admission.{sim && ' Payment-provider KYC, where required, is separate.'}</p>
           </TrustSection>
 
           <TrustSection title="The Trust Ladder">
             <p>Every seller on Adulis has a publicly visible Trust level. It is built over time through:</p>
             <ul>
-              <li>Fulfilment reliability — orders prepared on time and couriered correctly</li>
+              {sim && <li>Fulfilment reliability — orders prepared on time and couriered correctly</li>}
               <li>Review scores — Product Quality and Seller Service rated separately by buyers</li>
-              <li>Claims record — frequency, outcome, and pattern of buyer complaints</li>
-              <li>Handoff evidence — consistent QR-verified pickup and delivery</li>
+              {sim && <li>Claims record — frequency, outcome, and pattern of buyer complaints</li>}
+              {sim && <li>Handoff evidence — consistent QR-verified pickup and delivery</li>}
             </ul>
             <p>Trust levels are read-only for sellers. Operators cannot manually assign a Trust level — it is the product of the seller's record.</p>
           </TrustSection>
 
-          <TrustSection title="Gateway Payments">
+          {sim && <TrustSection title="Gateway Payments">
             <p>Adulis uses established payment gateway infrastructure for all transactions. This means:</p>
             <ul>
               <li>Buyers pay before the seller is notified — no cash on delivery</li>
@@ -927,23 +964,23 @@ function TrustPage({ navigate }: { navigate: (p: PageKey) => void }) {
               <li>Every charge is itemised at checkout before payment</li>
               <li>Failed payments are handled by the gateway; Adulis cannot manually mark an unpaid order as paid</li>
             </ul>
-          </TrustSection>
+          </TrustSection>}
 
-          <TrustSection title="Handoff Evidence">
+          {sim && <TrustSection title="Handoff Evidence">
             <p>Every Adulis delivery uses a two-QR evidence system:</p>
             <ul>
               <li><strong>Pickup QR:</strong> Displayed by the seller. Scanned by the courier at collection. Creates a verifiable pickup record.</li>
               <li><strong>Delivery QR:</strong> Displayed by the courier. Scanned by the buyer (or delegated recipient) at receipt. Creates a verifiable delivery record.</li>
             </ul>
             <p>Location checkpoints are attempted at both events. A checkpoint failure does not reverse a verified handoff — but the pattern is visible to Operators.</p>
-          </TrustSection>
+          </TrustSection>}
 
-          <TrustSection title="Verified Reviews">
+          {sim && <TrustSection title="Verified Reviews">
             <p>Reviews on Adulis can only be submitted by buyers who have completed a transaction with that seller. There are no anonymous or unverified reviews.</p>
             <p>Ratings cover two dimensions separately: <strong>Product Quality</strong> (did the product match what was described?) and <strong>Seller Service</strong> (was the fulfilment and communication professional?).</p>
-          </TrustSection>
+          </TrustSection>}
 
-          <TrustSection title="Claims">
+          {sim && <TrustSection title="Claims">
             <p>If something goes wrong, buyers can raise a Claim through the app. Claims are reviewed by Adulis Operators against:</p>
             <ul>
               <li>The original product listing at time of sale</li>
@@ -953,7 +990,7 @@ function TrustPage({ navigate }: { navigate: (p: PageKey) => void }) {
               <li>Seller response and chat history</li>
             </ul>
             <p>Claim outcomes follow documented governance — Operators follow policy, not discretion.</p>
-          </TrustSection>
+          </TrustSection>}
 
         </div>
       </Section>
@@ -976,6 +1013,7 @@ function TrustSection({ title, children }: { title: string; children: React.Reac
    AVAILABILITY
 ══════════════════════════════════ */
 function AvailabilityPage({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   return (
     <div>
       <section style={{ background: 'linear-gradient(170deg, var(--adulis-tint-sage) 0%, var(--color-surface) 100%)', padding: '72px 48px 64px', textAlign: 'center' }}>
@@ -997,7 +1035,7 @@ function AvailabilityPage({ navigate }: { navigate: (p: PageKey) => void }) {
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, color: 'var(--color-success)', margin: '0 0 12px' }}>In Development</h3>
               <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text-primary)', margin: '0 0 8px' }}>Ethiopia — Addis Ababa</p>
               <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>
-                Our primary focus market. Sellers, buyers, and couriers operating in Addis Ababa. Local fulfilment, local payment integration.
+                {sim ? 'Our primary focus market. Sellers, buyers, and couriers operating in Addis Ababa. Local fulfilment, local payment integration.' : 'Our primary focus market. Sellers and buyers in Addis Ababa, with each Seller showing the areas they serve.'}
               </p>
               <button onClick={() => navigate('ethiopia')} style={{ marginTop: 14, background: 'transparent', color: 'var(--color-success)', border: '1px solid var(--color-success)', borderRadius: 999, padding: '8px 18px', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
                 Ethiopia Market Details
@@ -1007,7 +1045,7 @@ function AvailabilityPage({ navigate }: { navigate: (p: PageKey) => void }) {
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-muted)', margin: '0 0 12px' }}>Architecture Ready</h3>
               <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text-primary)', margin: '0 0 8px' }}>International Expansion</p>
               <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--color-text-secondary)', margin: 0 }}>
-                Adulis is built with multi-market architecture: market-level configuration, localised payment provider support, and policy governance per market. No timeline is committed.
+                Adulis is built with multi-market architecture: {sim ? 'market-level configuration, localised payment provider support, and policy governance per market.' : 'market-level configuration and policy governance per market.'} No timeline is committed.
               </p>
             </div>
           </div>
@@ -1066,13 +1104,14 @@ function EthiopiaPage({ navigate }: { navigate: (p: PageKey) => void }) {
 ══════════════════════════════════ */
 /* No pricing, fee or surcharge figure is presented: Adulis's commercial terms are not decided (PR-001). */
 function PricingPage({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   const tools = [
     { title: 'Products and Scenes', body: 'Publish each product on its own page, and tag your products in Scenes that show them in use.' },
     { title: 'Public Storefront', body: 'A public web page with your full catalogue, Trust level, and reviews, ready to share anywhere.' },
-    { title: 'Orders and Inventory', body: 'A clear order workflow and stock levels per variant, so you never oversell.' },
-    { title: 'Courier Fulfilment', body: 'Your own approved couriers, with QR-verified pickup and delivery.' },
+    sim ? { title: 'Orders and Inventory', body: 'A clear order workflow and stock levels per variant, so you never oversell.' } : { title: 'Inventory', body: 'Stock levels per variant, with low-stock alerts.' },
+    ...(sim ? [{ title: 'Courier Fulfilment', body: 'Your own approved couriers, with QR-verified pickup and delivery.' }] : []),
     { title: 'Buyer Chat', body: 'Answer buyer questions before and after purchase.' },
-    { title: 'Analytics', body: 'Paid orders, product views, Scene performance, and fulfilment reliability in one place.' },
+    { title: 'Analytics', body: sim ? 'Paid orders, product views, Scene performance, and fulfilment reliability in one place.' : 'Product views, Scene performance and storefront visits in one place.' },
   ]
   return (
     <div>
@@ -1338,12 +1377,13 @@ function SelectField({ label, value, onChange, error, required, options }: {
    HELP
 ══════════════════════════════════ */
 function HelpPage({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   const topics = [
     { label: 'Orders & Checkout', questions: ['How do I pay for an order?', 'Can I cancel an order after paying?', 'What charges will I see at checkout?', 'Why are carts separate per seller?'] },
     { label: 'Delivery & Handoff', questions: ['How does QR handoff work?', 'What if my courier can\'t reach me?', 'Can someone else receive my order?', 'What if the Delivery QR scan fails?'] },
     { label: 'Reviews & Claims', questions: ['How do I leave a review?', 'What is a Claim?', 'How long does a Claim take?', 'Can I appeal a Claim decision?'] },
     { label: 'For Sellers', questions: ['How do I apply to sell on Adulis?', 'What is the Trust Ladder?', 'How do I add couriers to my pool?', 'What is a Scene?'] },
-  ]
+  ].filter(topic => sim || !/orders|delivery|claims/i.test(topic.label)).map(topic => (sim ? topic : { ...topic, questions: topic.questions.filter(q => !OBSOLETE.test(q)) }))
 
   return (
     <div>
@@ -1435,6 +1475,7 @@ function ContactPage() {
    LEGAL PAGES
 ══════════════════════════════════ */
 function LegalPage({ title }: { title: string }) {
+  const { simulation: sim } = usePrototypeMode()
   const sections: Record<string, { heading: string; body: string }[]> = {
     'Terms of Service': [
       { heading: '1. Acceptance', body: 'By using Adulis you agree to these terms. If you do not agree, do not use the platform.' },
@@ -1475,6 +1516,7 @@ function LegalPage({ title }: { title: string }) {
       </span>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 8px', lineHeight: 1.2 }}>{title}</h1>
       <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '0 0 40px', fontFamily: 'var(--font-mono)' }}>Prototype draft — not final legal text</p>
+      {!sim && <p role="note" style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--color-info)', background: 'var(--color-info-bg)', borderRadius: 12, padding: 14, margin: '-16px 0 32px' }}>These drafts describe the full planned Adulis design. Release 1 has no ordering, payment, delivery or Claims, so sections about them do not apply yet.</p>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
         {items.map(s => (
           <div key={s.heading} style={{ paddingBottom: 32, borderBottom: '1px solid var(--color-border)' }}>
@@ -1875,6 +1917,7 @@ function ReportContentPage() {
    MOBILE PAGE CONTENT
 ══════════════════════════════════ */
 function MobileHomePage({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   return (
     <div>
       {/* hero */}
@@ -1902,8 +1945,8 @@ function MobileHomePage({ navigate }: { navigate: (p: PageKey) => void }) {
         {[
           { title: 'Products', desc: 'Every product shown in full context — gallery, specs, price, stock, seller.' },
           { title: 'Scenes', desc: 'Tap a product tag in a Scene and go straight to the product. No hunting.' },
-          { title: 'Trust Built In', desc: 'Sellers earn Trust through their record. Buyers see it before they pay.' },
-          { title: 'Verified Handoff', desc: 'QR at pickup and delivery. No "I never got it" disputes.' },
+          { title: 'Trust Built In', desc: sim ? 'Sellers earn Trust through their record. Buyers see it before they pay.' : 'Sellers earn Trust through their record. Buyers see it before they decide.' },
+          ...(sim ? [{ title: 'Verified Handoff', desc: 'QR at pickup and delivery. No "I never got it" disputes.' }] : []),
         ].map(c => (
           <div key={c.title} style={{ padding: '16px 18px', background: 'var(--color-surface-raised)', borderRadius: 14 }}>
             <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>{c.title}</p>
@@ -1923,16 +1966,17 @@ function MobileHomePage({ navigate }: { navigate: (p: PageKey) => void }) {
 }
 
 function MobileHowItWorks({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   const steps = [
     ['01', 'Discover in context', 'Browse Products and Scenes that show what is sold, who sells it, and how it is used.'],
     ['02', 'Review before buying', 'See price, availability, fulfilment, seller Trust, and verified reviews before you continue.'],
     ['03', 'Pay per Seller Order', 'Each seller has a distinct checkout and Seller Order, with provider-verified payment status.'],
     ['04', 'Track accountable fulfilment', 'Follow preparation and delivery, then use QR or the documented OTP fallback at handoff.'],
-  ]
+  ].filter(([, title, description]) => sim || !OBSOLETE.test(title + ' ' + description)).map(([, title, description], i) => [String(i + 1).padStart(2, '0'), title, description])
   return (
     <div style={{ padding: '32px 20px' }}>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>How Adulis works</h1>
-      <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>From discovery to verified handoff, every step keeps the product, seller, payment, and fulfilment record connected.</p>
+      <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>{sim ? 'From discovery to verified handoff, every step keeps the product, seller, payment, and fulfilment record connected.' : 'Discover Products and Scenes, read the Seller\'s Trust level and message the Seller. Ordering is not available yet.'}</p>
       <PhotoSlot brief="A buyer discovering products on their phone" tone="sand" radius={20} style={{ height: 200, marginBottom: 8 }} />
       <ol aria-label="How Adulis works" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {steps.map(([number, title, description]) => (
@@ -1953,6 +1997,7 @@ function MobileHowItWorks({ navigate }: { navigate: (p: PageKey) => void }) {
 }
 
 function MobileForSellers({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   return (
     <div style={{ padding: '32px 20px' }}>
       <SectionLabel align="left" small />
@@ -1963,7 +2008,7 @@ function MobileForSellers({ navigate }: { navigate: (p: PageKey) => void }) {
         Adulis gives independent sellers the tools, structure, and trust infrastructure that used to only be available to large retailers.
       </p>
       <PhotoSlot brief="A seller photographing a product for a Scene" tone="clay" radius={20} style={{ height: 200, marginBottom: 8 }} />
-      {['Products', 'Scenes', 'Public Storefront', 'Order Management', 'Courier Pool', 'Analytics', 'Trust Ladder'].map(title => (
+      {['Products', 'Scenes', 'Public Storefront', 'Order Management', 'Courier Pool', 'Analytics', 'Trust Ladder'].filter(title => sim || !OBSOLETE.test(title)).map(title => (
         <div key={title} style={{ padding: '14px 0', borderBottom: '1px solid var(--color-border)' }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>{title}</span>
         </div>
@@ -2007,21 +2052,22 @@ function MobileWaitlist() {
 }
 
 function MobileTrust({ navigate }: { navigate: (p: PageKey) => void }) {
+  const { simulation: sim } = usePrototypeMode()
   return (
     <div style={{ padding: '32px 20px' }}>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 12px' }}>Trust & Safety</h1>
       <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>
         Accountability built in, not bolted on.
       </p>
-      <PhotoSlot brief="A courier handing a delivery to a buyer" tone="stone" radius={20} style={{ height: 200, marginBottom: 8 }} />
+      <PhotoSlot brief={sim ? 'A courier handing a delivery to a buyer' : 'A Buyer browsing a Seller\'s Scenes'} tone="stone" radius={20} style={{ height: 200, marginBottom: 8 }} />
       {[
         { title: 'Seller Admission',   desc: 'Sellers are admitted following review of their social presence and business intent. Not open self-registration. A physical shop is not required.' },
-        { title: 'Trust Ladder',        desc: 'Every seller has a public Trust level built from fulfilment record, reviews, and claims history.' },
+        { title: 'Trust Ladder',        desc: sim ? 'Every seller has a public Trust level built from fulfilment record, reviews, and claims history.' : 'Every seller has a public Trust level built from their record and reviews.' },
         { title: 'Gateway Payment',     desc: 'No cash on delivery. All payments flow through an established gateway, and every charge is itemised at checkout.' },
         { title: 'Handoff Evidence',    desc: 'Pickup QR and Delivery QR create verifiable evidence at both ends of every delivery.' },
         { title: 'Verified Reviews',    desc: 'Only buyers who completed a transaction can leave a review. Product Quality and Seller Service rated separately.' },
         { title: 'Claims',              desc: 'Raise a Claim if an order doesn\'t match what was described. Reviewed by Operators against documented evidence.' },
-      ].map(s => (
+      ].filter(s => sim || !OBSOLETE_STEP.test(s.title + ' ' + s.desc)).map(s => (
         <div key={s.title} style={{ padding: '16px 0', borderBottom: '1px solid var(--color-border)' }}>
           <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-text-primary)', margin: '0 0 6px' }}>{s.title}</p>
           <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.6 }}>{s.desc}</p>
