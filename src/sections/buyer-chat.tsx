@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../components/ui/Button'
-import { SURFACE_DEFAULTS, type Moment, type SellerId } from '../demo-data'
+import { useBuyer } from '../buyer-context'
+import { type Moment, type SellerId } from '../demo-data'
 import { LIVE_SELLERS } from '../demo-data/live'
 import { conversationKey, threadStatus, type ChatMsg } from '../chatbot/chat'
 import { sendBuyerMessage } from '../chatbot/session'
@@ -14,8 +15,6 @@ import { linkableProducts, useWorkspace } from '../seller-workspace'
  * second; the choice is stamped on each Message when it is sent and never changes it afterwards. The same deterministic engine answers; a
  * person can take over from the Seller Inbox. Nothing here writes to the Cart: "Open Cart review" only navigates.
  */
-export const BUYER_ID = SURFACE_DEFAULTS.buyer
-
 const STATUS_TEXT = {
   bot: 'Automated assistant. It reads the Seller’s listed details. It cannot take payment, hold stock, change a price or place an Order.',
   waiting: 'Your message is with the Seller. We can’t promise a reply time. The assistant can still answer simple questions.',
@@ -30,6 +29,7 @@ export function BuyerChat({ sellerId, at, startProductId, startSceneId, history,
   onOpenProduct: (productId: string) => void; onOpenCart: () => void
 }) {
   const { state, dispatch } = useWorkspace()
+  const BUYER_ID = useBuyer()
   const labels = useLeafLabels()
   const seller = LIVE_SELLERS[sellerId as SellerId]?.name ?? 'the Seller'
   const key = conversationKey(BUYER_ID, sellerId, MARKET.id)

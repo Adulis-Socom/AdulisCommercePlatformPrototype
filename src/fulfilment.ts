@@ -2,8 +2,10 @@
 // A Seller's methods come from its CURRENT Store setup (the Seller Console) when it has one, else from the seeded record; a Product may
 // narrow them further. Nothing here invents a commercial policy: where the Seller set no delivery charge the charge is `null` ("not set"),
 // and the historical Courier compensation (a payout to a Courier, DEMO_DATA) is never shown as an MVP delivery charge.
-import { MARKET, fulfilmentOptionsAt, formatEtb, type Moment, type SellerId } from './demo-data'
+import { activeGeo, fulfilmentOptionsAt, formatEtb, type Geo, type Moment, type SellerId } from './demo-data'
 import { COVERAGE_AREAS, parseMoney, type Fulfilment, type WorkspaceState } from './seller-workspace'
+import { isLegacy } from './marketplace/registry'
+import { deliveryTo, type Reach } from './marketplace/geography'
 
 export interface Method { mode: Fulfilment; charge: number | null; place?: string; hours?: string; coverage?: string }
 export const MODES: readonly Fulfilment[] = ['Buyer Collection', 'Seller Delivery', 'Courier Delivery']
@@ -12,40 +14,57 @@ export const MODES: readonly Fulfilment[] = ['Buyer Collection', 'Seller Deliver
 export const chargeOf = (text: string): number | null => (/^0+(\.0{1,2})?$/.test(text.trim()) ? 0 : parseMoney(text))
 
 /**
- * Whether a delivery method reaches the Buyer's Market city. Only an explicit list of cities can exclude: no list (or only places inside a
- * city) leaves coverage unspecified, which is treated as unrestricted, exactly as before. Shortcut: a Buyer's own district is not matched; upgrade
- * when the marketplace dataset carries Buyer districts.
+ * Whether a Seller's stated coverage (a list of places, or the dataset's coverage text) reaches the Buyer's city and area (DEMO-003).
+ * No Buyer place (a guest, the Storefront): nothing to check, so the Seller's offer is described as listed. On the marketplace dataset coverage that
+ * is blank, "Not configured" or "X by arrangement" never reaches anyone. The legacy dataset keeps its old rule: only an explicit list of cities can
+ * exclude, anything unspecified is unrestricted.
  */
-export function coversBuyer(coverage: readonly string[]): boolean {
-  const cities = coverage.filter(c => (COVERAGE_AREAS as readonly string[]).includes(c) && !/nationwide/i.test(c))
-  const nationwide = coverage.some(c => /nationwide/i.test(c))
-  if (!cities.length && !nationwide) return true
-  return nationwide || cities.some(c => c.toLowerCase() === MARKET.city.toLowerCase())
+export function reach(coverage: string | readonly string[] | undefined, geo: Geo | null = activeGeo()): Reach {
+  if (!geo) return 'yes'
+  if (!isLegacy) return deliveryTo(coverage, geo)
+  if (typeof coverage === 'string') return !coverage || new RegExp(geo.city, 'i').test(coverage) ? 'yes' : 'no'
+  const list = coverage ?? []
+  const cities = list.filter(c => (COVERAGE_AREAS as readonly string[]).includes(c) && !/nationwide/i.test(c))
+  const nationwide = list.some(c => /nationwide/i.test(c))
+  if (!cities.length && !nationwide) return 'yes'
+  return nationwide || cities.some(c => c.toLowerCase() === geo.city.toLowerCase()) ? 'yes' : 'no'
+}
+export const coversBuyer = (coverage: readonly string[], geo: Geo | null = activeGeo()): boolean => reach(coverage, geo) === 'yes'
+
+/** Why a delivery method does not reach the Buyer: never a promise where the data states none. */
+function whyNot(result: Reach, geo: Geo, coverage?: string): string {
+  if (result === 'arrangement') return `Delivery to ${geo.city} is by arrangement with the Seller only, so no delivery is promised.`
+  if (result === 'unknown') return `This Seller has not said whether it delivers to ${geo.city}, so no delivery is promised.`
+  return coverage && isLegacy ? `Delivery is ${coverage}.` : coverage ? `This Seller delivers to ${coverage}, not to ${geo.city}.` : `The Seller does not currently deliver to ${geo.city}.`
 }
 
 /** The Seller's methods now, with the reason each delivery method that is configured but cannot serve this Buyer is left out. */
-export function sellerMethods(state: WorkspaceState, seller: SellerId, at: Moment, simulation = false): { methods: Method[]; unavailable: { mode: Fulfilment; reason: string }[] } {
+export function sellerMethods(state: WorkspaceState, seller: SellerId, at: Moment, simulation = false, geo: Geo | null = activeGeo()): { methods: Method[]; unavailable: { mode: Fulfilment; reason: string }[] } {
   const setup = state.setup[seller]
   const methods: Method[] = []
   const unavailable: { mode: Fulfilment; reason: string }[] = []
   if (simulation || !setup || setup.blank) {
     // The seeded record (and the historical simulation, which always uses it). Courier Delivery's seeded amount is the Courier's compensation: MVP shows no charge for it.
     for (const o of fulfilmentOptionsAt(seller, at)) {
-      const charge = o.mode === 'Courier Delivery' && !simulation ? null : o.charge
-      if (!simulation && o.mode === 'Seller Delivery' && o.coverage && !new RegExp(MARKET.city, 'i').test(o.coverage)) { unavailable.push({ mode: o.mode, reason: `Delivery is ${o.coverage}.` }); continue }
+      // Marketplace dataset: its Seller Delivery charge is the one carried by simulated Orders (assumption A2), not a charge the Seller set, so the MVP shows "fee not set".
+      const charge = !simulation && (o.mode === 'Courier Delivery' || (o.mode === 'Seller Delivery' && !isLegacy)) ? null : o.charge
+      const result = o.mode === 'Seller Delivery' && !simulation && geo ? reach(o.coverage, geo) : 'yes'
+      if (result !== 'yes' && geo) { unavailable.push({ mode: o.mode, reason: whyNot(result, geo, o.coverage) }); continue }
       methods.push({ mode: o.mode, charge, place: o.place, hours: o.hours, coverage: o.coverage })
     }
     return { methods, unavailable }
   }
-  const delivers = coversBuyer(setup.coverage)
+  const result = reach(setup.coverage, geo)
+  const delivers = result === 'yes'
+  const why = geo ? whyNot(result, geo) : ''
   if (setup.collection.on) methods.push({ mode: 'Buyer Collection', charge: 0, place: setup.collection.place.trim() || undefined })
   if (setup.sellerDelivery.on) {
     if (delivers) methods.push({ mode: 'Seller Delivery', charge: chargeOf(setup.sellerDelivery.fee) })
-    else unavailable.push({ mode: 'Seller Delivery', reason: `The Seller does not currently deliver to ${MARKET.city}.` })
+    else unavailable.push({ mode: 'Seller Delivery', reason: why })
   }
   if (setup.courier) {
     if (delivers) methods.push({ mode: 'Courier Delivery', charge: null })
-    else unavailable.push({ mode: 'Courier Delivery', reason: `The Seller does not currently deliver to ${MARKET.city}.` })
+    else unavailable.push({ mode: 'Courier Delivery', reason: why })
   }
   return { methods, unavailable }
 }
@@ -63,8 +82,8 @@ export interface CartFulfilment {
 }
 
 /** What a Seller cart may choose now: Seller configuration ∩ every Product's own methods. */
-export function cartFulfilment(state: WorkspaceState, seller: SellerId, products: readonly { id: string; name: string }[], at: Moment, simulation = false): CartFulfilment {
-  const base = sellerMethods(state, seller, at, simulation)
+export function cartFulfilment(state: WorkspaceState, seller: SellerId, products: readonly { id: string; name: string }[], at: Moment, simulation = false, geo: Geo | null = activeGeo()): CartFulfilment {
+  const base = sellerMethods(state, seller, at, simulation, geo)
   if (simulation) return { methods: base.methods, excluded: [], none: base.methods.length ? null : 'This Seller offers no fulfilment method.' }
   const excluded = [...base.unavailable]
   const methods = base.methods.filter(m => {

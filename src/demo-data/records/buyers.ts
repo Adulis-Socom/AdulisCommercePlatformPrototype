@@ -21,6 +21,11 @@ export interface BuyerRecord {
   readonly recentSearches?: readonly string[]
   /** The zero-result example query. */
   readonly zeroResultQuery?: string
+  /** Marketplace dataset (DEMO-003): the Buyer's city, handle, joined date (ISO day) and persona. Absent in the legacy dataset (the Market city applies). */
+  readonly city?: string
+  readonly handle?: string
+  readonly joined?: string
+  readonly persona?: string
 }
 
 const BUYER_RECORDS = {

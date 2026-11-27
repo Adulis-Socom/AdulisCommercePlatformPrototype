@@ -70,7 +70,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await page.getByRole('button', { name: 'View Product' }).click(); await t.settle(500)
     let product = await main(page)
     t.ck('Product page: discounted price, regular price struck beside it, Variants and category from the source', /ETB 1,960/.test(product) && /ETB 2,450/.test(product) && /−20%/.test(product) && /S \/ Olive/.test(product) && /Women’s Clothing › Dresses|Fashion › Women’s Clothing › Dresses/.test(product), product.slice(0, 400))
-    t.ck('Product page: fulfilment is the Seller\'s own (collection free, Seller Delivery ETB 80), no Courier fee', /Buyer Collection \(free\)/.test(product) && /Seller Delivery ETB 80/.test(product) && !/Courier Delivery/.test(product))
+    t.ck('Product page: fulfilment is the Seller\'s own (collection free, Seller Delivery with the fee not set: the ETB 80 is a simulated-Order charge, DEMO-003), no Courier fee', /Buyer Collection \(free\)/.test(product) && /Seller Delivery \(fee not set\)/.test(product) && !/ETB 80/.test(product) && !/Courier Delivery/.test(product))
     t.ck('Product page: no invented description or rating (Seller Service shows no simulation rating)', /Description\s*—/.test(product) && !/4\.25/.test(product))
     await page.getByRole('button', { name: 'M / Olive' }).click(); await t.settle(250)
     t.ck('the exact Variant with zero stock is reported out of stock', /out of stock/i.test(await main(page)))

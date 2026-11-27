@@ -11,6 +11,7 @@ import type { BuyerRecord, CollectionRecord } from '../demo-data/records/buyers.
 import type { SellerStory } from '../demo-data/stories.ts'
 import type { ConversationRecord, MessageContext, MessageRecord } from '../demo-data/records/conversations.ts'
 import { CATALOGUE, INDEX, OPERATIONS } from './import.ts'
+import { rankNearby } from './geography.ts'
 import type { SrcProduct, SrcScene, SrcSeller } from './types.ts'
 
 const santim = (etb: number) => etb * 100
@@ -30,7 +31,7 @@ function sellerRecord(s: SrcSeller): SellerRecord {
   // The Seller Delivery charge is not a Seller field in the source: it is the one charge every simulated Seller Delivery Order of this Seller carries (ETB 80, all of them).
   const fees = [...new Set(OPERATIONS.orders.filter(o => o.seller_id === s.seller_id && o.fulfilment_mode === 'SELLER_DELIVERY').map(o => o.delivery_etb))]
   return {
-    code: initials(s.name) as SellerRecord['code'], name: s.name, handle: s.handle, category: majors.join(' / '), showcase: true, area: s.area,
+    code: initials(s.name) as SellerRecord['code'], name: s.name, handle: s.handle, category: majors.join(' / '), showcase: true, area: s.area, city: s.city,
     trustHistory: [{ level: s.mvp_trust, since: dayBefore(s.demo_tenure_days) }],
     followers: s.mvp_demo_followers, bio: s.profile, storeOpen: s.lifecycle === 'ACTIVE',
     socialAccounts: s.verification_fixture.split('+').map(x => x.trim()).filter(x => x && !/pending/i.test(x)),
@@ -87,6 +88,7 @@ function buyerRecord(id: string): BuyerRecord {
   const b = INDEX.buyer.get(id)!
   return {
     name: b.display_name, primary: id === 'BY-01', signedIn: id === 'BY-01', deliveryArea: b.area, discoveryArea: b.area,
+    city: b.city, handle: b.handle, joined: b.joined_date, persona: b.persona,
     // The zero-result example is a query the unit test proves matches no Product or Scene.
     ...(id === 'BY-01' ? { zeroResultQuery: 'harp' } : {}),
     follows: (INDEX.followsByBuyer.get(id) ?? []).map(f => f.seller_id as never),
@@ -101,15 +103,15 @@ function turnOrder(): string[] {
   return out
 }
 
-/** Nearby: for each Seller area, the ACTIVE Sellers in that area first, then the others of its city. Geography (district matching) arrives with DEMO-003. */
+/**
+ * Nearby (DEMO-003), for every area a Seller or a Buyer is in: the ACTIVE Sellers of that area first, then the rest of its city, never another city.
+ * A Buyer's area with no active Seller (Central Gondar) is a key with an empty list, so Nearby is honestly empty for it.
+ */
 function nearby(): Record<string, string[]> {
-  const active = CATALOGUE.sellers.filter(s => s.lifecycle === 'ACTIVE')
-  const out: Record<string, string[]> = {}
-  for (const area of [...new Set(active.map(s => s.area))].sort()) {
-    const city = active.find(s => s.area === area)!.city
-    out[area] = [...active.filter(s => s.area === area), ...active.filter(s => s.area !== area && s.city === city)].map(s => s.seller_id)
-  }
-  return out
+  const active = CATALOGUE.sellers.filter(s => s.lifecycle === 'ACTIVE').map(s => ({ id: s.seller_id, city: s.city, area: s.area }))
+  const places = new Map<string, string>()
+  for (const p of [...active, ...OPERATIONS.buyers]) if (!places.has(p.area)) places.set(p.area, p.city)
+  return Object.fromEntries([...places].sort(([a], [b]) => a.localeCompare(b)).map(([area, city]) => [area, rankNearby(active, { city, area })]))
 }
 
 /**

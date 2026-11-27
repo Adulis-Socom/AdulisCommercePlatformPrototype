@@ -1,8 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Button } from '../components/ui/Button'
 import { PhoneInput, SearchInput, Select, Textarea, TextInput } from '../components/ui/Input'
 import { BuyerChat } from './buyer-chat'
-import { useWorkspace } from '../seller-workspace'
+import { buyerKey, sessionOf, useWorkspace, type BuyerSession } from '../seller-workspace'
+import { BuyerCtx, useBuyer } from '../buyer-context'
+import { isLegacy } from '../marketplace/registry'
+import { INDEX } from '../marketplace/import'
 import { cartFulfilment, describeMethods, sellerMethods, type CartFulfilment } from '../fulfilment'
 import { MAX_COLLECTION_NAME, add as addToCollection, applyLegacySaves, clean as cleanName, create as createCollection, ensureDefault, isSaved as savedIn, normalize as normalizeCollections, remove as removeCollection, removeItem, rename as renameCollection, split as splitCollection, unsave, type BuyerCollection } from '../buyer-collections'
 import { Skeleton } from '../components/ui/Overlay'
@@ -16,9 +19,9 @@ import { useAuthoredBuyer, type AuthoredView } from './buyer-authored'
 import { NO_FILTERS, facets, searchProducts, searchScenes, searchSellers, type ProductDoc, type ProductFilters, type SceneDoc, type SellerDoc } from '../buyer-search'
 import { findTaxonomy } from '../demo-data/taxonomy'
 import {
-  BUYERS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DELETION_CONSEQUENCES, DELETION_REASONS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
+  BUYERS, BUYER_IDS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DELETION_CONSEQUENCES, DELETION_REASONS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
   MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, REVIEWS, REVIEW_IDS, SURFACE_DEFAULTS,
-  accountDeletionPreviewAt, activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, unitPriceFor, claimStateAt, claimSubmitted, claimsForOrder,
+  accountDeletionPreviewAt, activeDiscount, buyerGeo, setActiveGeo, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, unitPriceFor, claimStateAt, claimSubmitted, claimsForOrder,
   contextChoicesAt, contextGroupOf, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
   forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDate, formatDayMonth, formatEtb, formatMonthYear, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
   isBuyerVisiblePostAt, isContextChoiceAt, isPurchasableAt, issueAccountDeletionCapability, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, onAdulisSince, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
@@ -48,7 +51,7 @@ type Screen =
   | 'chatbot' | 'notifications' | 'you' | 'sign-in-phone' | 'sign-in-code' | 'cart-check' | 'authored'
   | AccountScreen
 /** The You tab's account screens (refinement PR-006), each reached from its account menu. */
-type AccountScreen = 'purchased-products' | 'edit-profile' | 'appearance' | 'notification-settings' | 'privacy-security' | 'help-support' | 'delete-account'
+type AccountScreen = 'following-list' | 'purchased-products' | 'edit-profile' | 'appearance' | 'notification-settings' | 'privacy-security' | 'help-support' | 'delete-account'
 /** A guest browses public content; signing in shows Maya's signed-in state (rules 3.1–3.12, specification §12). */
 type Auth = 'guest' | 'signed-in'
 /** A Save target: a Product Post or a whole Scene Post (rule 2.5), never one standing in for the other. */
@@ -110,7 +113,7 @@ const PHOTOS = {
   group: 'https://images.unsplash.com/photo-1691826280718-b365d22809e3?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=85&w=900',
 }
 
-const BUYER = SURFACE_DEFAULTS.buyer
+// DEMO-003: the signed-in Buyer is the account the app was mounted with (BuyerApp's `BUYER`, and `useBuyer()` in the screens), never a constant.
 
 // Claim issues: the categories the approved documents use (DEMO_DATA › Claims). Report reasons: the prototype report
 // categories (specification §7).
@@ -168,7 +171,7 @@ const SIMULATION_SCREENS: readonly Screen[] = [...ORDER_SCREENS, 'payment-transi
 const SIMULATION_TITLE = (screen: Screen) => screen === 'orders' ? 'Orders' : screen === 'purchased-products' ? 'Purchased Products' : screen.startsWith('payment') ? 'Payment' : screen.startsWith('claim') ? 'Claims' : screen === 'review' ? 'Order reviews' : 'Order handoff'
 
 // The You tab and its account screens hold the signed-in Buyer's profile, purchases and Account settings (rule 3.7).
-const ACCOUNT_SCREENS: readonly Screen[] = ['you', 'purchased-products', 'edit-profile', 'appearance', 'notification-settings', 'privacy-security', 'help-support', 'delete-account']
+const ACCOUNT_SCREENS: readonly Screen[] = ['you', 'following-list', 'purchased-products', 'edit-profile', 'appearance', 'notification-settings', 'privacy-security', 'help-support', 'delete-account']
 
 /** The sign-in requirement a guest sees on an account-bound screen, with the approved Orders and You messages (rules 3.3–3.4). */
 function signInGate(screen: Screen): { title: string; message: string; then?: 'checkout' } | null {
@@ -199,6 +202,18 @@ function normalizeCart(raw: unknown): CartLine[] {
     const quantity = Number.isInteger(line.quantity) && (line.quantity as number) >= 1 ? (line.quantity as number) : 1
     return [{ product: line.product as ProductId, options: Array.isArray(line.options) ? line.options.filter((o): o is string => typeof o === 'string') : [], quantity,
       seen: typeof line.seen === 'number' && Number.isFinite(line.seen) ? line.seen : undefined, seller: typeof line.seller === 'string' ? (line.seller as SellerId) : undefined, name: typeof line.name === 'string' ? line.name : undefined }]
+  })
+}
+
+/**
+ * DEMO-003: a Buyer's Cart as the dataset seeds it (operations.cart_lines, review-only). Each line is the exact Product and Variant with the unit price the Buyer
+ * saw; nothing is repaired here, so the Cart review flags a Variant or Product that is no longer available or a price that has changed. The legacy dataset seeds none.
+ */
+function seedCartFor(buyer: string): CartLine[] {
+  if (isLegacy) return []
+  return (INDEX.cartByBuyer.get(buyer) ?? []).map(l => {
+    const label = l.variant_id ? INDEX.variant.get(l.variant_id)?.variant_label : undefined
+    return { product: l.product_id as ProductId, options: label ? [label] : [], quantity: l.quantity, seen: Math.round(l.seen_unit_etb * 100), seller: l.seller_id as SellerId, name: INDEX.product.get(l.product_id)?.name }
   })
 }
 
@@ -318,7 +333,7 @@ function saveKeyOf(item: CollectionItem): SaveKey {
 }
 
 /** The seeded Collections of the Buyer (DEMO_DATA) as plain data: the starting point of the ordinary MVP session and of the simulation. */
-function seedCollections(): BuyerCollection[] {
+function seedCollections(BUYER: BuyerId): BuyerCollection[] {
   return ensureDefault(COLLECTION_IDS.filter(id => COLLECTIONS[id].owner === BUYER).map(id => ({ id, name: COLLECTIONS[id].name, isDefault: !!COLLECTIONS[id].isDefault, items: COLLECTIONS[id].items.map(saveKeyOf) })))
 }
 
@@ -326,32 +341,62 @@ function itemOf(key: SaveKey): CollectionItem {
   return key.startsWith('product:') ? { product: key.slice('product:'.length) as ProductId } : { post: key.slice('post:'.length) as ShoppablePostId }
 }
 
+/**
+ * The Buyer app signed in as one of the eleven demo Buyer accounts (DEMO-003). Changing account remounts the app on that Buyer, so no screen, sheet or
+ * draft of one account can show on another; everything a Buyer keeps lives in the Seller-workspace store under dataset + mode + Buyer, so going back to
+ * an account finds it exactly as it was left. Guest is a state of the same mount (it has no Buyer data).
+ */
 export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
-  const initialScreen = (demoTarget && ['start', 'feed', 'post', 'product', 'seller', 'seller-shop', 'search', 'saved', 'collection', 'seller-cart', 'multi-cart', 'checkout-coordinator', 'seller-checkout', 'payment-transition', 'payment-processing', 'payment-success', 'payment-failed', 'payment-checking', 'orders', 'order-detail', 'delegated-recipient', 'qr-scanner', 'qr-camera', 'qr-verifying', 'delivery-confirmed', 'otp', 'completed', 'review', 'claim-start', 'claim-form', 'claim-status', 'chats', 'conversation', 'chatbot', 'notifications'].includes(demoTarget) ? demoTarget : 'start') as Screen
-  const initialTab: TabKey = initialScreen === 'orders' ? 'orders' : initialScreen === 'saved' ? 'saved' : initialScreen === 'search' ? 'shop' : 'home'
+  const [account, setAccount] = useState<{ buyer: BuyerId; resume?: Screen }>({ buyer: SURFACE_DEFAULTS.buyer })
+  return (
+    <BuyerCtx.Provider value={account.buyer}>
+      <BuyerApp key={account.buyer} demoTarget={demoTarget} buyerId={account.buyer} resume={account.resume} onSwitchAccount={(buyer, resume) => setAccount({ buyer, resume })} />
+    </BuyerCtx.Provider>
+  )
+}
+
+function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget?: string; buyerId: BuyerId; resume?: Screen; onSwitchAccount: (buyer: BuyerId, resume: Screen) => void }) {
+  const BUYER = buyerId
+  const initialScreen = (demoTarget && ['start', 'feed', 'post', 'product', 'seller', 'seller-shop', 'search', 'saved', 'collection', 'seller-cart', 'multi-cart', 'checkout-coordinator', 'seller-checkout', 'payment-transition', 'payment-processing', 'payment-success', 'payment-failed', 'payment-checking', 'orders', 'order-detail', 'delegated-recipient', 'qr-scanner', 'qr-camera', 'qr-verifying', 'delivery-confirmed', 'otp', 'completed', 'review', 'claim-start', 'claim-form', 'claim-status', 'chats', 'conversation', 'chatbot', 'notifications'].includes(demoTarget) ? demoTarget : resume ?? 'start') as Screen
+  const initialTab: TabKey = initialScreen === 'orders' ? 'orders' : initialScreen === 'saved' ? 'saved' : initialScreen === 'search' ? 'shop' : initialScreen === 'you' ? 'you' : 'home'
   const [screen, setScreen] = useState<Screen>(initialScreen)
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
   // Home discovery state: transient session state, as is the rest of this app's; a reset remounts it at the baseline.
   const [channel, setChannel] = useState<Channel>('foryou')
-  // The Nearby area the Buyer chose. Without one, Maya starts from her saved discovery area; a guest has none (rule 2.14).
-  // Switching to a guest clears a choice made while signed in.
-  const [chosenArea, setChosenArea] = useState<string | null>(null)
-  // Saves and removals made in this session, on top of the canonical default Saved Collection; DEMO_DATA never changes.
+  // DEMO-003: what the Buyer keeps is namespaced by dataset, mode and Buyer. Everything that is not simulation-isolated (follows, chosen area, likes, hidden
+  // Scenes, notification choices, profile edits, recent searches, seen Stories) lives in the store under the MVP key of THIS Buyer; the Cart and Collections
+  // use that key in the ordinary scope and a private copy in the simulation / guided-flow scope (BUYER-FIX-01), so neither reads nor overwrites the other.
+  // A field that was never changed is read from the dataset's seed, so seeds are applied on first use and never overwrite a later change.
   const { state: workspace, dispatch: workspaceDispatch } = useWorkspace()
   const { simulation } = usePrototypeMode()
-  // BUYER-FIX-01: the ordinary MVP Cart and Saves live in the workspace store and survive switching surfaces. The historical simulation and a
-  // guided-flow step (which opens on demonstration carts and Saves) work on their own copies: they neither read nor overwrite the ordinary ones.
   const scope: 'mvp' | 'isolated' = simulation || demoTarget ? 'isolated' : 'mvp'
-  const collectionsFor = (sc: 'mvp' | 'isolated'): BuyerCollection[] => (sc === 'mvp' ? normalizeCollections(workspace.buyerCollections) ?? applyLegacySaves(seedCollections(), workspace.buyerSaved) : seedCollections())
-  const [collections, setCollectionsRaw] = useState<BuyerCollection[]>(() => collectionsFor(scope))
-  const savedTouched = useRef(false)
-  const setCollections = (next: BuyerCollection[]) => { savedTouched.current = true; setCollectionsRaw(next) }
-  useEffect(() => { if (savedTouched.current && scope === 'mvp') workspaceDispatch({ type: 'collections', collections }) }, [collections])
+  // The public entry screen starts anonymous; every guided-flow step shows the signed-in Buyer (DEMO_DATA › Buyer).
+  const [auth, setAuth] = useState<Auth>(initialScreen === 'start' ? 'guest' : 'signed-in')
+  const signedIn = auth === 'signed-in'
+  // Where this Buyer is: delivery, Nearby and the chatbot's answers read it. A guest has none, so nothing is promised on their behalf.
+  setActiveGeo(signedIn ? buyerGeo(BUYER) : null)
+  useEffect(() => () => setActiveGeo(null), [])
+  const [initial] = useState(() => initialCheckout(initialScreen))
+  const skey = buyerKey('mvp', BUYER)
+  const stored = sessionOf(workspace, skey)
+  const patchStored = (update: (current: BuyerSession) => Partial<BuyerSession>) => workspaceDispatch({ type: 'buyer', key: skey, update })
+  const [isolated, setIsolated] = useState<BuyerSession>({})
+  const patchCommerce = scope === 'mvp' ? patchStored : (update: (current: BuyerSession) => Partial<BuyerSession>) => setIsolated(current => ({ ...current, ...update(current) }))
+  const commerce = scope === 'mvp' ? stored : isolated
+  // A guest's own transient state: a temporary Cart (adopted by the account that signs in), a Nearby area and the Stories seen.
+  const [guest, setGuest] = useState<{ cart: CartLine[]; area: string | null; seen: readonly StoryId[] }>({ cart: [], area: null, seen: [] })
+  // The Nearby area the Buyer chose. Without one, the Buyer starts from their saved discovery area; a guest has none (rule 2.14).
+  const chosenArea: string | null = signedIn ? stored.area ?? null : guest.area
+  const setChosenArea = (next: string | null) => (signedIn ? patchStored(() => ({ area: next ?? undefined })) : setGuest(g => ({ ...g, area: next })))
+  const collections = useMemo<BuyerCollection[]>(() => normalizeCollections(commerce.collections ?? null) ?? applyLegacySaves(seedCollections(BUYER), commerce.saved ?? null), [commerce.collections, commerce.saved, BUYER])
+  const setCollections = (next: BuyerCollection[]) => patchCommerce(() => ({ collections: next.map(c => ({ ...c, items: [...c.items] })) }))
   // Which sheet is open on top of the Buyer app: choose Collections for an item, name a new one, or manage one.
   const [collectionSheet, setCollectionSheet] = useState<{ kind: 'save'; key: SaveKey } | { kind: 'create'; then?: SaveKey } | { kind: 'menu' | 'rename' | 'delete'; id: string } | null>(null)
   // Posts hidden from For You with Not Interested, for this session only (rule 3.9, specification §7). They're Maya's
   // personalization, so a guest's For You never applies them.
-  const [hidden, setHidden] = useState<ShoppablePostId[]>([])
+  const listOf = <T extends string>(key: 'liked' | 'hidden' | 'hiddenScenes' | 'seenStories'): [readonly T[], (update: (list: readonly T[]) => readonly T[]) => void] =>
+    [(stored[key] ?? []) as T[], update => patchStored(current => ({ [key]: [...update((current[key] ?? []) as T[])] } as Partial<BuyerSession>))]
+  const [hidden, setHidden] = listOf<ShoppablePostId>('hidden')
   const [discoverySheet, setDiscoverySheet] = useState<DiscoverySheet | null>(null)
   const [toast, setToastRaw] = useState<string | null>(null)
   const [toastAction, setToastAction] = useState<{ label: string; run: () => void } | null>(null)
@@ -370,23 +415,30 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [myReviews, setMyReviews] = useState<Partial<Record<string, SessionReview>>>({})
   // Seller Stories (PR-003): the Seller whose Stories are open, and the Stories seen in this session (transient).
   const [storySeller, setStorySeller] = useState<SellerId | null>(null)
-  const [seenStories, setSeenStories] = useState<readonly StoryId[]>([])
+  const [seenSigned, setSeenSigned] = listOf<StoryId>('seenStories')
+  const seenStories: readonly StoryId[] = signedIn ? seenSigned : guest.seen
+  const setSeenStories = (update: (list: readonly StoryId[]) => readonly StoryId[]) => (signedIn ? setSeenSigned(update) : setGuest(g => ({ ...g, seen: update(g.seen) })))
   // Scene engagement (PR-004), this session's own state on top of DEMO_DATA, which never changes: the Scenes Maya likes
   // (no counts are shown), Follow and Unfollow over her canonical follows, the Scenes she hides from Home, and the
   // Product selected in Explore the Scene.
-  const [liked, setLiked] = useState<readonly ShoppablePostId[]>([])
-  const [followChanges, setFollowChanges] = useState<Partial<Record<SellerId, boolean>>>({})
-  const [hiddenScenes, setHiddenScenes] = useState<readonly ShoppablePostId[]>([])
+  const [liked, setLiked] = listOf<ShoppablePostId>('liked')
+  const followChanges: Partial<Record<SellerId, boolean>> = stored.follows ?? {}
+  const [hiddenScenes, setHiddenScenes] = listOf<ShoppablePostId>('hiddenScenes')
   const [sceneProduct, setSceneProduct] = useState<ProductId | null>(null)
   // The You tab's account controls (PR-006), all this session's own state: whether the account menu is open; Maya's
   // profile edits (DEMO_DATA's Buyer record never changes); her notification choices; the purchase a Buy Again started
   // from; and where Delete Account and Chats go back to.
   const [accountMenu, setAccountMenu] = useState(false)
-  const [profileEdits, setProfileEdits] = useState<ProfileEdits>({})
-  const [notificationChoices, setNotificationChoices] = useState<Partial<Record<NotificationSetting, boolean>>>({})
+  const profileEdits: ProfileEdits = stored.profile ?? {}
+  const notificationChoices: Partial<Record<NotificationSetting, boolean>> = stored.notifications ?? {}
   const [buyingAgain, setBuyingAgain] = useState<ProductPurchase | null>(null)
   const [deleteFrom, setDeleteFrom] = useState<Screen>('you')
   const [chatsFrom, setChatsFrom] = useState<Screen>('orders')
+  // Where Back goes from a Seller opened out of the Following list or the Profile, from a Collection opened out of the Profile, and from the Orders and
+  // Purchased Products screens (their MVP gate) when they were opened from the Profile or Help. Elsewhere they keep their earlier routes.
+  const [sellerFrom, setSellerFrom] = useState<Screen>('feed')
+  const [collectionFrom, setCollectionFrom] = useState<Screen>('saved')
+  const [gateFrom, setGateFrom] = useState<Screen>('feed')
   // The records the screens show: a guided-flow step starts on its DEMO_DATA records, and opening an item selects it.
   const story = useStory()
   const focus = story.focus
@@ -412,29 +464,35 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [claimIssue, setClaimIssue] = useState('')
   const [claimId, setClaimId] = useState<ClaimId | undefined>(upcomingClaim(focus?.order ?? SURFACE_DEFAULTS.order, story.moment))
   const [orderStage, setOrderStage] = useState<OrderState>(orderStateAt(focus?.order ?? SURFACE_DEFAULTS.order, story.moment) ?? 'Paid')
-  // The public entry screen starts anonymous; every guided-flow step shows Maya, signed in throughout the story (DEMO_DATA › Buyer).
-  const [auth, setAuth] = useState<Auth>(initialScreen === 'start' ? 'guest' : 'signed-in')
-  const signedIn = auth === 'signed-in'
   const [signInPrompt, setSignInPrompt] = useState<{ title: string; intent: Intent } | null>(null)
   const [intent, setIntent] = useState<Intent>({ screen: 'feed', tab: 'home' })
   const [signInFrom, setSignInFrom] = useState<Screen>('start')
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
-  // The temporary Cart is this session's own state, so signing in keeps it (rules 3.10, 3.12); a reset remounts the app.
-  const [initial] = useState(() => initialCheckout(initialScreen))
-  // The Cart is session state; once the Buyer edits it, it is kept in the workspace store so it survives switching surfaces (and so a Seller's
-  // later price or stock change is noticed when the Buyer returns).
-  const cartTouched = useRef(false)
-  const [cart, setCartRaw] = useState<CartLine[]>(() => (scope === 'mvp' && workspace.buyerCart ? normalizeCart(workspace.buyerCart) : initial.cart))
-  const setCart = (next: CartLine[] | ((lines: CartLine[]) => CartLine[])) => { cartTouched.current = true; setCartRaw(next) }
-  useEffect(() => { if (cartTouched.current && scope === 'mvp') workspaceDispatch({ type: 'cart', lines: cart }) }, [cart])
+  // The temporary Cart: a signed-in Buyer's own (seeded from the dataset's cart_lines until the Buyer first changes it, then kept in the store so it
+  // survives switching surfaces), a guest's private one (adopted by the account that signs in, rules 3.10, 3.12), or, in the simulation and guided-flow
+  // scope, a private copy that starts on the flow's demonstration carts.
+  const seededCart = useMemo(() => (scope === 'mvp' ? seedCartFor(BUYER) : initial.cart), [scope, BUYER, initial])
+  const cartOf = (current: BuyerSession) => (current.cart ? normalizeCart(current.cart) : seededCart)
+  const guestCart = scope === 'mvp' && !signedIn
+  const cart: CartLine[] = guestCart ? guest.cart : cartOf(commerce)
+  const setCart = (next: CartLine[] | ((lines: CartLine[]) => CartLine[])) => {
+    if (guestCart) return setGuest(g => ({ ...g, cart: typeof next === 'function' ? next(g.cart) : next }))
+    patchCommerce(current => ({ cart: (typeof next === 'function' ? next(cartOf(current)) : next).map(l => ({ product: l.product, options: [...l.options], quantity: l.quantity, seen: l.seen, seller: l.seller, name: l.name })) }))
+  }
+  // Signing in keeps the guest's temporary Cart: its lines join the account's own.
+  const adoptGuestCart = () => {
+    if (!guest.cart.length) return
+    const lines = guest.cart
+    setGuest(g => ({ ...g, cart: [] }))
+    patchCommerce(current => ({ cart: lines.reduce<CartLine[]>((all, line) => (all.some(item => sameLine(item, line)) ? all.map(item => (sameLine(item, line) ? { ...item, quantity: item.quantity + line.quantity } : item)) : [...all, line]), cartOf(current)).map(l => ({ product: l.product, options: [...l.options], quantity: l.quantity, seen: l.seen, seller: l.seller, name: l.name })) }))
+  }
   // Switching the prototype mode swaps between the two copies instead of carrying one into the other.
   const scopeRef = useRef(scope)
   useEffect(() => {
     if (scopeRef.current === scope) return
-    scopeRef.current = scope; cartTouched.current = false; savedTouched.current = false
-    setCartRaw(scope === 'mvp' ? normalizeCart(workspace.buyerCart) : initial.cart)
-    setCollectionsRaw(collectionsFor(scope))
+    scopeRef.current = scope
+    setIsolated({})
   }, [scope])
   const [cartSeller, setCartSeller] = useState<SellerId>(SURFACE_DEFAULTS.seller) // = the first demo cart's Seller in the legacy dataset
   const [checkoutSeller, setCheckoutSeller] = useState<SellerId>(SURFACE_DEFAULTS.seller)
@@ -456,7 +514,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   // Opening a Scene opens Explore the Scene (PR-004), with no Product selected: the Buyer chooses one there.
   const openPost = (id: ShoppablePostId) => { setDiscoverySheet(null); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); setSceneProduct(null); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
   const openProduct = (id: ProductId) => { setDiscoverySheet(null); setBuyingAgain(null); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
-  const openSeller = (id: SellerId) => { setSellerId(id); setSellerTab('scenes'); setScreen('seller') }
+  const openSeller = (id: SellerId) => { if (screen !== 'seller' && screen !== 'seller-shop') setSellerFrom(screen === 'following-list' || screen === 'you' ? screen : 'feed'); setSellerId(id); setSellerTab('scenes'); setScreen('seller') }
   const openOrder = (id: OrderId) => { setOrderId(id); setOrderStage(orderStateAt(id, at) ?? 'Paid'); setScreen('order-detail') }
   const openConversation = (entry: ChatEntry) => { setChat(entry); setScreen('conversation') }
   const openClaim = () => { setClaimId(upcomingClaim(orderId, at)); setScreen('claim-start') }
@@ -672,7 +730,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   // Follow is account-level: a guest is asked to sign in.
   const follow = (seller: SellerId, from: Intent) => requireSignIn('Sign in to follow sellers', from, () => {
     const now = !follows.includes(seller)
-    setFollowChanges(changes => ({ ...changes, [seller]: now }))
+    patchStored(current => ({ follows: { ...(current.follows ?? {}), [seller]: now } }))
     setToast(now ? `Following ${SELLERS[seller].name}` : `Unfollowed ${SELLERS[seller].name}`)
   })
   // Like applies to the Scene, never to its tagged Products; it toggles, and no Like totals are shown (PR-004).
@@ -712,7 +770,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const productReviewsOf = (product: ProductId, compose?: ReviewEntitlement) => { setProductId(product); setDiscoverySheet({ kind: 'product-reviews', compose }) }
   // Sign Out (PR-006) returns to the guest state, as the prototype switch's Guest does, so account screens ask for
   // sign-in again.
-  const toGuest = () => { setAuth('guest'); setSignInPrompt(null); setReportOpen(false); setDiscoverySheet(null); setChosenArea(null); setAccountMenu(false) }
+  const toGuest = () => { setAuth('guest'); setSignInPrompt(null); setReportOpen(false); setDiscoverySheet(null); setGuest(g => ({ ...g, area: null })); setAccountMenu(false) }
   const signOut = () => { toGuest(); setActiveTab('home'); setScreen('feed'); setToast('Signed out') }
   useEffect(() => {
     if (!toast) return
@@ -720,6 +778,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
     return () => clearTimeout(timer)
   }, [toast, toastAction])
   const signIn = (next: Intent = intent) => {
+    adoptGuestCart()
     setAuth('signed-in')
     if (next.tab) setActiveTab(next.tab)
     if (next.channel) setChannel(next.channel)
@@ -733,8 +792,22 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const switchSignedIn = () => {
     if (signInPrompt) { setSignInPrompt(null); return signIn(signInPrompt.intent) }
     if (screen === 'sign-in-phone' || screen === 'sign-in-code') return signIn()
+    adoptGuestCart()
     setAuth('signed-in')
   }
+  // The prototype's account selector (DEMO-003): Guest, this account again, or another of the demo Buyers (the app remounts on it, on the same tab).
+  const chooseAccount = (value: string) => {
+    if (value === 'guest') return toGuest()
+    if (value === BUYER) return signedIn ? undefined : switchSignedIn()
+    onSwitchAccount(value as BuyerId, ['feed', 'search', 'saved', 'orders', 'you'].includes(screen) ? screen : 'feed')
+  }
+  const rememberSearch = () => {
+    const q = query.trim()
+    if (signedIn && q) patchStored(current => ({ recent: [q, ...(current.recent ?? BUYERS[BUYER].recentSearches ?? []).filter(x => x !== q)].slice(0, 5) }))
+  }
+  // Orders and Purchased Products open from the You tab or from Help as well as from the tab bar; Back returns to where they were opened.
+  const openGated = (to: Screen, from: Screen) => { setGateFrom(from); setActiveTab(to === 'orders' ? 'orders' : 'you'); setScreen(to) }
+  const leaveGate = () => { if (gateFrom === 'feed') return goTab('home'); setActiveTab('you'); setScreen(gateFrom) }
   const addToCart = (line: CartLine) => {
     const exact = liveVariantRow(line.product, line.options)
     const cap = Math.max(1, exact ? exact.stock : PRODUCTS[line.product].stock)
@@ -745,6 +818,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   }
 
   const goTab = (key: TabKey) => {
+    setGateFrom('feed')
     setActiveTab(key)
     if (key === 'home') setScreen('feed')
     if (key === 'shop') setScreen('search')
@@ -762,7 +836,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
       label={`05 — MOBILE BUYER · ${signedIn ? shortName(BUYERS[BUYER].name).toUpperCase() : 'GUEST'}`}
       clock={formatClockShort(at.at)}
       toolbar={
-        <PrototypeSignInSwitch signedIn={signedIn} onGuest={toGuest} onSignedIn={switchSignedIn}>
+        <PrototypeSignInSwitch signedIn={signedIn} onGuest={toGuest} onSignedIn={switchSignedIn} account={signedIn ? BUYER : 'guest'} onAccount={chooseAccount}>
           <CheckoutTestControl active={run?.test ?? null} onLoad={loadTest} onReset={resetTest} />
         </PrototypeSignInSwitch>
       }
@@ -863,7 +937,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
               setChat({ seller: sellerId, context: GENERAL_CONTEXT, from: shown })
               requireSignIn('Sign in to chat with sellers', { screen: 'conversation' }, () => setScreen('conversation'))
             }}
-            onBack={() => setScreen('feed')}
+            onBack={() => setScreen(sellerFrom)}
             onSearch={() => setScreen('search')}
             onPost={openPost}
             onProduct={openProduct}
@@ -872,18 +946,18 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'search' && (
           <Search
             at={at}
-            recent={signedIn ? BUYERS[BUYER].recentSearches ?? [] : []}
+            recent={signedIn ? stored.recent ?? BUYERS[BUYER].recentSearches ?? [] : []}
             query={query}
             setQuery={setQuery}
             tab={searchTab}
             setTab={setSearchTab}
-            onProduct={openProduct}
-            onPost={openPost}
-            onSeller={openSeller}
+            onProduct={id => { rememberSearch(); openProduct(id) }}
+            onPost={id => { rememberSearch(); openPost(id) }}
+            onSeller={id => { rememberSearch(); openSeller(id) }}
           />
         )}
-        {shown === 'saved' && <Saved collections={collections} onNew={() => setCollectionSheet({ kind: 'create' })} cartCount={cart.length} onCart={() => { if (carts[0]) setCartSeller(carts[0].seller); setScreen(carts.length > 1 || (carts.length === 0 && orphans.length > 0) ? 'multi-cart' : 'seller-cart') }} onCollection={id => { setCollectionId(id); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
-        {shown === 'collection' && (() => { const current = collections.find(c => c.id === collectionId); return current ? <Collection key={current.id} collection={current} onBack={() => setScreen('saved')} onMore={() => setCollectionSheet({ kind: 'menu', id: current.id })} onRemove={key => { setCollections(removeItem(collections, current.id, key)); setToast(`Removed from ${current.name}`) }} onProduct={openProduct} onPost={openPost} /> : <><Header title="Collection" onBack={() => setScreen('saved')} /><p role="status" className="p-6 text-sm text-text-secondary">This Collection no longer exists.</p></> })()}
+        {shown === 'saved' && <Saved collections={collections} onNew={() => setCollectionSheet({ kind: 'create' })} cartCount={cart.length} onCart={() => { if (carts[0]) setCartSeller(carts[0].seller); setScreen(carts.length > 1 || (carts.length === 0 && orphans.length > 0) ? 'multi-cart' : 'seller-cart') }} onCollection={id => { setCollectionId(id); setCollectionFrom('saved'); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
+        {shown === 'collection' && (() => { const current = collections.find(c => c.id === collectionId); return current ? <Collection key={current.id} collection={current} onBack={() => setScreen(collectionFrom)} onMore={() => setCollectionSheet({ kind: 'menu', id: current.id })} onRemove={key => { setCollections(removeItem(collections, current.id, key)); setToast(`Removed from ${current.name}`) }} onProduct={openProduct} onPost={openPost} /> : <><Header title="Collection" onBack={() => setScreen(collectionFrom)} /><p role="status" className="p-6 text-sm text-text-secondary">This Collection no longer exists.</p></> })()}
         {shown === 'seller-cart' && (
           <SellerCart
             seller={cartSeller}
@@ -911,8 +985,8 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'payment-success' && payingOrder && <PaymentSuccess order={payingOrder} progress={progress} next={nextUp && SELLERS[nextUp.seller].name} onNext={() => nextUp && startCheckout(nextUp.seller)} onDone={() => { setActiveTab('orders'); setScreen('orders') }} />}
         {shown === 'payment-failed' && payingOrder && <PaymentFailed order={payingOrder} progress={progress} onRetry={() => retryPayment(payingOrder)} onCart={() => { setCartSeller(payingOrder.seller); setScreen('seller-cart') }} />}
         {shown === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={resolvePayment} />}
-        {shown === 'simulation-only' && <><Header title={SIMULATION_TITLE(screen)} onBack={() => goTab('home')} /><SimulationGate title={SIMULATION_TITLE(screen)} compact>{screen === 'orders' || screen === 'purchased-products' ? 'Release 1 has no paid Orders: checkout is a preview, so nothing is purchased and there is nothing to track. Messages and notifications still work.' : undefined}</SimulationGate></>}
-        {shown === 'orders' && <OrdersList at={at} onOrder={openOrder} onChats={() => { setChatsFrom('orders'); setScreen('chats') }} onNotifications={() => { setNotificationsFrom('orders'); setScreen('notifications') }} />}
+        {shown === 'simulation-only' && <><Header title={SIMULATION_TITLE(screen)} onBack={leaveGate} /><SimulationGate title={SIMULATION_TITLE(screen)} compact>{screen === 'orders' || screen === 'purchased-products' ? 'Release 1 has no paid Orders: checkout is a preview, so nothing is purchased and there is nothing to track. Messages and notifications still work.' : undefined}</SimulationGate></>}
+        {shown === 'orders' && <OrdersList at={at} onBack={gateFrom === 'feed' ? undefined : leaveGate} onOrder={openOrder} onChats={() => { setChatsFrom('orders'); setScreen('chats') }} onNotifications={() => { setNotificationsFrom('orders'); setScreen('notifications') }} />}
         {shown === 'order-detail' && <OrderDetail orderId={orderId} at={at} stage={orderStage} setStage={selectStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => openCode('order-detail')} onCompleted={() => setScreen('completed')} onClaim={openClaim} onChat={() => openConversation({ seller: ORDERS[orderId].seller, context: { order: orderId }, from: 'order-detail' })} />}
         {shown === 'delegated-recipient' && <DelegatedRecipient handoff={finalHandoffAt(orderId, at)} onBack={() => setScreen('order-detail')} onSave={() => setScreen('order-detail')} />}
         {shown === 'qr-scanner' && <DeliveryScanner handoff={finalHandoffAt(orderId, at)} at={at} onBack={() => setScreen('order-detail')} onCamera={() => setScreen('qr-camera')} onOtp={() => openCode('qr-scanner')} onCompleted={() => setScreen('completed')} />}
@@ -942,7 +1016,18 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
           onCart={() => { setCartSeller(chat.seller); setScreen('seller-cart') }}
           onBack={() => setScreen(shown === 'chatbot' ? 'product' : chat.from)} />}
         {shown === 'notifications' && <Notifications at={at} onBack={() => setScreen(notificationsFrom)} onOrder={openOrder} />}
-        {shown === 'you' && <YouProfile at={at} name={displayName} area={savedArea} follows={follows} purchased={purchased.length} onSeller={openSeller} onMenu={() => setAccountMenu(true)} onPurchased={() => setScreen('purchased-products')} />}
+        {shown === 'you' && (
+          <YouProfile
+            at={at} name={displayName} area={savedArea} follows={follows} collections={collections} purchased={purchased.length}
+            onSeller={openSeller} onMenu={() => setAccountMenu(true)} onAccount={chooseAccount}
+            onPurchased={() => openGated('purchased-products', 'you')} onOrders={() => openGated('orders', 'you')}
+            onFollowing={() => setScreen('following-list')}
+            onCollection={id => { setCollectionId(id); setCollectionFrom('you'); setScreen('collection') }}
+            onChats={() => { setChatsFrom('you'); setScreen('chats') }}
+            onNotifications={() => { setNotificationsFrom('you'); setScreen('notifications') }}
+          />
+        )}
+        {shown === 'following-list' && <FollowingList at={at} follows={follows} onBack={() => setScreen('you')} onSeller={openSeller} onUnfollow={seller => follow(seller, { screen: 'following-list' })} />}
         {shown === 'purchased-products' && (
           <PurchasedProducts
             at={at}
@@ -957,18 +1042,18 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onReviews={productReviewsOf}
           />
         )}
-        {shown === 'edit-profile' && <EditProfile name={displayName} area={savedArea} onBack={() => setScreen('you')} onSave={edits => { setProfileEdits(edits); setToast('Profile updated'); setScreen('you') }} />}
+        {shown === 'edit-profile' && <EditProfile name={displayName} area={savedArea} onBack={() => setScreen('you')} onSave={edits => { patchStored(() => ({ profile: edits })); setToast('Profile updated'); setScreen('you') }} />}
         {shown === 'appearance' && <AppearanceSettings onBack={() => setScreen('you')} />}
         {shown === 'notification-settings' && (
           <NotificationSettings
             choices={notificationChoices}
-            onChange={(setting, on) => setNotificationChoices(choices => ({ ...choices, [setting]: on }))}
+            onChange={(setting, on) => patchStored(current => ({ notifications: { ...(current.notifications ?? {}), [setting]: on } }))}
             onInbox={() => { setNotificationsFrom('notification-settings'); setScreen('notifications') }}
             onBack={() => setScreen('you')}
           />
         )}
         {shown === 'privacy-security' && <PrivacySecurity onBack={() => setScreen('you')} onDelete={() => { setDeleteFrom('privacy-security'); setScreen('delete-account') }} />}
-        {shown === 'help-support' && <HelpSupport onBack={() => setScreen('you')} onOrders={() => goTab('orders')} onChats={() => { setChatsFrom('help-support'); setScreen('chats') }} />}
+        {shown === 'help-support' && <HelpSupport onBack={() => setScreen('you')} onOrders={() => openGated('orders', 'help-support')} onChats={() => { setChatsFrom('help-support'); setScreen('chats') }} />}
         {shown === 'delete-account' && <DeleteAccount at={at} onBack={() => setScreen(deleteFrom)} onDone={() => setScreen('you')} />}
 
         {showNav && (
@@ -979,7 +1064,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {accountMenu && shown === 'you' && (
           <AccountMenu
             onClose={() => setAccountMenu(false)}
-            onOpen={next => { setAccountMenu(false); setDeleteFrom('you'); setScreen(next) }}
+            onOpen={next => { setAccountMenu(false); setDeleteFrom('you'); setGateFrom('you'); setScreen(next) }}
             onSignOut={signOut}
           />
         )}
@@ -1032,7 +1117,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {collectionSheet?.kind === 'create' && <CollectionNameSheet title="New collection" initial="" submitLabel="Create" onClose={() => setCollectionSheet(null)} onSubmit={name => { const r = createCollection(collections, name, collectionSheet.then ? [collectionSheet.then] : []); const problem = afterCollectionChange(r); if (!problem) setToast(`Created ${cleanName(name)}`); return problem }} />}
         {collectionSheet?.kind === 'menu' && collections.find(c => c.id === collectionSheet.id) && <CollectionMenuSheet collection={collections.find(c => c.id === collectionSheet.id)!} onClose={() => setCollectionSheet(null)} onRename={() => setCollectionSheet({ kind: 'rename', id: collectionSheet.id })} onDelete={() => setCollectionSheet({ kind: 'delete', id: collectionSheet.id })} />}
         {collectionSheet?.kind === 'rename' && collections.find(c => c.id === collectionSheet.id) && <CollectionNameSheet title="Rename collection" initial={collections.find(c => c.id === collectionSheet.id)!.name} submitLabel="Save name" onClose={() => setCollectionSheet(null)} onSubmit={name => afterCollectionChange(renameCollection(collections, collectionSheet.id, name))} />}
-        {collectionSheet?.kind === 'delete' && collections.find(c => c.id === collectionSheet.id) && <CollectionDeleteSheet collection={collections.find(c => c.id === collectionSheet.id)!} onClose={() => setCollectionSheet(null)} onDelete={() => { const name = collections.find(c => c.id === collectionSheet.id)!.name; const problem = afterCollectionChange(removeCollection(collections, collectionSheet.id)); if (!problem) { setToast(`Deleted ${name}`); setScreen('saved') } }} />}
+        {collectionSheet?.kind === 'delete' && collections.find(c => c.id === collectionSheet.id) && <CollectionDeleteSheet collection={collections.find(c => c.id === collectionSheet.id)!} onClose={() => setCollectionSheet(null)} onDelete={() => { const name = collections.find(c => c.id === collectionSheet.id)!.name; const problem = afterCollectionChange(removeCollection(collections, collectionSheet.id)); if (!problem) { setToast(`Deleted ${name}`); setScreen(collectionFrom === 'you' ? 'you' : 'saved') } }} />}
         {addedToCart && (
           <AddToCartConfirmation
             {...addedToCart}
@@ -1089,7 +1174,7 @@ function AppStart({ onExplore, onSignIn }: { onExplore: () => void; onSignIn: ()
  * The prototype-only controls above the Buyer phone (specification §2, §61): the switch between the guest and signed-in
  * Buyer states (WO-003), and the controls after it under the same label (the Checkout test control, WO-006).
  */
-function PrototypeSignInSwitch({ signedIn, onGuest, onSignedIn, children }: { signedIn: boolean; onGuest: () => void; onSignedIn: () => void; children?: ReactNode }) {
+function PrototypeSignInSwitch({ signedIn, onGuest, onSignedIn, account, onAccount, children }: { signedIn: boolean; onGuest: () => void; onSignedIn: () => void; account: string; onAccount: (value: string) => void; children?: ReactNode }) {
   const option = (active: boolean) => `rounded-md px-3 py-1.5 text-xs font-semibold ${active ? 'bg-brand text-on-brand' : 'text-text-secondary'}`
   return (
     <div className="prototype-switch mb-3 flex max-w-full flex-wrap items-center justify-center gap-2" role="group" aria-label="Prototype navigation, not production UI">
@@ -1098,6 +1183,7 @@ function PrototypeSignInSwitch({ signedIn, onGuest, onSignedIn, children }: { si
         <button onClick={onGuest} aria-pressed={!signedIn} className={option(!signedIn)}>Guest</button>
         <button onClick={onSignedIn} aria-pressed={signedIn} className={option(signedIn)}>Signed in</button>
       </span>
+      {!isLegacy && <AccountSelect value={account} onChange={onAccount} label="Buyer account (prototype)" />}
       {children}
     </div>
   )
@@ -1274,32 +1360,122 @@ function CartCheck({ unavailable, availabilityOf, afterSignIn, seller, sellerRea
   )
 }
 
+/** A Buyer account's label in the prototype selector: the name and where they are. */
+const accountLabel = (id: BuyerId) => { const b = BUYERS[id]; return `${b.name} · ${[b.deliveryArea, b.city].filter(Boolean).join(', ')}` }
+
+/** The prototype's Buyer account selector (DEMO-003): Guest and the eleven demo Buyers. Switching changes who is signed in and everything that is theirs. */
+function AccountSelect({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
+  return (
+    <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-secondary">
+      <span>Account</span>
+      <select aria-label={label} value={value} onChange={event => onChange(event.target.value)} className="h-8 max-w-[11rem] rounded-md border border-border bg-surface px-2 text-xs font-semibold text-text-primary">
+        <option value="guest">Guest</option>
+        {BUYER_IDS.map(id => <option key={id} value={id}>{accountLabel(id)}</option>)}
+      </select>
+    </label>
+  )
+}
+
 /**
- * The signed-in Buyer's profile: DEMO_DATA's facts, with this session's Edit Profile changes. Its ••• opens the account
- * menu (PR-006), and Purchases leads to Purchased Products.
+ * The signed-in Buyer's profile (BUYER-011): who they are (name, handle, place, joined date, initials in place of a photo), how many Sellers they follow
+ * (opens the Following list) and their private Collections, then shortcuts to Orders, Purchased Products, Messages and Notifications. Its ••• opens the
+ * account menu (PR-006). The marketplace dataset adds the prototype's account selector.
  */
-function YouProfile({ at, name, area, follows, purchased, onSeller, onMenu, onPurchased }: {
-  at: Moment; name: string; area: string | null; follows: readonly SellerId[]; purchased: number
-  onSeller: (id: SellerId) => void; onMenu: () => void; onPurchased: () => void
+function YouProfile({ at, name, area, follows, collections, purchased, onSeller, onMenu, onAccount, onPurchased, onOrders, onFollowing, onCollection, onChats, onNotifications }: {
+  at: Moment; name: string; area: string | null; follows: readonly SellerId[]; collections: readonly BuyerCollection[]; purchased: number
+  onSeller: (id: SellerId) => void; onMenu: () => void; onAccount: (value: string) => void; onPurchased: () => void; onOrders: () => void
+  onFollowing: () => void; onCollection: (id: string) => void; onChats: () => void; onNotifications: () => void
 }) {
+  const BUYER = useBuyer()
   const buyer = BUYERS[BUYER]
+  const place = buyer.city ? [buyer.deliveryArea, buyer.city].filter(Boolean).join(', ') : ''
+  const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
   return (
     <>
       <Header title="You" trailing={<IconButton label="Account and settings" onClick={onMenu}>•••</IconButton>} />
       <div className="flex-1 overflow-y-auto p-5">
         <div className="flex items-center gap-4">
           <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-muted font-display text-xl font-bold text-brand-dark">{initials(name)}</span>
-          <span className="min-w-0"><span className="block break-words font-display text-2xl font-semibold">{name}</span><span className="text-sm text-text-muted">{buyer.phoneMasked ?? '—'}</span></span>
+          <span className="min-w-0">
+            <span className="block break-words font-display text-2xl font-semibold">{name}</span>
+            <span className="block text-sm text-text-muted">{buyer.handle ?? buyer.phoneMasked ?? '—'}</span>
+            {place && <span className="block text-xs text-text-muted">{place}</span>}
+            {buyer.joined && <span className="block text-xs text-text-muted">Joined {formatDate(buyer.joined)}</span>}
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button onClick={onFollowing} aria-label={`Following, ${count(follows.length, 'Seller')}`} className={`rounded-xl bg-surface-raised px-4 py-3 text-left ${ROW_TARGET}`}>
+            <span className="block font-display text-xl font-semibold text-text-primary">{follows.length}</span><span className="block text-xs text-text-muted">Following ›</span>
+          </button>
+          <div className={`rounded-xl bg-surface-raised px-4 py-3 ${ROW_TARGET}`}><span className="block font-display text-xl font-semibold text-text-primary">{collections.length}</span><span className="block text-xs text-text-muted">Collections</span></div>
         </div>
         <SectionLabel>Profile</SectionLabel>
         <div className="rounded-xl bg-surface-raised p-4">
           <PriceRow label="Market" value={MARKET.country} />
           <PriceRow label="Saved discovery area" value={area ?? '—'} />
         </div>
+        <SectionLabel>Collections</SectionLabel>
+        <div className="flex flex-col gap-2">
+          {collections.map(c => <MenuRow key={c.id} label={c.name} detail={`${count(c.items.length, 'item')} · Private`} onClick={() => onCollection(c.id)} />)}
+        </div>
         <SectionLabel>Purchases</SectionLabel>
-        <MenuRow label="Purchased Products" detail={`Buy again · ${purchased} Product${purchased === 1 ? '' : 's'}`} onClick={onPurchased} />
+        <div className="flex flex-col gap-2">
+          <MenuRow label="Orders" detail="Your Seller Orders" onClick={onOrders} />
+          <MenuRow label="Purchased Products" detail={`Buy again · ${count(purchased, 'Product')}`} onClick={onPurchased} />
+        </div>
+        <SectionLabel>Messages</SectionLabel>
+        <div className="flex flex-col gap-2">
+          <MenuRow label="Messages" detail="Your conversations with Sellers" onClick={onChats} />
+          <MenuRow label="Notifications" onClick={onNotifications} />
+        </div>
         <SectionLabel>Following</SectionLabel>
-        <div className="flex flex-col gap-2">{follows.map(id => <SellerRow key={id} sellerId={id} at={at} onClick={() => onSeller(id)} />)}</div>
+        <div className="flex flex-col gap-2">
+          {follows.length === 0 && <p className="text-sm text-text-muted">You aren't following any Sellers yet.</p>}
+          {follows.slice(0, 3).map(id => <SellerRow key={id} sellerId={id} at={at} onClick={() => onSeller(id)} />)}
+          {follows.length > 3 && <button onClick={onFollowing} className={`rounded-xl px-4 py-2 text-left text-xs font-semibold text-brand-text ${ROW_TARGET}`}>View all {follows.length} Sellers you follow</button>}
+        </div>
+        {!isLegacy && (
+          <>
+            <SectionLabel>Prototype account</SectionLabel>
+            <div className="rounded-xl bg-surface-raised p-4">
+              <AccountSelect value={BUYER} onChange={onAccount} label="Switch Buyer account" />
+              <p className="mt-2 text-xs leading-relaxed text-text-muted">Each demo account keeps its own Cart, Saves, follows and messages. Choose Guest to see the app with no account.</p>
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
+/** The Sellers the Buyer follows (BUYER-011). Unfollow here is the same follow state Home, Scene cards and the Seller page use. */
+function FollowingList({ at, follows, onBack, onSeller, onUnfollow }: { at: Moment; follows: readonly SellerId[]; onBack: () => void; onSeller: (id: SellerId) => void; onUnfollow: (id: SellerId) => void }) {
+  return (
+    <>
+      <Header title="Following" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto p-4">
+        <p className="text-sm leading-relaxed text-text-secondary">{follows.length} Seller{follows.length === 1 ? '' : 's'} you follow. Unfollowing here also changes Home and the Seller's page.</p>
+        {follows.length === 0 ? (
+          <div className="py-10 text-center">
+            <div className="text-sm font-semibold text-text-primary">You aren't following any Sellers yet</div>
+            <p className="mt-1 text-xs text-text-muted">Follow a Seller from a Scene or the Seller's page and it appears here.</p>
+          </div>
+        ) : (
+          <ul aria-label="Followed Sellers" className="mt-4 flex flex-col gap-2">
+            {follows.map(id => {
+              const seller = SELLERS[id]
+              return (
+                <li key={id} className="flex items-center gap-2 rounded-xl bg-surface-raised p-2">
+                  <button onClick={() => onSeller(id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                    <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials(seller.name)}</span>
+                    <span className="min-w-0"><span className="block truncate text-sm font-semibold">{seller.name}</span><span className="block truncate text-xs text-text-muted">{seller.category} · {trustLabel(trustAt(id, at))}</span></span>
+                  </button>
+                  <Button size="sm" variant="secondary" aria-label={`Unfollow ${seller.name}`} onClick={() => onUnfollow(id)}>Unfollow</Button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </div>
     </>
   )
@@ -1442,6 +1618,7 @@ type ProfileEdits = { name?: string; area?: string }
  * name DEMO_DATA records.
  */
 function EditProfile({ name, area, onBack, onSave }: { name: string; area: string | null; onBack: () => void; onSave: (edits: ProfileEdits) => void }) {
+  const BUYER = useBuyer()
   const buyer = BUYERS[BUYER]
   const [draft, setDraft] = useState(name)
   const [draftArea, setDraftArea] = useState(area ?? '')
@@ -1458,7 +1635,7 @@ function EditProfile({ name, area, onBack, onSave }: { name: string; area: strin
           <span className="min-w-0"><span className="block text-sm font-semibold">Profile photo</span><span className="block text-xs leading-relaxed text-text-muted">Your initials show in place of a photo.</span></span>
         </div>
         <div className="mt-6"><TextInput label="Display name" value={draft} maxLength={40} autoComplete="name" error={error} onChange={e => { setDraft(e.target.value); setError(undefined) }} /></div>
-        <div className="mt-4"><Select label="Saved discovery area" hint="Nearby starts from this area." options={discoveryAreas().map(value => ({ value, label: value }))} value={draftArea} onChange={setDraftArea} /></div>
+        <div className="mt-4"><Select label="Saved discovery area" hint="Nearby starts from this area." options={discoveryAreas(buyer.city).map(value => ({ value, label: value }))} value={draftArea} onChange={setDraftArea} /></div>
         <SectionLabel>Sign-in details</SectionLabel>
         <div className="rounded-xl bg-surface-raised p-4">
           <PriceRow label="Phone number" value={buyer.phoneMasked ?? '—'} />
@@ -1559,6 +1736,7 @@ function NotificationSettings({ choices, onChange, onInbox, onBack }: {
  * the prototype's phone number and 6-digit code; no other authentication is added.
  */
 function PrivacySecurity({ onBack, onDelete }: { onBack: () => void; onDelete: () => void }) {
+  const BUYER = useBuyer()
   const buyer = BUYERS[BUYER]
   return (
     <>
@@ -1620,6 +1798,7 @@ type DeletionStep =
   | { step: 'result'; request: NonNullable<ReturnType<typeof requestAccountDeletionAt>> }
 
 function DeleteAccount({ at, onBack, onDone }: { at: Moment; onBack: () => void; onDone: () => void }) {
+  const BUYER = useBuyer()
   const buyer = BUYERS[BUYER]
   const digits = GUEST_STATE.otpDigits
   const [flow, setFlow] = useState<DeletionStep>({ step: 'explain' })
@@ -1667,7 +1846,7 @@ function DeleteAccount({ at, onBack, onDone }: { at: Moment; onBack: () => void;
           <h2 tabIndex={-1} className={heading}>Review before you delete</h2>
           <div className="mt-4 rounded-xl bg-surface-raised p-4">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Verified account</div>
-            <div className="mt-1 font-semibold text-text-primary">{BUYERS[preview.account].name}</div>
+            <div className="mt-1 font-semibold text-text-primary">{buyer.name}</div>
           </div>
           <p className="mt-4 text-sm leading-relaxed text-text-secondary">If you delete this account:</p>
           <DeletionConsequenceList />
@@ -1689,7 +1868,7 @@ function DeleteAccount({ at, onBack, onDone }: { at: Moment; onBack: () => void;
         {flow.step === 'result' && (
           <div role="status">
             <h2 tabIndex={-1} className={heading}>{flow.request.result === 'blocked' ? 'Deletion requested, but currently blocked by active Orders.' : 'Deletion requested.'}</h2>
-            <p className="mt-3 text-sm leading-relaxed text-text-secondary">Adulis has received the deletion request for {BUYERS[flow.request.account].name}'s account.{flow.request.result === 'blocked' && " It can't complete while these Orders are active:"}</p>
+            <p className="mt-3 text-sm leading-relaxed text-text-secondary">Adulis has received the deletion request for {buyer.name}'s account.{flow.request.result === 'blocked' && " It can't complete while these Orders are active:"}</p>
             {flow.request.result === 'blocked' && <BlockingOrderList orders={flow.request.blockedBy} />}
           </div>
         )}
@@ -1754,6 +1933,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
   stories: readonly SellerStoryGroup[]; seenStories: readonly StoryId[]; onStory: (group: SellerStoryGroup) => void
   authoredScenes: ReturnType<typeof useAuthoredBuyer>['scenes']; onAuthoredScene: (id: string) => void
 }) {
+  const BUYER = useBuyer()
   // Each channel shows its own canonical list (DEMO_DATA › Buyer Home channels); no screen computes its own. A guest sees
   // the Guest/default discovery ranking: the same records, in the same order, never described as Maya's personal feed.
   // Following is the canonical list for the Sellers Maya still follows, then the public Scenes of any Seller she
@@ -1788,7 +1968,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
       {guest && <GuestStrip onSignIn={onSignIn} />}
       <div id="home-channel-panel" role="tabpanel" aria-labelledby={`home-channel-${channel}`} className="flex min-h-0 flex-1 flex-col">
         <div ref={panel} onScroll={event => onScrolled(channel, event.currentTarget.scrollTop)} className={`min-h-0 flex-1 overflow-y-auto bg-background ${posts ? 'snap-y snap-mandatory' : ''}`}>
-          {channel === 'nearby' && <div className="snap-start"><NearbyAreas area={area} chosen={areaChosen} onArea={onArea} /></div>}
+          {channel === 'nearby' && <div className="snap-start"><NearbyAreas area={area} chosen={areaChosen} city={guest ? undefined : BUYERS[BUYER].city} onArea={onArea} /></div>}
           {posts?.map(id => (
             <ShoppablePostUnit
               key={id}
@@ -1897,12 +2077,12 @@ function ChannelBar({ channel, onSelect }: { channel: Channel; onSelect: (channe
 }
 
 /** Nearby's discovery area: chosen by hand from the demo proximity areas. No live or simulated location (rules 2.10, 2.14). */
-function NearbyAreas({ area, chosen, onArea }: { area: string | null; chosen: boolean; onArea: (area: string) => void }) {
+function NearbyAreas({ area, chosen, city, onArea }: { area: string | null; chosen: boolean; city?: string; onArea: (area: string) => void }) {
   return (
     <div className="flex-shrink-0 border-b border-border bg-surface px-4 py-3">
       <div id="nearby-area-label" className="text-xs font-semibold text-text-secondary">Discovery area</div>
       <div role="group" aria-labelledby="nearby-area-label" className="mt-2 flex flex-wrap gap-2">
-        {discoveryAreas().map(name => (
+        {discoveryAreas(city).map(name => (
           <button key={name} aria-pressed={name === area} onClick={() => onArea(name)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${name === area ? 'border-brand bg-brand-muted text-brand-dark' : 'border-border bg-surface text-text-secondary'}`}>
             {name}
           </button>
@@ -2890,14 +3070,17 @@ function SellerAbout({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const seller = SELLERS[sellerId]
   const workspaceState = useWorkspace().state
   const simulationOn = usePrototypeMode().simulation
-  const offersCollection = sellerMethods(workspaceState, sellerId, at, simulationOn).methods.some(m => m.mode === 'Buyer Collection')
+  const offered = sellerMethods(workspaceState, sellerId, at, simulationOn)
+  const offersCollection = offered.methods.some(m => m.mode === 'Buyer Collection')
   const service = sellerServiceAt(sellerId, at)
   const completed = sellerCompletedOrdersAt(sellerId, at)
   const rows: [string, string][] = [
     ['Category', seller.category],
-    ['Based in', `${seller.area}, ${MARKET.city}`],
+    ['Based in', `${seller.area}, ${seller.city ?? MARKET.city}`],
     ...(seller.buyerCollection && offersCollection ? [['Collection point', `${seller.buyerCollection.place} · ${seller.buyerCollection.hours}`] as [string, string]] : []),
-    ['Fulfilment', describeMethods(sellerMethods(workspaceState, sellerId, at, simulationOn).methods)],
+    ['Fulfilment', describeMethods(offered.methods)],
+    // DEMO-003: what the Seller cannot promise this Buyer (another city, "by arrangement", coverage not stated) is said, never left to look like a delivery.
+    ...(offered.unavailable.length ? [['Delivery to you', offered.unavailable.map(u => u.reason).join(' ')] as [string, string]] : []),
     ['Member since', formatMonthYear(onAdulisSince(sellerId))],
   ]
   // DEMO_DATA defines no Seller-level Product Quality and no claim rate.
@@ -3024,6 +3207,7 @@ function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, o
 }
 
 function SearchLanding({ recent, onQuery }: { recent: readonly string[]; onQuery: (q: string) => void }) {
+  const BUYER = useBuyer()
   // DEMO_DATA defines no browse categories, so the category tiles aren't shown. Recent searches are the signed-in Buyer's own.
   const buyer = BUYERS[BUYER]
   return (
@@ -3229,14 +3413,56 @@ function orderStages(orderId: OrderId) {
   return ORDER_TIMELINES[ORDERS[orderId].fulfilment].map(state => ({ key: state, label: state, detail: stageDetail(state, orderId) }))
 }
 
-function OrdersList({ at, onOrder, onChats, onNotifications }: { at: Moment; onOrder: (id: OrderId) => void; onChats: () => void; onNotifications: () => void }) {
+const ORDER_STATUS: Record<string, string> = { COMPLETED: 'Completed', OUT_FOR_DELIVERY: 'Out for delivery', READY_FOR_DELIVERY: 'Ready for delivery', READY_FOR_COLLECTION: 'Ready for collection', RETURNED_TO_SELLER: 'Returned to Seller', DELIVERY_FAILED: 'Delivery failed', CANCELLED: 'Cancelled' }
+const ORDER_ACTIVE = ['OUT_FOR_DELIVERY', 'READY_FOR_DELIVERY', 'READY_FOR_COLLECTION']
+
+/**
+ * The Buyer's Order history from the demo dataset (operations.orders), shown only in the internal simulation, where the Orders screen exists. A read-only
+ * list per account: Order detail, handoff and Reviews are the Orders work order's (SIM-001), so rows do not open.
+ */
+function DatasetOrders({ onBack, onChats, onNotifications }: { onBack?: () => void; onChats: () => void; onNotifications: () => void }) {
+  const BUYER = useBuyer()
+  const orders = [...(INDEX.ordersByBuyer.get(BUYER) ?? [])].sort((a, b) => b.paid_at.localeCompare(a.paid_at))
+  const groups = [{ title: 'Active', rows: orders.filter(o => ORDER_ACTIVE.includes(o.status)) }, { title: 'Completed', rows: orders.filter(o => o.status === 'COMPLETED') }, { title: 'Cancelled, returned or failed', rows: orders.filter(o => o.status !== 'COMPLETED' && !ORDER_ACTIVE.includes(o.status)) }]
+  return (
+    <>
+      <Header title="Orders" onBack={onBack} trailing={<div className="flex gap-1"><IconButton label="Chats" onClick={onChats}><ChatIcon /></IconButton><IconButton label="Notifications" onClick={onNotifications}><BellIcon /></IconButton></div>} />
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="font-display text-2xl font-semibold">Your Seller Orders</div>
+        <p className="mt-1 text-sm text-text-muted">{orders.length === 0 ? 'No Orders for this account.' : `${orders.length} simulated Orders, newest first.`}</p>
+        <PrototypeNote>Internal simulation. These Orders are fictional demo history: no payment was taken and nothing was delivered. Order detail arrives with the Orders update.</PrototypeNote>
+        {groups.filter(g => g.rows.length).map(group => (
+          <section key={group.title} aria-label={group.title}>
+            <SectionLabel>{group.title} · {group.rows.length}</SectionLabel>
+            <ul className="flex flex-col gap-2">
+              {group.rows.map(o => {
+                const seller = SELLERS[o.seller_id as SellerId]?.name ?? o.seller_id
+                return (
+                  <li key={o.order_id} className="rounded-xl border border-border p-3">
+                    <SellerIdentity initials={initials(seller)} name={seller} meta={`Order ${o.order_id} · ${ORDER_STATUS[o.status] ?? o.status}`} />
+                    <div className="mt-2 text-xs text-text-secondary">{(INDEX.linesByOrder.get(o.order_id) ?? []).map(l => `${l.product_name_snapshot}${l.quantity > 1 ? ` × ${l.quantity}` : ''}`).join(' · ')}</div>
+                    <div className="mt-1 flex items-center justify-between text-xs"><span className="text-text-muted">{formatDate(o.paid_at)}</span><span className="font-semibold">{formatEtb(Math.round(o.total_etb * 100) as Santim)}</span></div>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </>
+  )
+}
+
+function OrdersList({ at, onBack, onOrder, onChats, onNotifications }: { at: Moment; onBack?: () => void; onOrder: (id: OrderId) => void; onChats: () => void; onNotifications: () => void }) {
+  const BUYER = useBuyer()
+  if (!isLegacy) return <DatasetOrders onBack={onBack} onChats={onChats} onNotifications={onNotifications} />
   // The Buyer's Orders at the story moment, most recently paid first.
   const orders = ordersAt({ buyer: BUYER }, at).sort((a, b) => paidAt(b).localeCompare(paidAt(a)))
   const active = orders.filter(id => orderStateAt(id, at) !== 'Completed')
   const completed = orders.filter(id => orderStateAt(id, at) === 'Completed')
   return (
     <>
-      <Header title="Orders" trailing={<div className="flex gap-1"><IconButton label="Chats" onClick={onChats}><ChatIcon /></IconButton><IconButton label="Notifications" onClick={onNotifications}><BellIcon /></IconButton></div>} />
+      <Header title="Orders" onBack={onBack} trailing={<div className="flex gap-1"><IconButton label="Chats" onClick={onChats}><ChatIcon /></IconButton><IconButton label="Notifications" onClick={onNotifications}><BellIcon /></IconButton></div>} />
       <div className="flex-1 overflow-y-auto p-4">
         <div className="font-display text-2xl font-semibold">Your Seller Orders</div>
         <p className="mt-1 text-sm text-text-muted">Track preparation and verified handoff progress.</p>
@@ -3748,6 +3974,7 @@ function ClaimStatus({ orderId, claimId, at, onDone }: { orderId: OrderId; claim
 }
 
 function ChatList({ at, sent, onBack, onConversation }: { at: Moment; sent: Partial<Record<ConversationId, readonly MessageRecord[]>>; onBack: () => void; onConversation: (seller: SellerId) => void }) {
+  const BUYER = useBuyer()
   // The Buyer's conversations with messages by the story moment, latest first. Each previews its newest message: one
   // Maya sent in this session, if she has, otherwise DEMO_DATA's last. DEMO_DATA records no read state.
   const { state: { chats } } = useWorkspace()
@@ -3781,6 +4008,7 @@ function Conversation({ sellerId, startContext, at, sent, onProduct, onCart, onB
   sellerId: SellerId; startContext: MessageContext; at: Moment; sent: Partial<Record<ConversationId, readonly MessageRecord[]>>
   onProduct: (productId: string) => void; onCart: () => void; onBack: () => void
 }) {
+  const BUYER = useBuyer()
   const conversation = conversationBetween(BUYER, sellerId)
   const seller = SELLERS[sellerId].name
   const messages = conversation ? effectiveMessagesAt(conversation, at, sent[conversation]) : []
@@ -3851,6 +4079,7 @@ function notificationText(n: NotificationRecord): { title: string; detail: strin
 }
 
 function Notifications({ at, onBack, onOrder }: { at: Moment; onBack: () => void; onOrder: (id: OrderId) => void }) {
+  const BUYER = useBuyer()
   // The Buyer's notifications at the story moment. DEMO_DATA records no read state, so none is marked unread.
   // The current MVP has no Orders, so notifications about Orders, payments, Claims and delivery belong to the simulation.
   const { simulation } = usePrototypeMode()
@@ -4122,6 +4351,7 @@ function SellerCheckout({ at, seller: sellerId, lines, fulfilment, mode, onMode,
   note?: string
   onBack: () => void; onPay: () => void
 }) {
+  const BUYER = useBuyer()
   // The options the Seller offers at the story moment, with its own charges. DEMO_DATA quotes no delivery time.
   const seller = SELLERS[sellerId]
   const buyer = BUYERS[BUYER]
@@ -4161,7 +4391,7 @@ function SellerCheckout({ at, seller: sellerId, lines, fulfilment, mode, onMode,
             <SectionLabel>Delivery details</SectionLabel>
             <div className="rounded-xl border border-border p-3 text-sm">
               <div className="font-semibold">{buyer.name}</div>
-              <div className="mt-1 text-text-secondary">{buyer.deliveryArea ?? '—'}, {MARKET.city} · {buyer.phoneMasked ?? '—'}</div>
+              <div className="mt-1 text-text-secondary">{buyer.deliveryArea ?? '—'}, {buyer.city ?? MARKET.city} · {buyer.phoneMasked ?? '—'}</div>
               <div className="mt-2 text-xs font-semibold text-text-muted">Saved delivery details</div>
             </div>
           </>

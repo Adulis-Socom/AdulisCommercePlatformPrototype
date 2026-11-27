@@ -15,6 +15,8 @@ export interface SellerRecord {
   readonly showcase: boolean
   /** Neighbourhood in Addis Ababa. */
   readonly area: string
+  /** Marketplace dataset (DEMO-003): the Seller's city. Absent in the legacy dataset (Addis Ababa). */
+  readonly city?: string
   /** Oldest first; the last entry is the current Trust level. The first entry is when the Seller joined Adulis. */
   readonly trustHistory: readonly { readonly level: TrustLevel; readonly since: CalendarDate }[]
   readonly followers?: number

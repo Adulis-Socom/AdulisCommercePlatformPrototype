@@ -22,11 +22,13 @@ export function sellerFacts(state: WorkspaceState, id: string, at: Moment = DEFA
   const seller = LIVE_SELLERS[id]
   const setup = state.setup[id]
   const config = botConfigOf(state, id)
-  // DATA-FIX-02: the same effective methods the Buyer's Cart and checkout use.
-  const effective = sellerMethods(state, id, at).methods
+  // DATA-FIX-02: the same effective methods the Buyer's Cart and checkout use. DEMO-003: Seller-level here (no Buyer place), because the assistant answers for the area
+  // the Buyer names in the Message against the Seller's stated coverage, never from where the app thinks the Buyer is.
+  const effective = sellerMethods(state, id, at, false, null).methods
   const methods: SellerFacts['methods'] = effective.map(m => m.mode)
   const sellerCharge = effective.find(m => m.mode === 'Seller Delivery')?.charge
-  const coverage = setup && !setup.blank ? setup.coverage : (seller.sellerDelivery?.coverage ?? '').includes('Addis Ababa') ? ['Addis Ababa'] : []
+  // A city counts as covered only where the Seller states it plainly ("Addis Ababa by arrangement" is not coverage).
+  const coverage = setup && !setup.blank ? setup.coverage : COVERAGE_AREAS.filter(a => !/nationwide/i.test(a) && new RegExp(String.raw`\b${a}\b(?!\s+by arrangement)`, 'i').test(seller.sellerDelivery?.coverage ?? ''))
   const seededAnswers = (CHATBOTS[id]?.answers ?? []).map((a, i) => ({ id: `seed-${i}`, topic: a.topic, answer: a.answer }))
   const warranty = config.warrantyOffered === 'yes' && config.warranty.trim() ? { summary: config.warranty.trim() } : null
   return {
@@ -61,7 +63,7 @@ export function productFacts(state: WorkspaceState, labels: LeafLabels | null, a
     listedDetails: !seeded ? [] : own ? own.customAttributes.filter(a => !a.name.trim() && a.value.trim()).map(a => a.value) : [...(rec?.attributes ?? [])], options, variants: own ? variantRows(own) : baseRows ? [...baseRows] : null,
     price: price !== null && Number.isFinite(price) ? price : null, regularPrice: seeded && rec ? rec.price : null,
     stock: rec ? rec.stock : own ? productStock(own) : 0,
-    fulfilment: cartFulfilment(state, sellerId as SellerId, [{ id, name: rec?.name ?? own?.name ?? id }], at).methods.map(m => m.mode), knowledge,
+    fulfilment: cartFulfilment(state, sellerId as SellerId, [{ id, name: rec?.name ?? own?.name ?? id }], at, false, null).methods.map(m => m.mode), knowledge,
     viewable: !!rec && buyerVisibleProductsAt(at).includes(id as ProductId) && (!own || own.status === 'published'),
   }
 }

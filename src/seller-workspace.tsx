@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react'
-import { DEFAULT_SNAPSHOT, MARKET, PRODUCTS, SELLERS, buyerVisibleSellers, sellerProductsAt, type Moment, type ProductId, type Santim, type SellerId } from './demo-data'
+import { DEFAULT_SNAPSHOT, MARKET, PRODUCTS, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, sellerProductsAt, type Moment, type ProductId, type Santim, type SellerId } from './demo-data'
 import { setLiveOverlay, type AuthoredLive, type AuthoredProductLive, type AuthoredSceneLive, type ProductOverlay, type SellerOverlay } from './demo-data/live'
 import { findTaxonomy } from './demo-data/taxonomy'
-import { datasetKey } from './marketplace/registry'
+import { DATASET, datasetKey, isLegacy } from './marketplace/registry'
 import type { Knowledge } from './sections/console/chatbot-engine'
 import type { BotConfig } from './chatbot/config'
 import type { ChatMsg, Conversation } from './chatbot/chat'
@@ -45,6 +45,33 @@ export interface WsSetup {
   storeName: string; handle: string; about: string; contactPhone: string; ownerName: string
   coverage: string[]; collection: { on: boolean; place: string }; sellerDelivery: { on: boolean; fee: string }; courier: boolean; blank: boolean
 }
+/**
+ * DEMO-003: what ONE Buyer keeps in this session, stored in `WorkspaceState.buyers` under `buyerKey(...)`: dataset, mode and Buyer. A field that is
+ * absent means "the dataset's seed" (cart_lines, follows, Collections of that Buyer), so a seed is read on first use and a later change of the
+ * Buyer's own is never overwritten. Only the ordinary MVP scope is stored here; the simulation and guided-flow scope keep their own copies.
+ */
+export interface BuyerSession {
+  cart?: { product: string; options: string[]; quantity: number; seen?: number; seller?: string; name?: string }[]
+  collections?: BuyerCollection[]
+  /** Earlier sessions' save map (read only, migrated into Collections on first read). */
+  saved?: Record<string, boolean>
+  /** Follow and Unfollow over the Buyer's seeded follows: true = follows now, false = unfollowed. */
+  follows?: Record<string, boolean>
+  /** The Nearby area the Buyer chose. */
+  area?: string
+  recent?: string[]
+  notifications?: Record<string, boolean>
+  profile?: { name?: string; area?: string }
+  liked?: string[]; hidden?: string[]; hiddenScenes?: string[]; seenStories?: string[]
+}
+export const buyerKey = (mode: 'mvp' | 'isolated', buyer: string) => `${DATASET}|${mode}|${buyer}`
+/** The Buyer's stored session. The dataset's primary Buyer also reads the three top-level fields earlier sessions kept (buyerCart, buyerCollections, buyerSaved). */
+export function sessionOf(state: WorkspaceState, key: string): BuyerSession {
+  const own = state.buyers?.[key]
+  if (own) return own
+  if (key !== buyerKey('mvp', SURFACE_DEFAULTS.buyer)) return {}
+  return { ...(state.buyerCart ? { cart: state.buyerCart } : {}), ...(state.buyerCollections ? { collections: state.buyerCollections } : {}), ...(state.buyerSaved ? { saved: state.buyerSaved } : {}) }
+}
 export interface WorkspaceState {
   products: Record<string, WsProduct>; scenes: Record<string, WsScene>; stories: Record<string, WsStory>
   setup: Partial<Record<SellerId, WsSetup>>
@@ -62,6 +89,8 @@ export interface WorkspaceState {
   /** BUYER-FIX-02: the Buyer's private Collections once changed this session (default "Saved" plus custom ones); null = the seeded ones. Supersedes buyerSaved, which is still read from earlier sessions. */
   buyerCollections: BuyerCollection[] | null
   buyerCart: { product: string; options: string[]; quantity: number; seen?: number; seller?: string; name?: string }[] | null
+  /** DEMO-003: every Buyer's own session by `buyerKey` (dataset, mode, Buyer). Supersedes the three Buyer fields above, which are only read for the primary Buyer. */
+  buyers: Record<string, BuyerSession>
   /** Prototype hours since the session began; Story lifetimes read it, so expiry is deterministic and demonstrable. */
   clockHours: number
 }
@@ -70,9 +99,7 @@ type Action =
   | { type: 'remove'; collection: 'products' | 'scenes' | 'stories'; id: string }
   | { type: 'restrict'; scene: string; reason: string | null }
   | { type: 'bot'; seller: SellerId; config: BotConfig }
-  | { type: 'saved'; changes: Record<string, boolean> }
-  | { type: 'collections'; collections: BuyerCollection[] }
-  | { type: 'cart'; lines: { product: string; options: readonly string[]; quantity: number; seen?: number; seller?: string; name?: string }[] }
+  | { type: 'buyer'; key: string; update: (current: BuyerSession) => Partial<BuyerSession> }
   | { type: 'feedback-add'; item: BotFeedback }
   | { type: 'feedback-review'; id: string; review: NonNullable<BotFeedback['review']> }
   | { type: 'chat-exchange'; conversation: Conversation; messages: ChatMsg[]; pending: Pending | null; escalate?: string; waiting?: boolean }
@@ -81,7 +108,7 @@ type Action =
   | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'knowledge'; seller: SellerId; entries: Knowledge[] } | { type: 'clock'; hours: number } | { type: 'reset' }
 
 const KEY = datasetKey('adulis.seller-workspace.v1') // legacy keeps its key; the marketplace dataset has its own session
-const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, botFeedback: [], buyerCart: null, buyerSaved: null, buyerCollections: null, clockHours: 0 }
+const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, botFeedback: [], buyerCart: null, buyerSaved: null, buyerCollections: null, buyers: {}, clockHours: 0 }
 
 function reducer(state: WorkspaceState, action: Action): WorkspaceState {
   switch (action.type) {
@@ -90,9 +117,7 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
     case 'story': return { ...state, stories: { ...state.stories, [action.item.id]: action.item } }
     case 'remove': { const next = { ...state[action.collection] }; delete next[action.id]; return { ...state, [action.collection]: next } }
     case 'setup': return { ...state, setup: { ...state.setup, [action.seller]: action.setup } }
-    case 'saved': return { ...state, buyerSaved: { ...action.changes } }
-    case 'collections': return { ...state, buyerCollections: action.collections.map(c => ({ ...c, items: [...c.items] })) }
-    case 'cart': return { ...state, buyerCart: action.lines.map(l => ({ product: l.product, options: [...l.options], quantity: l.quantity, seen: l.seen, seller: l.seller, name: l.name })) }
+    case 'buyer': { const current = sessionOf(state, action.key); return { ...state, buyers: { ...state.buyers, [action.key]: { ...current, ...action.update(current) } } } }
     case 'feedback-add': return { ...state, botFeedback: [...state.botFeedback, action.item] }
     case 'feedback-review': return { ...state, botFeedback: state.botFeedback.map(f => (f.id === action.id ? { ...f, status: 'reviewed' as const, review: action.review } : f)) }
     case 'bot': return { ...state, bot: { ...state.bot, [action.seller]: action.config } }
@@ -354,7 +379,9 @@ export function storyPhase(story: WsStory, state: WorkspaceState, at: Moment): {
 export const COVERAGE_AREAS = ['Addis Ababa', 'Adama', 'Bahir Dar', 'Hawassa', 'Dire Dawa', 'Mekelle', 'Gondar', 'Jimma', 'Harar', 'Nationwide shipping by arrangement'] as const
 export function defaultSetup(seller: SellerId): WsSetup {
   const s = SELLERS[seller]
-  return { storeName: s.name, handle: s.handle, about: '', contactPhone: '', ownerName: '', coverage: s.area ? [s.area] : [], collection: { on: true, place: s.area ?? '' }, sellerDelivery: { on: false, fee: '' }, courier: false, blank: false }
+  // Marketplace dataset: the cities the Seller's source coverage states plainly ("by arrangement" is not coverage); otherwise its own area.
+  const cities = isLegacy ? [] : (s.sellerDelivery?.coverage ?? '').split(/[;,]/).map(c => c.trim()).filter(c => (COVERAGE_AREAS as readonly string[]).includes(c))
+  return { storeName: s.name, handle: s.handle, about: '', contactPhone: '', ownerName: '', coverage: cities.length ? cities : s.area ? [s.area] : [], collection: { on: true, place: s.area ?? '' }, sellerDelivery: { on: false, fee: '' }, courier: false, blank: false }
 }
 export const blankSetup = (): WsSetup => ({ storeName: '', handle: '', about: '', contactPhone: '', ownerName: '', coverage: [], collection: { on: false, place: '' }, sellerDelivery: { on: false, fee: '' }, courier: false, blank: true })
 export interface ReadinessItem { key: 'profile' | 'seller' | 'coverage' | 'fulfilment' | 'catalogue'; title: string; done: boolean; problems: string[]; action: string }

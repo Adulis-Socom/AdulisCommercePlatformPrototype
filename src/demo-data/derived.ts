@@ -1,6 +1,7 @@
 // Values derived from the canonical records, at a point on the story timeline. Each rule follows an approved source;
 // where DEMO_DATA states a figure "as at 10:25", later values add only the documented events that follow.
 import { adulisSurcharge, formatEtb } from './money.ts'
+import { cityOfArea } from './geography.ts'
 import type { Santim } from './money.ts'
 import { DEFAULT_SNAPSHOT, addMinutes, happenedBefore } from './time.ts'
 import type { CalendarDate, Moment, Timestamp } from './time.ts'
@@ -238,9 +239,10 @@ export function nearbyAt(area: string, at: Moment = DEFAULT_SNAPSHOT): Shoppable
   return (NEARBY_PROXIMITY[area] ?? []).flatMap(seller => liveSellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at) && hasAvailableTagAt(id, at)))
 }
 
-/** The discovery areas a Buyer can choose for Nearby: those in the demo proximity metadata (rules 2.9, 2.14). */
-export function discoveryAreas(): string[] {
-  return Object.keys(NEARBY_PROXIMITY)
+/** The discovery areas a Buyer can choose for Nearby: those in the demo proximity metadata (rules 2.9, 2.14); the Buyer's own city's areas first (DEMO-003). */
+export function discoveryAreas(city?: string): string[] {
+  const areas = Object.keys(NEARBY_PROXIMITY)
+  return city ? [...areas.filter(a => cityOfArea(a) === city), ...areas.filter(a => cityOfArea(a) !== city)] : areas
 }
 
 /** The Sellers Buyers can see: the primary showcase Sellers (Nile Loom is operations-only). */
