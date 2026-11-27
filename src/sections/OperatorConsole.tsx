@@ -226,7 +226,7 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
           {activeNav === 'search-accounts' && <SearchPanel at={at} mode="account" />}
           {activeNav === 'gov-config' && <ConfigurationPanel />}
           {activeNav === 'gov-access' && <OperatorAccessPanel at={at} live={live} session={session} setSession={setSession} />}
-          {activeNav === 'gov-approvals' && <FounderDecisionsPanel at={at} />}
+          {activeNav === 'gov-approvals' && (simulation ? <FounderDecisionsPanel at={at} /> : <div className="mx-auto my-8 max-w-lg rounded-2xl border border-border bg-surface"><SimulationGate title="Founder Decisions" compact>The demonstration decision is a payment Claim on a paid Order, which Release 1 does not have. The dual-Founder approval workflow is shown in the internal simulation.</SimulationGate></div>)}
           {activeNav === 'gov-audit' && <AuditPanel at={at} />}
           {activeNav === 'gov-health' && <SystemHealthPanel />}
         </div>
@@ -236,13 +236,14 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
 }
 
 function OverviewPanel({ at, work, onQueue }: { at: Moment; work: WorkItem[]; onQueue: () => void }) {
+  const { simulation } = usePrototypeMode() // OP-002: Claims and Manual Handoff need paid Orders and live handoff, which Release 1 does not have
   // The operational brief from the open work at the story moment. DEMO_DATA defines no SLA, risk ratings, security
   // alerts or provider incidents.
   const inQueue = (queue: WorkItem['queue']) => work.filter(item => item.queue === queue)
   const oldestOf = (items: WorkItem[]) => items.slice().sort((a, b) => b.minutes - a.minutes)[0]
   const oldest = (items: WorkItem[]) => (items.length ? `Oldest ${oldestOf(items).age}` : '—')
   const pending = pendingDecisions(at).length
-  const signals = [
+  const allSignals = [
     { label: 'Urgent Claims', value: String(inQueue('Claims').length), detail: oldest(inQueue('Claims')), tone: 'danger' },
     { label: 'Oldest Work', value: work.length ? oldestOf(work).age : '—', detail: work.length ? oldestOf(work).caseRef : '—', tone: 'danger' },
     { label: 'Moderation backlog', value: String(inQueue('Moderation').length), detail: oldest(inQueue('Moderation')), tone: 'warning' },
@@ -252,7 +253,8 @@ function OverviewPanel({ at, work, onQueue }: { at: Moment; work: WorkItem[]; on
     { label: 'Pending Approvals', value: String(pending), detail: '—', tone: 'warning' },
     { label: 'Security alerts', value: '—', detail: '—', tone: 'danger' },
   ]
-  const health = (['Claims', 'Support', 'Moderation', 'Verification / Recovery', 'Trust Appeals', 'Manual Handoff'] as const).map(queue => {
+  const signals = simulation ? allSignals : allSignals.filter(signal => signal.label !== 'Urgent Claims' && signal.label !== 'Manual Handoff')
+  const health = (['Claims', 'Support', 'Moderation', 'Verification / Recovery', 'Trust Appeals', 'Manual Handoff'] as const).filter(queue => simulation || (queue !== 'Claims' && queue !== 'Manual Handoff')).map(queue => {
     const items = inQueue(queue)
     return [queue, String(items.length), items.length ? oldestOf(items).age : '—', '—']
   })
@@ -266,7 +268,7 @@ function OverviewPanel({ at, work, onQueue }: { at: Moment; work: WorkItem[]; on
           {health.map(([queue, open, oldestAge, status]) => <div key={queue} className="grid grid-cols-[1.5fr_.6fr_.7fr_.8fr] items-center gap-3 border-t px-3 py-3 text-xs" style={{ borderColor: BORDER, color: TEXT }}><span className="font-semibold">{queue}</span><span className="font-mono">{open}</span><span className="font-mono" style={{ color: MUTED }}>{oldestAge}</span><OperatorState tone="neutral">{status}</OperatorState></div>)}
         </DarkPanel>
         <div className="flex flex-col gap-5">
-          <DarkPanel title="Provider incidents"><div className="rounded-xl p-4 text-xs" style={{ background: RAISED, color: MUTED }}>—</div></DarkPanel>
+          {simulation && <DarkPanel title="Provider incidents"><div className="rounded-xl p-4 text-xs" style={{ background: RAISED, color: MUTED }}>—</div></DarkPanel>}
           <DarkPanel title="Control posture"><ControlRow label="Queue assignment" value="Audited" /><ControlRow label="Restricted access" value="Reason required" /><ControlRow label="Consequential actions" value="Approval gated" /></DarkPanel>
         </div>
       </div>
@@ -587,7 +589,10 @@ function SearchPanel({ at, mode }: { at: Moment; mode: 'global' | 'seller' | 'ac
   const [accessTarget, setAccessTarget] = useState<string | null>(null)
   const [accessGranted, setAccessGranted] = useState<string[]>([])
   const [opened, setOpened] = useState<SearchResult | null>(null)
+  const { simulation } = usePrototypeMode()
+  const hiddenTypes: SearchEntity[] = simulation ? [] : ['Order', 'Claim']
   const results = searchRecords(at).filter(result => {
+    if (hiddenTypes.includes(result.type)) return false
     const scopeMatch = (type === 'All' || result.type === type) && (mode === 'global' || result.type.toLowerCase() === mode)
     const queryMatch = !query || `${result.ref} ${result.title} ${result.detail}`.toLowerCase().includes(query.toLowerCase())
     return scopeMatch && queryMatch
@@ -596,7 +601,7 @@ function SearchPanel({ at, mode }: { at: Moment; mode: 'global' | 'seller' | 'ac
     <div className="mx-auto max-w-6xl p-8">
       <OperatorHeader title={mode === 'global' ? 'Global Search' : mode === 'seller' ? 'Seller Search' : 'Account Search'} description="Search presentation-safe public and business references. Internal UUIDs are never displayed." />
       <div className="rounded-2xl border p-5" style={{ borderColor: BORDER, background: SURFACE }}>
-        <div className="grid grid-cols-[1fr_180px] gap-3"><SearchInput value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} placeholder="Search name, handle, or public reference" /><DarkSelect label="Entity type" value={type} options={mode === 'global' ? ['All', 'Account', 'Seller', 'Order', 'Claim', 'Content'] : [mode === 'seller' ? 'Seller' : 'Account']} onChange={setType} /></div>
+        <div className="grid grid-cols-[1fr_180px] gap-3"><SearchInput value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} placeholder="Search name, handle, or public reference" /><DarkSelect label="Entity type" value={type} options={mode === 'global' ? ['All', 'Account', 'Seller', ...(simulation ? ['Order', 'Claim'] : []), 'Content'] : [mode === 'seller' ? 'Seller' : 'Account']} onChange={setType} /></div>
       </div>
       <div className="rtable rtable-scroll mt-5 overflow-hidden rounded-2xl border" style={{ borderColor: BORDER, background: SURFACE, '--rtable-min': '640px' } as CSSProperties}>
         <div className="rtable-head grid grid-cols-[110px_220px_1fr_150px] gap-4 px-5 py-3 text-[9px] font-semibold uppercase tracking-wider" style={{ background: RAISED, color: MUTED }}><span>Type</span><span>Reference</span><span>Result</span><span>Access</span></div>
@@ -605,7 +610,7 @@ function SearchPanel({ at, mode }: { at: Moment; mode: 'global' | 'seller' | 'ac
           return <div key={result.ref} className="rtable-row grid grid-cols-[110px_220px_1fr_150px] items-center gap-4 border-t px-5 py-4" style={{ borderColor: BORDER }}><span className="rtable-cell" data-label="Type"><OperatorState tone="neutral">{result.type}</OperatorState></span><span className="rtable-primary font-mono text-xs font-semibold" style={{ color: ACCENT }}>{result.ref}</span><span data-label="Result" className="rtable-wide"><span className="block text-sm font-semibold" style={{ color: TEXT }}>{result.title}</span><span className="text-xs" style={{ color: MUTED }}>{result.detail}</span></span>{result.restricted && !granted ? <button onClick={() => setAccessTarget(result.ref)} className="rounded px-3 py-2 text-xs font-semibold" style={{ background: RAISED, color: ACCENT }}>Reason for Access</button> : <OperatorButton variant="secondary" onClick={() => setOpened(result)}>Open</OperatorButton>}</div>
         })}
       </div>
-      <div className="mt-4 rounded-xl border p-3 text-xs" style={{ borderColor: BORDER, color: MUTED }}>Search is scoped to supported domain entities: Account, Seller, Order, Claim, and Content. Generic database browsing or editing is not available.</div>
+      <div className="mt-4 rounded-xl border p-3 text-xs" style={{ borderColor: BORDER, color: MUTED }}>Search is scoped to supported domain entities: {simulation ? 'Account, Seller, Order, Claim, and Content' : 'Account, Seller, and Content'}. Generic database browsing or editing is not available.</div>
       {accessTarget && <ReasonForAccessOverlay target={accessTarget} onClose={() => setAccessTarget(null)} onConfirm={() => { setAccessGranted(values => [...values, accessTarget]); setAccessTarget(null) }} />}
       {opened && <SearchResultDrawer reference={opened.ref} entity={opened.type} onClose={() => setOpened(null)} />}
     </div>
@@ -736,9 +741,10 @@ function OperatorAccessPanel({ at, live, session, setSession }: { at: Moment; li
             <AccessRow name="CEO" scope="Material review · Approval · Controlled actions" status={status('CEO')} />
             <AccessRow name="COO/CTO" scope="Operations · Technical governance · Approval" status={status('COO/CTO')} />
             <CaseNotice>Material decisions normally require both Founders. Solo Coverage is not an everyday operating mode.</CaseNotice>
+            <CaseNotice>Operator access is held only by the CEO and the COO/CTO. No other Founder role, including the CMO and CSO, has an Operator account, and there is no fallback or privileged route to one. An Operator signs in as a separate Operator principal, never with an ordinary Buyer or Seller Account. This is a prototype demonstration, not a security implementation.</CaseNotice>
           </DarkPanel>
-          <DarkPanel title="Future Staff Operations · Reference">
-            <div className="mb-3 text-xs" style={{ color: MUTED }}>Future staffing assigns focused queues and escalation paths without duplicating the Founder Console.</div>
+          <DarkPanel title="Future Staff Operations · Reference · Inactive">
+            <div className="mb-3 text-xs" style={{ color: MUTED }}>The Staff Operator variant is inactive: no Staff Operator account exists and none can be created here. Future staffing would assign focused queues and escalation paths without duplicating the Founder Console.</div>
             <FutureRole role="COO/CTO" queues="Cross-queue operations" escalation="CEO for material decisions" />
             <FutureRole role="Support" queues="Support queue" escalation="COO/CTO · Claims where needed" />
             <FutureRole role="Moderator" queues="Moderation queue" escalation="COO/CTO · Policy review" />
@@ -1070,6 +1076,7 @@ function AuditPanel({ at }: { at: Moment }) {
 }
 
 function ConfigurationPanel() {
+  const { simulation } = usePrototypeMode()
   const [proposal, setProposal] = useState('')
   return (
     <div className="mx-auto max-w-7xl p-8">
@@ -1078,8 +1085,8 @@ function ConfigurationPanel() {
       <div className="mt-5 grid grid-cols-2 gap-5">
         {/* DEMO_DATA defines the market and the Trust policy version only; other settings and statuses are undefined. */}
         <DarkPanel title="Market configuration"><ConfigRow label="Market" value={`${MARKET.id} · ${MARKET.city}`} /><ConfigRow label="Seller admission" value="—" /><ConfigRow label="Buyer availability" value="—" /><ConfigRow label="Courier mode" value="Approved Seller Pools" /><ProposeButton onClick={() => setProposal(`Decision Proposal created for ${MARKET.id} market configuration change.`)}>Propose Market Change</ProposeButton></DarkPanel>
-        <DarkPanel title="Feature flags"><ConfigRow label="Buyer Discovery" value="Enabled" /><ConfigRow label="Seller Companion" value="Enabled" /><ConfigRow label="Courier Mode" value="Enabled" /><ConfigRow label="Manual Handoff" value="Exceptional only" /><ProposeButton onClick={() => setProposal('Decision Proposal created for launch feature flag change.')}>Propose Flag Change</ProposeButton></DarkPanel>
-        <DarkPanel title="Provider status"><ConfigRow label="Payment provider" value="—" /><ConfigRow label="Callback reconciliation" value="—" /><ConfigRow label="Notifications" value="—" /><ConfigRow label="Media processing" value="—" /></DarkPanel>
+        <DarkPanel title="Feature flags"><ConfigRow label="Buyer Discovery" value="Enabled" /><ConfigRow label="Seller Companion" value="Enabled" /><ConfigRow label="Courier Mode" value="Enabled" />{simulation && <ConfigRow label="Manual Handoff" value="Exceptional only" />}<ProposeButton onClick={() => setProposal('Decision Proposal created for launch feature flag change.')}>Propose Flag Change</ProposeButton></DarkPanel>
+        <DarkPanel title="Provider status">{simulation && <><ConfigRow label="Payment provider" value="—" /><ConfigRow label="Callback reconciliation" value="—" /></>}<ConfigRow label="Notifications" value="—" /><ConfigRow label="Media processing" value="—" /></DarkPanel>
         <DarkPanel title="Policy versions"><ConfigRow label="Seller Admission" value="—" /><ConfigRow label="Content Accuracy" value="—" /><ConfigRow label="Seller Trust" value={[...new Set(keys(TRUST_APPEALS).map(id => TRUST_APPEALS[id].policyVersion))].join(', ') || '—'} /><ConfigRow label="Claims" value="—" /><ProposeButton onClick={() => setProposal('Decision Proposal created for policy version activation.')}>Propose Policy Activation</ProposeButton></DarkPanel>
       </div>
     </div>
@@ -1087,8 +1094,9 @@ function ConfigurationPanel() {
 }
 
 function SystemHealthPanel() {
-  // The specification's service list (§49). DEMO_DATA records no service status, metrics or incidents.
-  const systems = ['Database', 'Queues', 'Background jobs', 'Payment reconciliation', 'Notifications', 'Media', 'Privacy services', 'Payment provider'].map(name => [name, '—', '—'])
+  const { simulation } = usePrototypeMode()
+  // The specification's service list (§49). DEMO_DATA records no service status, metrics or incidents. Payment services belong to the simulation.
+  const systems = ['Database', 'Queues', 'Background jobs', 'Payment reconciliation', 'Notifications', 'Media', 'Privacy services', 'Payment provider'].filter(name => simulation || !name.startsWith('Payment')).map(name => [name, '—', '—'])
   return (
     <div className="mx-auto max-w-7xl p-8">
       <OperatorHeader title="System Health" description="Launch-critical services, incidents, and recovery posture." />
