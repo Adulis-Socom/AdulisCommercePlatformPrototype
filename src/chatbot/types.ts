@@ -65,7 +65,8 @@ export interface ProductFacts {
   fulfilment: string[]; knowledge: ProductKnowledge
   viewable: boolean
 }
-export interface SceneFacts { id: string; revision: number; viewable: boolean; summary: string; products: { id: string; name: string }[] }
+/** `available` is false for a tagged Product that is viewable but out of stock (historical context, not something to offer); absent means available. */
+export interface SceneFacts { id: string; revision: number; viewable: boolean; summary: string; products: { id: string; name: string; available?: boolean }[] }
 export interface World {
   seller(id: string): SellerFacts | null
   /** May throw to model a failed read; the engine then answers with the unavailable-read template. */
@@ -81,7 +82,11 @@ export type Pending = (
   | { kind: 'pick-intent'; intents: IntentId[]; messageId: string }
   | { kind: 'need-device'; messageId: string }
   | { kind: 'need-area'; messageId: string }
-) & { subjectKey?: string }
+) & {
+  subjectKey?: string
+  /** The exact Variant (option name -> value) the raising Message was about, whether chosen in the composer or named in its text. */
+  variant?: Record<string, string>
+}
 export interface ChatState { mode: 'bot' | 'human_takeover' | 'bot_disabled'; pending?: Pending | null }
 export interface BotInput {
   messageId: string; conversationSellerId: string; text?: string; chip?: string; subject: MessageSubject

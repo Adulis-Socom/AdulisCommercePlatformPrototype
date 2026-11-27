@@ -863,6 +863,7 @@ export const GENERAL_CONTEXT: MessageContext = { general: true }
 
 /** The record a context names, as one value: 'general', or the record's kind and identifier ('order:…'). */
 export function contextKey(context: MessageContext): string {
+  if ('product' in context && 'post' in context) return `product:${context.product}@post:${context.post}`
   if ('product' in context) return `product:${context.product}`
   if ('post' in context) return `post:${context.post}`
   if ('order' in context) return `order:${context.order}`
@@ -879,7 +880,9 @@ export function sameContext(a: MessageContext, b: MessageContext): boolean {
  */
 export function contextChoicesAt(conversation: ConversationId, at: Moment = DEFAULT_SNAPSHOT): MessageContext[] {
   const { products, posts, orders } = contextOptionsAt(conversation, at)
-  return [GENERAL_CONTEXT, ...products.map(product => ({ product })), ...posts.map(post => ({ post })), ...orders.map(order => ({ order }))]
+  // A Product that a public Scene tags may also be named together with that Scene ("Product in Scene"): the reply then carries both, explicitly.
+  const inScene = posts.flatMap(post => LIVE_POSTS[post].tags.filter(product => products.includes(product)).map(product => ({ product, post })))
+  return [GENERAL_CONTEXT, ...products.map(product => ({ product })), ...posts.map(post => ({ post })), ...inScene, ...orders.map(order => ({ order }))]
 }
 
 /** Whether the conversation's selector offers the context at `at`: another Seller's record or another Buyer's Order never is. */
@@ -889,6 +892,7 @@ export function isContextChoiceAt(conversation: ConversationId, context: Message
 
 /** What a context chip names, in the specification §22 form: the Product's name, '<title> Scene Post' or 'Order <reference>'. */
 export function contextSubject(context: MessageContext): string {
+  if ('product' in context && 'post' in context) return `${LIVE_PRODUCTS[context.product].name} in ${SHOPPABLE_POSTS[context.post].title} Scene Post`
   if ('product' in context) return LIVE_PRODUCTS[context.product].name
   if ('post' in context) return `${SHOPPABLE_POSTS[context.post].title} Scene Post`
   if ('order' in context) return `Order ${context.order}`

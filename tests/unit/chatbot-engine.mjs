@@ -179,5 +179,26 @@ for (const id of Object.keys(fx.products)) for (const q of questions) {
 }
 ck(`${Object.keys(fx.products).length * questions.length * 3} generated Message cases: no placeholder, ETB 0, NaN, undefined or throw`, bad.length === 0, bad.slice(0, 3))
 
+// ---- CHAT-FIX-01 (IR-053..055): exact Variant identity in clarifications and chips; out-of-stock Scene tags ----
+const named = ask(fx, 'How much, and is it in stock for Size M, Navy?', { productId: 'DRESS-A' })
+ck('a Variant named in the Message text becomes part of that response’s subject', named.subject.variant?.Size === 'M' && named.subject.variant?.Colour === 'Navy', named.subject)
+ck('every quick reply of that response carries the exact Variant', named.quickReplies.length >= 2 && named.quickReplies.every(c => c.subject?.variant?.Size === 'M' && c.subject?.variant?.Colour === 'Navy'), named.quickReplies)
+const chipOnVariant = ask(fx, '', named.quickReplies.find(c => c.id === 'intent:P03').subject, { pending: named.pending }, { chip: 'intent:P03' })
+ck('tapping it later answers for that exact Variant (M, Navy has 2), not for the composer’s', /Size M, Navy is currently available/.test(chipOnVariant.text), chipOnVariant.text)
+const areaAsk = ask(fx, 'Do you deliver this?', { productId: 'DRESS-A', variant: { Size: 'M', Colour: 'Navy' } })
+if (areaAsk.pending?.kind === 'need-area') {
+  ck('a clarification records the exact Variant it was raised for', areaAsk.pending.variant?.Size === 'M' && areaAsk.pending.variant?.Colour === 'Navy', areaAsk.pending)
+  const contradicts = ask(fx, 'Addis Ababa', { productId: 'DRESS-A', variant: { Size: 'S', Colour: 'Black' } }, { pending: areaAsk.pending })
+  ck('a composer Variant that contradicts it drops the clarification', contradicts.trace.some(t => /different Variant/.test(t)), contradicts.trace)
+  const same = ask(fx, 'Addis Ababa', { productId: 'DRESS-A', variant: { Size: 'M', Colour: 'Navy' } }, { pending: areaAsk.pending })
+  ck('the same Variant still consumes it', !same.trace.some(t => /dropped/.test(t)), same.trace)
+} else ck('the delivery question raised a clarification to test (fixture assumption)', false, areaAsk)
+const oosScene = makeFixture(labels)
+oosScene.scenes.S1.products = [{ id: 'JACKET', name: 'Jacket', available: true }, { id: 'TOP', name: 'Top', available: false }]
+const sceneItems = ask(oosScene, 'What items are in the Scene?', { scene: { id: 'S1', revision: 3 } })
+ck('a tagged Product that is out of stock is labelled as such, an available one is not', sceneItems.quickReplies.some(c => c.label === 'Top (out of stock)') && sceneItems.quickReplies.some(c => c.label === 'Jacket'), sceneItems.quickReplies.map(c => c.label))
+const noProductAsk = ask(oosScene, 'How much is it?', { scene: { id: 'S1', revision: 3 } })
+ck('asking about a Scene without choosing a Product lists the same labelled tags', noProductAsk.quickReplies.some(c => c.label === 'Top (out of stock)'), noProductAsk.quickReplies.map(c => c.label))
+
 console.log(`UNIT chatbot-engine: ${pass} passed, ${fail} failed`)
 process.exitCode = fail ? 1 : 0

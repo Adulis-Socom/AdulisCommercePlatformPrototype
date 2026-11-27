@@ -13,12 +13,14 @@ export const BUYER_ID = SURFACE_DEFAULTS.buyer
 export const seededThreadOf = (c: Conversation): ConversationId | undefined => conversationBetween(c.buyerId as never, c.sellerId as SellerId)
 
 export function subjectToContext(subject: MessageSubject | undefined): MessageContext {
+  if (subject?.productId && subject.scene) return { product: subject.productId, post: subject.scene.id } as MessageContext
   if (subject?.productId) return { product: subject.productId } as MessageContext
   if (subject?.scene) return { post: subject.scene.id } as MessageContext
   return { general: true }
 }
 /** The explicit subject a Seller reply carries: the Product or the Scene the Seller chose (orders belong to the simulation and stay a label). */
 export function contextToSubject(sellerId: string, context: MessageContext, revision?: number): MessageSubject {
+  if ('product' in context && 'post' in context) return { sellerId, productId: context.product, scene: { id: context.post, revision: revision ?? 0 } }
   if ('product' in context) return { sellerId, productId: context.product }
   if ('post' in context) return { sellerId, scene: { id: context.post, revision: revision ?? 0 } }
   return { sellerId }

@@ -76,11 +76,30 @@ export function BuyerChat({ sellerId, at, startProductId, startSceneId, history,
     setNotice('')
     if (!chip) setText('')
   }
+  // A quick reply that works on the composer first puts the composer back on the subject of the response that offered it (Scene, Product, Variant),
+  // so it never acts on whatever the composer shows now.
+  const restoreComposer = (s?: MessageSubject) => {
+    if (!s) return
+    setSceneId(s.scene?.id ?? ''); setSceneRev(s.scene?.revision ?? null); setProductId(s.productId ?? ''); setVariant(s.variant ? { ...s.variant } : {})
+  }
   const pickChip = (chip: Chip) => {
-    if (chip.id.startsWith('select-product:')) { setProductId(chip.id.slice('select-product:'.length)); setVariant({}); return }
-    if (chip.id === 'select-product' || chip.id === 'choose-product' || chip.id === 'select-size') { productRef.current?.focus(); return }
-    if (chip.id.startsWith('option:')) { document.getElementById(`opt-${chip.id.slice(7)}`)?.focus(); return }
-    if (chip.id === 'reopen-scene') { const live = scenes.find(s => s.id === (chip.subject?.scene?.id ?? sceneId)); if (live) { setSceneId(live.id); setSceneRev(live.revision); setNotice('Scene reopened at its current version.') } else setNotice('That Scene is no longer available.'); return }
+    if (chip.id.startsWith('select-product:')) { restoreComposer({ ...(chip.subject ?? { sellerId }), productId: chip.id.slice('select-product:'.length), variant: undefined }); return }
+    if (chip.id === 'select-product' || chip.id === 'choose-product' || chip.id === 'select-size') { restoreComposer(chip.subject); setTimeout(() => productRef.current?.focus(), 0); return }
+    if (chip.id.startsWith('option:')) { restoreComposer(chip.subject); const id = `opt-${chip.id.slice(7)}`; setTimeout(() => document.getElementById(id)?.focus(), 0); return }
+    if (chip.id === 'reopen-scene') {
+      const live = scenes.find(s => s.id === (chip.subject?.scene?.id ?? sceneId))
+      if (!live) { setNotice('That Scene is no longer available.'); return }
+      // The Scene changed: the Product that was selected counts only while the Scene still tags it; its Variant only for options and values that still exist.
+      const kept = chip.subject?.productId ?? productId
+      const stillTagged = !kept || live.products.some(p => p.id === kept)
+      const facts = kept && stillTagged ? productFacts(state, labels, at, sellerId, kept) : null
+      const wanted = chip.subject?.variant ?? variant
+      const validVariant = facts ? Object.fromEntries(Object.entries(wanted).filter(([name, value]) => facts.options.some(o => o.name === name && o.values.includes(value)))) : {}
+      setSceneId(live.id); setSceneRev(live.revision)
+      setProductId(kept && stillTagged ? kept : ''); setVariant(validVariant)
+      setNotice(kept && !stillTagged ? 'Scene reopened at its current version. The Product you had selected is no longer tagged in it, so choose one again.' : 'Scene reopened at its current version.')
+      return
+    }
     // Navigation targets the Product the response was about, and only while it is still viewable (a stale action never opens a hidden item).
     if (chip.id === 'open-product') { const id = chip.subject?.productId ?? productId; if (id && productFacts(state, labels, at, sellerId, id)?.viewable) onOpenProduct(id); else setNotice('That item is no longer available to view here.'); return }
     if (chip.id === 'open-cart') { onOpenCart(); return }
@@ -115,7 +134,7 @@ export function BuyerChat({ sellerId, at, startProductId, startSceneId, history,
           <label className="flex flex-col text-[10px] font-semibold text-text-muted">Product
             <select ref={productRef} aria-label="Product" value={productId} onChange={e => { setProductId(e.target.value); setVariant({}) }} className="mt-0.5 h-10 rounded-lg border border-border bg-surface px-2 text-sm font-normal text-text-primary">
               <option value="">{sceneChoice ? 'Choose a Product in this Scene' : 'No Product selected'}</option>
-              {shownProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {shownProducts.map(p => <option key={p.id} value={p.id}>{p.name}{'available' in p && p.available === false ? ' (out of stock)' : 'stock' in p && p.stock <= 0 ? ' (out of stock)' : ''}</option>)}
             </select>
           </label>
         </div>

@@ -40,6 +40,9 @@ export function formatPin(pin: { readonly lat: number; readonly lon: number }): 
  */
 export const CONTEXT_GROUPS = [{ kind: 'general' }, { kind: 'product', label: 'Product Posts' }, { kind: 'post', label: 'Scene Posts' }, { kind: 'order', label: 'Orders' }] as const
 
+/** The selector group a context choice sits in: a Product shown in a Scene Post is listed with the Scene Posts. */
+export const contextGroupOf = (choice: object): 'general' | 'product' | 'post' | 'order' => ('order' in choice ? 'order' : 'post' in choice ? 'post' : 'product' in choice ? 'product' : 'general')
+
 /** 'Buyer Collection (free) · Courier Delivery ETB 180': a Seller's fulfilment options and charges on one line. */
 export function describeFulfilment(options: readonly FulfilmentOption[]): string {
   return options.map(option => (option.charge ? `${option.mode} ${formatEtb(option.charge)}` : `${option.mode} (free)`)).join(' · ')

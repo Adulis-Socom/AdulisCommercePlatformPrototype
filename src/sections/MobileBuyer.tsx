@@ -19,7 +19,7 @@ import {
   BUYERS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DELETION_CONSEQUENCES, DELETION_REASONS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
   MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, REVIEWS, REVIEW_IDS, SURFACE_DEFAULTS,
   accountDeletionPreviewAt, activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, unitPriceFor, claimStateAt, claimSubmitted, claimsForOrder,
-  contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
+  contextChoicesAt, contextGroupOf, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
   forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDate, formatDayMonth, formatEtb, formatMonthYear, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
   isBuyerVisiblePostAt, isContextChoiceAt, isPurchasableAt, issueAccountDeletionCapability, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, onAdulisSince, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
   productQualityAt, productReviewsAt, productsSubtotal, purchasedProductsAt, requestAccountDeletionAt, reviewEligibilityAt, reviewEntitlementsAt, reviewsAt, sameContext, sceneReviewProducts, sellerCompletedOrdersAt, sellerPostsAt, liveSellerPostsAt, liveSellerProductsAt, sellerProductsAt, sellerReviewsAt,
@@ -3816,7 +3816,7 @@ function ContextSheet({ choices, selected, onSelect, onClose }: { choices: reado
   return (
     <BottomSheet title="Talking about" onClose={onClose}>
       {dismiss => CONTEXT_GROUPS.map(group => {
-        const options = choices.filter(choice => group.kind in choice).map(choice => {
+        const options = choices.filter(choice => contextGroupOf(choice) === group.kind).map(choice => {
           const current = sameContext(choice, selected)
           return (
             <button key={contextKey(choice)} autoFocus={current} aria-current={current ? 'true' : undefined} onClick={() => { onSelect(choice); dismiss() }} className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm ${current ? 'bg-brand-muted font-semibold text-brand-dark' : 'text-text-primary'}`}>

@@ -23,7 +23,7 @@ import {
   ACCESS_AREAS, BUYERS, CAPABILITIES, CHATBOTS, CLAIMS, CLAIM_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, DEFAULT_SNAPSHOT,
   GENERAL_CONTEXT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET, NO_ROLE_CAN, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS,
   SELLER_ROLES, SELLER_SESSIONS, SELLER_SETTINGS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, TEAM_ROLES, VOLT_HOUSE_PREPUBLICATION,
-  activeDiscount, areaAccess, awaitingSellerReplyAt, byMessageTime, capabilitiesOf, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt, contextKey,
+  activeDiscount, areaAccess, awaitingSellerReplyAt, byMessageTime, capabilitiesOf, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt, contextGroupOf, contextKey,
   contextSubject, courierCardAt, courierCompensationAt, courierHistoryAt, courierListOrder, courierRelationship, currentPrice, deliveryOfferAt, effectiveMessagesAt, firstName, formatAge, formatCalendarDate, formatClock, formatDate, formatMonthShortYear,
   formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, hasAvailableProductAt, isForYouEligibleAt, lineOptions, memberRoles, messagesAt,
   moderationIssuesAt, onAdulisSince, orderCourierCompensation, orderStateAt, orderTotals, ordersAt, ordersRequiringPreparationAt, paidAt,
@@ -799,7 +799,7 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
             <label htmlFor={selectId} className="text-xs font-semibold text-text-secondary">Talking about</label>
             <select id={selectId} value={contextKey(context)} onChange={event => setContext(choices.find(choice => contextKey(choice) === event.target.value) ?? GENERAL_CONTEXT)} className="h-11 min-w-0 max-w-md flex-1 rounded-lg border border-border bg-surface px-3 text-sm font-normal text-text-primary">
               {CONTEXT_GROUPS.map(group => {
-                const options = choices.filter(choice => group.kind in choice).map(choice => <option key={contextKey(choice)} value={contextKey(choice)}>{contextSubject(choice)}</option>)
+                const options = choices.filter(choice => contextGroupOf(choice) === group.kind).map(choice => <option key={contextKey(choice)} value={contextKey(choice)}>{contextSubject(choice)}</option>)
                 if (!options.length) return null
                 return 'label' in group ? <optgroup key={group.kind} label={group.label}>{options}</optgroup> : options
               })}

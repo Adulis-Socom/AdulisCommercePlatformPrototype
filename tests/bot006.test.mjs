@@ -37,7 +37,7 @@ await suite('bot006', { width: 1440, height: 900 }, async (page, t) => {
   const order = await page.evaluate(() => [...document.querySelectorAll('select')].map(s => s.getAttribute('aria-label') ?? '').filter(Boolean))
   t.ck('the Scene selector comes first, the Product selector second', order.indexOf('Scene (optional)') >= 0 && order.indexOf('Scene (optional)') < order.indexOf('Product'), order)
   const allProducts = await product().locator('option').allInnerTexts()
-  t.ck('with no Scene the full eligible Seller Product list is offered (seeded and authored)', ['Linen Overshirt', 'Wide-Leg Trousers', 'Structured Shoulder Bag', 'Cotton Shirt Dress', 'Woven Leather Belt', 'Test Kettle'].every(n => allProducts.includes(n)), allProducts)
+  t.ck('with no Scene the full eligible Seller Product list is offered (seeded and authored), an out-of-stock one labelled as such', ['Linen Overshirt', 'Wide-Leg Trousers', 'Structured Shoulder Bag', 'Cotton Shirt Dress', 'Woven Leather Belt (out of stock)', 'Test Kettle'].every(n => allProducts.includes(n)), allProducts)
   await scene().selectOption({ label: 'Autumn Layers' }); await t.settle(200)
   const filtered = (await product().locator('option').allInnerTexts()).filter(o => !/Choose|No Product/.test(o))
   t.ck('choosing a Scene filters the Products to the Scene’s tags', filtered.sort().join('|') === ['Linen Overshirt', 'Structured Shoulder Bag', 'Wide-Leg Trousers'].sort().join('|'), filtered)

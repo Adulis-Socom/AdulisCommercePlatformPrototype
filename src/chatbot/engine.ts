@@ -44,14 +44,16 @@ class Run {
 export function respond(input: BotInput, state: ChatState, world: World): BotResult {
   const run = new Run()
   const kind = subjectKind(input.subject)
+  // The subject this response is about: the Message's own, plus any Variant its text names. Quick replies and clarifications bind to it.
+  let bound: MessageSubject = input.subject
   const base = (r: Partial<BotResult> & Pick<BotResult, 'kind' | 'templateId' | 'text'>): BotResult => {
     const res: BotResult = {
       intent: null, dialogue: [], templateVersion: TEMPLATE_VERSION, speaker: 'bot', quickReplies: [], actions: [], slots: run.slots, missing: run.missing, reason: '',
-      conflicts: run.conflicts, handoff: null, pending: null, subjectKind: kind, subject: input.subject, trace: run.trace, sideEffects: [], ...r,
+      conflicts: run.conflicts, handoff: null, pending: null, subjectKind: kind, subject: bound, trace: run.trace, sideEffects: [], ...r,
     }
     // Bind everything the Buyer can tap to THIS response's subject, so a later change of the composer cannot redirect it.
-    res.quickReplies = res.quickReplies.map(c => ({ ...c, subject: c.subject ?? input.subject }))
-    res.pending = res.pending ? { ...res.pending, subjectKey: subjectKey(input.subject) } : null
+    res.quickReplies = res.quickReplies.map(c => ({ ...c, subject: c.subject ?? bound }))
+    res.pending = res.pending ? { ...res.pending, subjectKey: subjectKey(input.subject), ...(bound.variant && Object.keys(bound.variant).length ? { variant: { ...bound.variant } } : {}) } : null
     return res
   }
   const say = (id: TemplateId, slots: Record<string, string>, r: Omit<Partial<BotResult>, 'text' | 'templateId'> & { kind: ResultKind }) =>
@@ -108,6 +110,8 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
     // A clarification raised for another subject is dropped, never reapplied to this one.
     let pend = state.pending ?? null
     if (pend && pend.kind !== 'offer-handoff' && pend.subjectKey && pend.subjectKey !== subjectKey(input.subject)) { run.trace.push('pending clarification belongs to an earlier Message about a different subject, so it is dropped'); pend = null }
+    // ...and to its exact Variant: a composer choice that contradicts the Variant it was raised for is a different question.
+    if (pend && pend.kind !== 'offer-handoff' && pend.variant && input.subject.variant && Object.entries(input.subject.variant).some(([option, value]) => pend!.variant![option] !== undefined && pend!.variant![option] !== value)) { run.trace.push('pending clarification was raised for a different Variant, so it is dropped'); pend = null }
 
     // ---- chips (canonical quick replies) ----
     const goHuman = (originalId: string, offered: boolean) => handoff(offered ? 'T-HANDOFF-SENT' : 'T-HANDOFF', originalId, { intent: 'X02', reason: 'BUYER_ASKED_FOR_SELLER', dialogue: offered ? ['C-06', 'C-14', 'C-18'] : ['C-17'] })
@@ -122,6 +126,11 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
     if (!hasText) return say('T-UNKNOWN-OFFER', {}, { kind: 'clarify', intent: 'X03', reason: 'EMPTY_MESSAGE' })
     const chipIntent = CHIP_INTENT[chip]
     const t = text
+    // A Variant named in this Message's text is part of ITS subject: record it so chips and clarifications carry the exact Variant.
+    if (p && t) {
+      const named = detectVariant(t, p)
+      if (named.length) bound = { ...input.subject, variant: { ...(input.subject.variant ?? {}), ...Object.fromEntries(named.map(d => [d.option, d.value])) } }
+    }
     if (!chipIntent && (GEEZ.test(t) || NON_ENGLISH_WORDS.test(t))) {
       run.trace.push('language: not English, so automated English NLU is bypassed and the original text goes to the Seller')
       return handoff('T-HANDOFF', input.messageId, { intent: 'X02', reason: 'UNSUPPORTED_LANGUAGE', dialogue: ['C-17'] })
@@ -202,7 +211,7 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
         if (!names.length) return say('T-SELECT-PRODUCT', {}, { kind: 'clarify', intent: 'C02', reason: 'SCENE_HAS_NO_ELIGIBLE_PRODUCTS', dialogue: ['C-07'], quickReplies: [TALK] })
         run.trace.push('Scene with no selected Product: ask which, never guess')
         return say('T-SCENE-SELECT', {}, { kind: 'clarify', intent: 'C02', reason: 'PRODUCT_SELECTION_REQUIRED', dialogue: ['C-07'], actions: [{ kind: 'select-product' }],
-          quickReplies: names.map(n => ({ id: `select-product:${n.id}`, label: n.name })) })
+          quickReplies: names.map(n => ({ id: `select-product:${n.id}`, label: `${n.name}${n.available === false ? ' (out of stock)' : ''}` })) })
       }
       return say('T-SELECT-PRODUCT', {}, { kind: 'clarify', intent: 'C02', reason: 'PRODUCT_SELECTION_REQUIRED', dialogue: ['C-01', 'C-02'], actions: [{ kind: 'select-product' }], quickReplies: [{ id: 'select-product', label: 'Select Product' }, TALK] })
     }
@@ -263,7 +272,7 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
         if (!scene.products.length) return unknown('SCENE_HAS_NO_ELIGIBLE_PRODUCTS', 'T-ATTR-UNKNOWN', ['C-08'])
         run.slot('eligible_tagged_product_names', scene.products.map(x => x.name).join(', '), 'Scene tags (current, eligible)')
         return say('T-SCENE-ITEMS', { eligible_tagged_product_names: scene.products.map(x => x.name).join(', ') }, { kind: 'answer', intent, dialogue: ['C-08'], reason: 'SCENE_PRODUCTS', actions: [{ kind: 'select-product' }],
-          quickReplies: scene.products.map(x => ({ id: `select-product:${x.id}`, label: x.name })) })
+          quickReplies: scene.products.map(x => ({ id: `select-product:${x.id}`, label: `${x.name}${x.available === false ? ' (out of stock)' : ''}` })) })
       }
       case 'C02': return say('T-SELECT-PRODUCT', {}, { kind: 'clarify', intent, reason: 'PRODUCT_SELECTION_REQUIRED', dialogue: ['C-02'], actions: [{ kind: 'select-product' }], quickReplies: [TALK] })
       case 'C03': {
@@ -281,7 +290,7 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
     // ---- Product intents (p is set) ----
     const prod = p!
     const detected = detectVariant(t, prod)
-    const chosen: Record<string, string> = { ...(input.subject.variant ?? {}), ...Object.fromEntries(detected.map(d => [d.option, d.value])) }
+    const chosen: Record<string, string> = { ...(pend && pend.kind !== 'offer-handoff' ? pend.variant ?? {} : {}), ...(input.subject.variant ?? {}), ...Object.fromEntries(detected.map(d => [d.option, d.value])) }
     const missingOptions = prod.options.filter(o => !chosen[o.name]).map(o => o.name)
     const exact = prod.options.length > 0 && missingOptions.length === 0
     const variantLabel = variantText(prod.options, chosen)
