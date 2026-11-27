@@ -77,6 +77,17 @@ class RegistryTest(unittest.TestCase):
             self.assertNotIn(str(HERE), json.dumps(entry))
 
 
+class CatalogueExportTest(unittest.TestCase):
+    def test_the_frontend_catalogue_is_generated_from_the_registry_and_in_sync(self):
+        import export_catalogue
+        self.assertEqual(export_catalogue.TARGET.read_text(encoding="utf-8"), export_catalogue.build(), "run: python export_catalogue.py")
+
+    def test_the_frontend_catalogue_leaks_no_paths_or_hashes_of_local_files(self):
+        text = (HERE.parents[1] / "src" / "lab" / "model-catalogue.json").read_text(encoding="utf-8")
+        self.assertNotIn(str(HERE), text)
+        self.assertNotIn("309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8", text.replace('"actualSha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8"', ""))
+
+
 class SettingsTest(unittest.TestCase):
     def parse(self, model, **query):
         return adapter.parse_settings(model, {k: [str(v)] for k, v in query.items()})

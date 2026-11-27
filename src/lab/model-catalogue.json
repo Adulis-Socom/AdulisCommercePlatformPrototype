@@ -1,0 +1,1169 @@
+{
+ "generatedFrom": "tools/bg-removal/models.json",
+ "rembg": {
+  "version": "2.0.88",
+  "licence": "MIT",
+  "release": "https://github.com/danielgatis/rembg/releases/tag/v0.0.0",
+  "sessionCount": 23
+ },
+ "licenceFamilies": {
+  "u2net": {
+   "classification": "UNCLEAR",
+   "code": "Apache-2.0 (xuebinqin/U-2-Net)",
+   "weights": "no weights licence stated",
+   "data": "DUTS-TR terms not read; u2net_human_seg trained on a non-commercial dataset",
+   "note": "ONNX files are hosted in a rembg release that states no provenance or licence"
+  },
+  "silueta": {
+   "classification": "UNCLEAR",
+   "code": "not found",
+   "weights": "not found",
+   "data": "unknown",
+   "note": "origin is a third-party web app built on U2-Net; source unreachable"
+  },
+  "cloth": {
+   "classification": "UNCLEAR",
+   "code": "MIT",
+   "weights": "no weights licence stated",
+   "data": "iMaterialist (Kaggle) terms not retrieved",
+   "note": ""
+  },
+  "isnet": {
+   "classification": "UNCLEAR",
+   "code": "Apache-2.0 (xuebinqin/DIS)",
+   "weights": "no weights licence stated",
+   "data": "DIS5K terms: non-commercial research or education; whether weights trained on it inherit this is a legal question",
+   "note": "training data of the general-use file is unstated"
+  },
+  "isnet-anime": {
+   "classification": "UNCLEAR",
+   "code": "Apache-2.0",
+   "weights": "Apache-2.0 on the model card",
+   "data": "AniSeg and character_bg_seg_data licences not read",
+   "note": "leans permissive"
+  },
+  "birefnet": {
+   "classification": "PERMISSIVE-EVIDENCED at label level",
+   "code": "MIT (ZhengPeng7/BiRefNet)",
+   "weights": "License: mit on the Hugging Face cards read",
+   "data": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
+   "note": "ONNX conversions hosted by rembg; exact-file provenance not stated"
+  },
+  "bria": {
+   "classification": "RESTRICTED",
+   "code": "n/a",
+   "weights": "CC BY-NC 4.0; commercial use needs a commercial agreement with BRIA",
+   "data": "licensed data per publisher",
+   "note": "gated card; nothing was clicked through"
+  },
+  "ben": {
+   "classification": "UNCLEAR",
+   "code": "n/a",
+   "weights": "BEN2 labelled MIT, BEN base Apache-2.0; rembg bundles no weights",
+   "data": "BEN2 trained on DIS5K plus proprietary data",
+   "note": "full model is sold by contact"
+  },
+  "sam": {
+   "classification": "PERMISSIVE-EVIDENCED at label level",
+   "code": "Apache-2.0 (facebookresearch/segment-anything)",
+   "weights": "Apache-2.0 per the README",
+   "data": "SA-1B licence text not read",
+   "note": "ONNX conversions by rembg; MobileSAM licence not read"
+  },
+  "withoutbg": {
+   "classification": "REMOTE-COMMERCIAL-SERVICE",
+   "code": "n/a",
+   "weights": "n/a (hosted)",
+   "data": "terms state no training on inputs and RAM-only processing",
+   "note": "credit-based, EUR 0.05-0.10 per image; images leave the machine"
+  },
+  "atlascloud": {
+   "classification": "REMOTE-COMMERCIAL-SERVICE",
+   "code": "n/a",
+   "weights": "n/a (hosted)",
+   "data": "retention and training terms NOT VERIFIED",
+   "note": "pay-as-you-go about USD 0.086 per image; images leave the machine"
+  }
+ },
+ "notRegisteredReleaseAssets": [
+  "BiRefNet_HR-general-epoch_130.onnx",
+  "BiRefNet_HR-matting-epoch_135.onnx",
+  "mobile_sam.encoder.onnx",
+  "mobile_sam.encoder.quant.onnx",
+  "sam_vit_b_01ec64.decoder.quant.onnx",
+  "sam_vit_b_01ec64.encoder.quant.onnx",
+  "sam_vit_h_4b8939.decoder.onnx",
+  "sam_vit_h_4b8939.decoder.quant.onnx",
+  "sam_vit_h_4b8939.encoder.onnx",
+  "sam_vit_h_4b8939.encoder.quant.onnx",
+  "sam_vit_h_4b8939.encoder_data.1.bin",
+  "sam_vit_h_4b8939.encoder_data.2.bin",
+  "sam_vit_h_4b8939.encoder_data.3.bin",
+  "sam_vit_l_0b3195.decoder.onnx",
+  "sam_vit_l_0b3195.decoder.quant.onnx",
+  "sam_vit_l_0b3195.encoder.onnx",
+  "sam_vit_l_0b3195.encoder.quant.onnx",
+  "u2net-portrait-matting.onnx",
+  "vit_b-decoder-quant.onnx",
+  "vit_b-encoder-quant.onnx",
+  "vitmatte-base-composition-1k.onnx",
+  "vitmatte-base-distinctions-646.onnx",
+  "vitmatte-small-composition-1k.onnx",
+  "vitmatte-small-distinctions-646.onnx"
+ ],
+ "models": [
+  {
+   "label": "U²-Net",
+   "family": "u2net",
+   "purpose": "General salient-object removal (the original model)",
+   "scope": "general",
+   "kind": "local",
+   "rembgSession": "u2net",
+   "implementation": "rembg session",
+   "status": "unresolved",
+   "statusNote": "No weights licence found for this ONNX file.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "unresolved",
+   "commercialUse": "unresolved",
+   "redistribution": "unresolved",
+   "licenceFamily": "u2net",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DUTS-TR terms not read; u2net_human_seg trained on a non-commercial dataset",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    320,
+    320
+   ],
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "u2net.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx",
+     "bytes": 175997641,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:60024c5c889badc19c04ad937298a77b",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 168,
+    "ramMbEstimate": 420,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "u2net",
+   "admitted": false
+  },
+  {
+   "label": "U²-Net-P (lightweight)",
+   "family": "u2net",
+   "purpose": "Small and fast general removal",
+   "scope": "lightweight",
+   "kind": "local",
+   "rembgSession": "u2netp",
+   "implementation": "rembg session",
+   "status": "unresolved",
+   "statusNote": "Permission for this exact ONNX file is unconfirmed; blocked since PROTO-BGR-BATCH-001 (inference ran once before it was classified).",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "unresolved",
+   "commercialUse": "unresolved",
+   "redistribution": "unresolved",
+   "licenceFamily": "u2net",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DUTS-TR terms not read; u2net_human_seg trained on a non-commercial dataset",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    320,
+    320
+   ],
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "u2netp.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+     "bytes": 4574861,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:8e83ca70e441ab06c318d82300c84806",
+     "actualSha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8"
+    }
+   ],
+   "resources": {
+    "diskMb": 4,
+    "ramMbEstimate": 11,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "bytes": 4574861,
+   "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+   "owner": "Xuebin Qin et al. (U-2-Net)",
+   "licence": "Apache-2.0 (code); no separate weight licence found; training data DUTS-TR terms not reviewed",
+   "rembg_md5": "8e83ca70e441ab06c318d82300c84806",
+   "id": "u2netp",
+   "admitted": false
+  },
+  {
+   "label": "U²-Net human segmentation",
+   "family": "u2net",
+   "purpose": "People and portraits",
+   "scope": "specialised",
+   "kind": "local",
+   "rembgSession": "u2net_human_seg",
+   "implementation": "rembg session",
+   "status": "restricted",
+   "statusNote": "Trained on a non-commercial dataset per the evidence; leans restricted.",
+   "executable": false,
+   "blocker": "Not admitted: licence restricted",
+   "evaluationPermission": "restricted",
+   "commercialUse": "licence or commercial agreement required",
+   "redistribution": "unresolved",
+   "licenceFamily": "u2net",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DUTS-TR terms not read; u2net_human_seg trained on a non-commercial dataset",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    320,
+    320
+   ],
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "u2net_human_seg.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx",
+     "bytes": 175997641,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:c09ddc2e0104f800e3e1bb4652583d1f",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 168,
+    "ramMbEstimate": 420,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "u2net_human_seg",
+   "admitted": false
+  },
+  {
+   "label": "Silueta",
+   "family": "silueta",
+   "purpose": "Lightweight general removal (U²-Net derivative)",
+   "scope": "lightweight",
+   "kind": "local",
+   "rembgSession": "silueta",
+   "implementation": "rembg session",
+   "status": "unresolved",
+   "statusNote": "No repository or licence found.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "unresolved",
+   "commercialUse": "unresolved",
+   "redistribution": "unresolved",
+   "licenceFamily": "silueta",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "unknown",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    320,
+    320
+   ],
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "silueta.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/silueta.onnx",
+     "bytes": 44173029,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:55e59e0d8062d2f5d013f4725ee84782",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 42,
+    "ramMbEstimate": 105,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "silueta",
+   "admitted": false
+  },
+  {
+   "label": "U²-Net cloth segmentation",
+   "family": "cloth",
+   "purpose": "Garment regions: upper, lower or full body",
+   "scope": "specialised",
+   "kind": "local",
+   "rembgSession": "u2net_cloth_seg",
+   "implementation": "rembg session",
+   "status": "unresolved",
+   "statusNote": "Weights licence and dataset terms unstated.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "unresolved",
+   "commercialUse": "unresolved",
+   "redistribution": "unresolved",
+   "licenceFamily": "cloth",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "iMaterialist (Kaggle) terms not retrieved",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    768,
+    768
+   ],
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true,
+    "clothRegion": [
+     "upper",
+     "lower",
+     "full"
+    ]
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "u2net_cloth_seg.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_cloth_seg.onnx",
+     "bytes": 176194565,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:2434d1f3cb744e0e49386c906e5a08bb",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 168,
+    "ramMbEstimate": 420,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "u2net_cloth_seg",
+   "admitted": false
+  },
+  {
+   "label": "IS-Net general use",
+   "family": "isnet",
+   "purpose": "High-detail general removal",
+   "scope": "high-detail",
+   "kind": "local",
+   "rembgSession": "isnet-general-use",
+   "implementation": "DisSession (dis_general_use.py)",
+   "status": "unresolved",
+   "statusNote": "Weights licence unstated; DIS5K non-commercial terms may propagate.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "unresolved",
+   "commercialUse": "unresolved",
+   "redistribution": "unresolved",
+   "licenceFamily": "isnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K terms: non-commercial research or education; whether weights trained on it inherit this is a legal question",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    1024,
+    1024
+   ],
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "isnet-general-use.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx",
+     "bytes": 178648008,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:fc16ebd8b0c10d971d3513d564d01e29",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 170,
+    "ramMbEstimate": 426,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "isnet-general-use",
+   "admitted": false
+  },
+  {
+   "label": "IS-Net anime",
+   "family": "isnet-anime",
+   "purpose": "Anime and illustration characters",
+   "scope": "specialised",
+   "kind": "local",
+   "rembgSession": "isnet-anime",
+   "implementation": "DisSession (dis_anime.py)",
+   "status": "unresolved",
+   "statusNote": "Apache-2.0 on the card; dataset licences unread.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "unresolved",
+   "commercialUse": "unresolved",
+   "redistribution": "unresolved",
+   "licenceFamily": "isnet-anime",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "AniSeg and character_bg_seg_data licences not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    1024,
+    1024
+   ],
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "isnet-anime.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-anime.onnx",
+     "bytes": 176069933,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:6f184e756bb3bd901c8849220a83e38e",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 168,
+    "ramMbEstimate": 420,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "isnet-anime",
+   "admitted": false
+  },
+  {
+   "label": "BiRefNet general",
+   "family": "birefnet",
+   "purpose": "High-detail general removal",
+   "scope": "high-detail",
+   "kind": "local",
+   "rembgSession": "birefnet-general",
+   "implementation": "rembg session",
+   "status": "candidate",
+   "statusNote": "MIT label evidence; pending a legal view on DIS5K inheritance and exact-file provenance. Not admitted.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "label-level (not sufficient to admit)",
+   "commercialUse": "unresolved (dataset terms)",
+   "redistribution": "unresolved",
+   "licenceFamily": "birefnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    1024,
+    1024
+   ],
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "BiRefNet-general-epoch_244.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-general-epoch_244.onnx",
+     "bytes": 972666916,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:7a35a0141cbbc80de11d9c9a28f52697",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 928,
+    "ramMbEstimate": 2319,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "birefnet-general",
+   "admitted": false
+  },
+  {
+   "label": "BiRefNet general lite (Swin-tiny)",
+   "family": "birefnet",
+   "purpose": "Smaller high-detail general removal",
+   "scope": "lightweight",
+   "kind": "local",
+   "rembgSession": "birefnet-general-lite",
+   "implementation": "rembg session",
+   "status": "candidate",
+   "statusNote": "As birefnet-general. The smallest BiRefNet; the first pilot once admitted.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "label-level (not sufficient to admit)",
+   "commercialUse": "unresolved (dataset terms)",
+   "redistribution": "unresolved",
+   "licenceFamily": "birefnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx",
+     "bytes": 224005088,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:4fab47adc4ff364be1713e97b7e66334",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 214,
+    "ramMbEstimate": 534,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "birefnet-general-lite",
+   "admitted": false
+  },
+  {
+   "label": "BiRefNet general (float16)",
+   "family": "birefnet",
+   "purpose": "GPU-oriented half-precision copy of birefnet-general",
+   "scope": "high-detail",
+   "kind": "local",
+   "rembgSession": "birefnet-general-fp16",
+   "implementation": "BiRefNetSessionGeneralFP16",
+   "status": "candidate",
+   "statusNote": "Converted on first use from birefnet-general; needs the onnx and onnxconverter-common packages (not installed) and is intended for GPUs; usually slower on CPU.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "label-level (not sufficient to admit)",
+   "commercialUse": "unresolved (dataset terms)",
+   "redistribution": "unresolved",
+   "licenceFamily": "birefnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "requirements": [
+    "onnx",
+    "onnxconverter-common"
+   ],
+   "assets": [],
+   "id": "birefnet-general-fp16",
+   "admitted": false
+  },
+  {
+   "label": "BiRefNet portrait",
+   "family": "birefnet",
+   "purpose": "People and portraits",
+   "scope": "specialised",
+   "kind": "local",
+   "rembgSession": "birefnet-portrait",
+   "implementation": "rembg session",
+   "status": "candidate",
+   "statusNote": "As birefnet-general; no per-variant card read.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "label-level (not sufficient to admit)",
+   "commercialUse": "unresolved (dataset terms)",
+   "redistribution": "unresolved",
+   "licenceFamily": "birefnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "BiRefNet-portrait-epoch_150.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-portrait-epoch_150.onnx",
+     "bytes": 972666916,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:c3a64a6abf20250d090cd055f12a3b67",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 928,
+    "ramMbEstimate": 2319,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "birefnet-portrait",
+   "admitted": false
+  },
+  {
+   "label": "BiRefNet DIS",
+   "family": "birefnet",
+   "purpose": "Dichotomous segmentation (DIS5K-trained)",
+   "scope": "specialised",
+   "kind": "local",
+   "rembgSession": "birefnet-dis",
+   "implementation": "rembg session",
+   "status": "candidate",
+   "statusNote": "Trained on DIS5K, whose terms are non-commercial.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "label-level (not sufficient to admit)",
+   "commercialUse": "unresolved (dataset terms)",
+   "redistribution": "unresolved",
+   "licenceFamily": "birefnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "BiRefNet-DIS-epoch_590.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-DIS-epoch_590.onnx",
+     "bytes": 972666916,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:2d4d44102b446f33a4ebb2e56c051f2b",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 928,
+    "ramMbEstimate": 2319,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "birefnet-dis",
+   "admitted": false
+  },
+  {
+   "label": "BiRefNet HRSOD",
+   "family": "birefnet",
+   "purpose": "High-resolution salient objects",
+   "scope": "specialised",
+   "kind": "local",
+   "rembgSession": "birefnet-hrsod",
+   "implementation": "rembg session",
+   "status": "candidate",
+   "statusNote": "As birefnet-general; no per-variant card read.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "label-level (not sufficient to admit)",
+   "commercialUse": "unresolved (dataset terms)",
+   "redistribution": "unresolved",
+   "licenceFamily": "birefnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "BiRefNet-HRSOD_DHU-epoch_115.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-HRSOD_DHU-epoch_115.onnx",
+     "bytes": 972666916,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:c017ade5de8a50ff0fd74d790d268dda",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 928,
+    "ramMbEstimate": 2319,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "birefnet-hrsod",
+   "admitted": false
+  },
+  {
+   "label": "BiRefNet COD",
+   "family": "birefnet",
+   "purpose": "Camouflaged objects",
+   "scope": "specialised",
+   "kind": "local",
+   "rembgSession": "birefnet-cod",
+   "implementation": "rembg session",
+   "status": "candidate",
+   "statusNote": "As birefnet-general; no per-variant card read.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "label-level (not sufficient to admit)",
+   "commercialUse": "unresolved (dataset terms)",
+   "redistribution": "unresolved",
+   "licenceFamily": "birefnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "BiRefNet-COD-epoch_125.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-COD-epoch_125.onnx",
+     "bytes": 972666916,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:f6d0d21ca89d287f17e7afe9f5fd3b45",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 928,
+    "ramMbEstimate": 2319,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "birefnet-cod",
+   "admitted": false
+  },
+  {
+   "label": "BiRefNet massive",
+   "family": "birefnet",
+   "purpose": "Larger-data general removal",
+   "scope": "high-detail",
+   "kind": "local",
+   "rembgSession": "birefnet-massive",
+   "implementation": "rembg session",
+   "status": "candidate",
+   "statusNote": "Training data of this variant is broader and unread.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "label-level (not sufficient to admit)",
+   "commercialUse": "unresolved (dataset terms)",
+   "redistribution": "unresolved",
+   "licenceFamily": "birefnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "BiRefNet-massive-TR_DIS5K_TR_TEs-epoch_420.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-massive-TR_DIS5K_TR_TEs-epoch_420.onnx",
+     "bytes": 972666916,
+     "publisherSha256": null,
+     "rembgChecksum": "md5:33e726a2136a3d59eb0fdf613e31e3e9",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 928,
+    "ramMbEstimate": 2319,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "birefnet-massive",
+   "admitted": false
+  },
+  {
+   "label": "BiRefNet dynamic resolution",
+   "family": "birefnet",
+   "purpose": "General removal at variable input resolution",
+   "scope": "high-detail",
+   "kind": "local",
+   "rembgSession": "birefnet-dynamic",
+   "implementation": "rembg session",
+   "status": "candidate",
+   "statusNote": "The release asset was replaced on 2026-11-24, so rembg 2.0.88's built-in md5 may no longer match it.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "label-level (not sufficient to admit)",
+   "commercialUse": "unresolved (dataset terms)",
+   "redistribution": "unresolved",
+   "licenceFamily": "birefnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true,
+    "dynamicResolution": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "BiRefNet_dynamic-1024x1024.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet_dynamic-1024x1024.onnx",
+     "bytes": 972495971,
+     "publisherSha256": "aa3c17882a27f079fafa7655cf50e83b9e6e067d6c6fa4cbc3524ae441da0bd7",
+     "rembgChecksum": "md5:4f9c4b2d2e16fe1788f98184e7f43d2b",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 927,
+    "ramMbEstimate": 2319,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "birefnet-dynamic",
+   "admitted": false
+  },
+  {
+   "label": "BRIA RMBG 2.0",
+   "family": "bria",
+   "purpose": "Commercial-grade general removal",
+   "scope": "high-detail",
+   "kind": "local",
+   "rembgSession": "bria-rmbg",
+   "implementation": "rembg session",
+   "status": "restricted",
+   "statusNote": "CC BY-NC 4.0; commercial use needs a paid agreement. Research and integration support only.",
+   "executable": false,
+   "blocker": "Not admitted: licence restricted",
+   "evaluationPermission": "restricted",
+   "commercialUse": "licence or commercial agreement required",
+   "redistribution": "unresolved",
+   "licenceFamily": "bria",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "licensed data per publisher",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    1024,
+    1024
+   ],
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [
+    {
+     "file": "bria-rmbg-2.0.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/bria-rmbg-2.0.onnx",
+     "bytes": 1024331469,
+     "publisherSha256": null,
+     "rembgChecksum": "sha256:5b486f08200f513f460da46dd701db5fbb47d79b4be4b708a19444bcd4e79958",
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 977,
+    "ramMbEstimate": 2442,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "bria-rmbg",
+   "admitted": false
+  },
+  {
+   "label": "Segment Anything (SAM, ViT-B)",
+   "family": "sam",
+   "purpose": "Interactive point-prompted segmentation (not automatic)",
+   "scope": "interactive",
+   "kind": "local",
+   "rembgSession": "sam",
+   "implementation": "rembg session",
+   "status": "candidate",
+   "statusNote": "Apache-2.0 label evidence; ONNX conversion provenance unverified. Larger ViT-L and ViT-H checkpoints and quantised variants exist but are not registered.",
+   "executable": false,
+   "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
+   "evaluationPermission": "label-level (not sufficient to admit)",
+   "commercialUse": "unresolved (dataset terms)",
+   "redistribution": "unresolved",
+   "licenceFamily": "sam",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "SA-1B licence text not read",
+   "providers": [
+    "CPUExecutionProvider"
+   ],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {
+    "alphaMatting": true,
+    "postProcessMask": true,
+    "onlyMask": true,
+    "samPoints": true
+   },
+   "install": "not-installed",
+   "installPermitted": false,
+   "modes": [
+    "interactive point prompt (label 1 foreground, 0 background); not automatic segmentation"
+   ],
+   "assets": [
+    {
+     "file": "sam_vit_b_01ec64.encoder.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/sam_vit_b_01ec64.encoder.onnx",
+     "bytes": 359217310,
+     "publisherSha256": null,
+     "rembgChecksum": null,
+     "actualSha256": null
+    },
+    {
+     "file": "sam_vit_b_01ec64.decoder.onnx",
+     "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/sam_vit_b_01ec64.decoder.onnx",
+     "bytes": 16500570,
+     "publisherSha256": null,
+     "rembgChecksum": null,
+     "actualSha256": null
+    }
+   ],
+   "resources": {
+    "diskMb": 358,
+    "ramMbEstimate": 896,
+    "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"
+   },
+   "id": "sam",
+   "admitted": false
+  },
+  {
+   "label": "U²-Net custom checkpoint",
+   "family": "u2net",
+   "purpose": "Your own U²-Net checkpoint",
+   "scope": "custom",
+   "kind": "custom",
+   "rembgSession": "u2net_custom",
+   "implementation": "rembg session",
+   "status": "custom-unregistered",
+   "statusNote": "No checkpoint registered. A custom checkpoint needs its own verified, permitted registry entry.",
+   "executable": false,
+   "blocker": "Not admitted: no checkpoint is registered",
+   "evaluationPermission": "not-applicable",
+   "commercialUse": "depends on the checkpoint",
+   "redistribution": "not-applicable",
+   "licenceFamily": "u2net",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DUTS-TR terms not read; u2net_human_seg trained on a non-commercial dataset",
+   "providers": [],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    320,
+    320
+   ],
+   "settings": {},
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [],
+   "id": "u2net_custom",
+   "admitted": false
+  },
+  {
+   "label": "IS-Net custom checkpoint",
+   "family": "isnet",
+   "purpose": "Your own IS-Net checkpoint",
+   "scope": "custom",
+   "kind": "custom",
+   "rembgSession": "dis_custom",
+   "implementation": "DisCustomSession",
+   "status": "custom-unregistered",
+   "statusNote": "No checkpoint registered.",
+   "executable": false,
+   "blocker": "Not admitted: no checkpoint is registered",
+   "evaluationPermission": "not-applicable",
+   "commercialUse": "depends on the checkpoint",
+   "redistribution": "not-applicable",
+   "licenceFamily": "isnet",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "DIS5K terms: non-commercial research or education; whether weights trained on it inherit this is a legal question",
+   "providers": [],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    1024,
+    1024
+   ],
+   "settings": {},
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [],
+   "id": "dis_custom",
+   "admitted": false
+  },
+  {
+   "label": "BEN custom checkpoint",
+   "family": "ben",
+   "purpose": "Your own BEN checkpoint (rembg bundles none)",
+   "scope": "custom",
+   "kind": "custom",
+   "rembgSession": "ben_custom",
+   "implementation": "rembg session",
+   "status": "custom-unregistered",
+   "statusNote": "No checkpoint registered.",
+   "executable": false,
+   "blocker": "Not admitted: no checkpoint is registered",
+   "evaluationPermission": "not-applicable",
+   "commercialUse": "depends on the checkpoint",
+   "redistribution": "not-applicable",
+   "licenceFamily": "ben",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "BEN2 trained on DIS5K plus proprietary data",
+   "providers": [],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": [
+    1024,
+    1024
+   ],
+   "settings": {},
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [],
+   "id": "ben_custom",
+   "admitted": false
+  },
+  {
+   "label": "withoutBG API",
+   "family": "withoutbg",
+   "purpose": "Hosted removal service",
+   "scope": "external",
+   "kind": "remote",
+   "rembgSession": "withoutbg",
+   "implementation": "rembg session",
+   "status": "external-inactive",
+   "statusNote": "Remote paid service. Inactive: no credentials, no trial, no image is ever sent.",
+   "executable": false,
+   "blocker": "Not admitted: external inference is inactive in this prototype",
+   "evaluationPermission": "not-applicable",
+   "commercialUse": "paid service terms",
+   "redistribution": "not-applicable",
+   "licenceFamily": "withoutbg",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "terms state no training on inputs and RAM-only processing",
+   "providers": [],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {},
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [],
+   "id": "withoutbg",
+   "admitted": false
+  },
+  {
+   "label": "Atlas Cloud API",
+   "family": "atlascloud",
+   "purpose": "Hosted removal service",
+   "scope": "external",
+   "kind": "remote",
+   "rembgSession": "atlascloud",
+   "implementation": "rembg session",
+   "status": "external-inactive",
+   "statusNote": "Remote paid service. Inactive: no credentials, no trial, no image is ever sent.",
+   "executable": false,
+   "blocker": "Not admitted: external inference is inactive in this prototype",
+   "evaluationPermission": "not-applicable",
+   "commercialUse": "paid service terms",
+   "redistribution": "not-applicable",
+   "licenceFamily": "atlascloud",
+   "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
+   "trainingDataConcerns": "retention and training terms NOT VERIFIED",
+   "providers": [],
+   "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
+   "inputSize": null,
+   "settings": {},
+   "install": "not-installed",
+   "installPermitted": false,
+   "assets": [],
+   "id": "atlascloud",
+   "admitted": false
+  }
+ ]
+}

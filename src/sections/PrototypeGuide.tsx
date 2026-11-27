@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { AdulisLogo } from '../App'
 import { BUYERS, CANONICAL_FLOW_STAGES, COURIERS, DEMO_CARTS, GUEST_STATE, ORDERS, ORDER_TIMELINES, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName, paymentAttempts, stageFor } from '../demo-data'
+
+// The Lab is code-split: it carries the model catalogue and is only fetched when someone opens it.
+const BackgroundLab = lazy(() => import('./BackgroundLab'))
 
 // Demo personas and record names are read from the canonical module (WO-001).
 const BUYER_NAME = BUYERS[SURFACE_DEFAULTS.buyer].name
@@ -31,6 +34,8 @@ interface PrototypeGuideProps {
 }
 
 export default function PrototypeGuide({ onNavigate }: PrototypeGuideProps) {
+  const [lab, setLab] = useState(false)
+  if (lab) return <Suspense fallback={<p role="status" style={{ padding: 32 }}>Loading the Lab…</p>}><BackgroundLab onClose={() => setLab(false)} /></Suspense>
   return (
     <div style={{ fontFamily: 'var(--font-body)', color: 'var(--color-text-primary)' }}>
       <GuideHeader />
@@ -42,8 +47,25 @@ export default function PrototypeGuide({ onNavigate }: PrototypeGuideProps) {
         <CommerceJourney />
         <DemoFlowsList />
         <RoleLauncher onNavigate={onNavigate} />
+        <ExperimentalTools onOpenLab={() => setLab(true)} />
       </div>
     </div>
+  )
+}
+
+/* ─── Experimental tools (BGR-017) ─── */
+
+function ExperimentalTools({ onOpenLab }: { onOpenLab: () => void }) {
+  return (
+    <GuideSection number="7" title="Experimental Tools">
+      <div className="rounded-xl border p-5" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+        <h3 className="font-display text-lg font-semibold" style={{ margin: 0 }}>Background Removal Lab</h3>
+        <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)', margin: '8px 0 16px' }}>
+          Compare background-removal models on your own photos, with licence and readiness shown for every model. Research tool for the team; it is not part of Seller authoring, and no model runs unless the registry clears it.
+        </p>
+        <button className="rounded-lg px-4 py-2.5 text-sm font-semibold" style={{ background: 'var(--color-brand)', color: 'var(--color-on-brand)' }} onClick={onOpenLab}>Open the Background Removal Lab</button>
+      </div>
+    </GuideSection>
   )
 }
 

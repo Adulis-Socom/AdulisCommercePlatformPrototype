@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { Button } from '../components/ui/Button'
+import { CATALOGUE, DEFAULT_SETTINGS, fetchLive, readToken, runModel, runState, storeToken, type Live, type ModelEntry } from '../lab/bg'
 
 /**
  * Seller Console › Products › Media: real photo drafts with an experimental, genuinely local background remover.
@@ -8,15 +9,14 @@ import { Button } from '../components/ui/Button'
  * Product switch unmounts it: the in-flight request is aborted, a late result is ignored and every object URL is revoked.
  */
 
-const ADAPTER = 'http://127.0.0.1:8765'
-// `admitted` mirrors the status in tools/bg-removal/models.json. The adapter enforces it on its own (403); this flag only
-// keeps the UI honest and avoids contacting the adapter for a model that cannot run. Set it true only when models.json does.
-const MODELS = [{ id: 'u2netp', label: 'U2-Net-P (lightweight)', admitted: false }]
+// BGR-019: the same registry and adapter as the Background Removal Lab. The adapter enforces admission on its own (403); the
+// generated catalogue only keeps the UI honest and avoids contacting the adapter for a model that cannot run. Only automatic,
+// local models are offered here: interactive (SAM), region-based (cloth), custom and external ones belong to the Lab.
+const MODELS: ModelEntry[] = CATALOGUE.models.filter(m => m.kind === 'local' && m.scope !== 'interactive' && !m.settings.clothRegion)
 const ACCEPT = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_BYTES = 10 * 1024 * 1024
 const MAX_ITEMS = 5
 const REQUEST_LIMIT_MS = 70_000
-const TOKEN_KEY = 'adulis.bg-adapter-token'
 
 type Meta = { model: string; inferenceMs: number; loadMs: number; peakMb: number; provider: string; size: string }
 type Photo = { url: string; blob: Blob }
@@ -35,8 +35,6 @@ const BACKDROPS: { id: Backdrop; label: string; style: CSSProperties }[] = [
   { id: 'dark', label: 'Dark', style: { backgroundColor: '#2b2b2b' } },
 ]
 
-const readToken = () => { try { return sessionStorage.getItem(TOKEN_KEY) ?? '' } catch { return '' } }
-const storeToken = (value: string) => { try { sessionStorage.setItem(TOKEN_KEY, value) } catch { /* the token is just not remembered */ } }
 const shown = (draft: Draft) => (draft.showing === 'edited' && draft.edited ? draft.edited : draft.original)
 
 export function ProductMediaEditor({ placeholders, onCover, saved, onPhotos }: { placeholders: number; onCover: (url: string | null) => void; saved?: string[]; onPhotos?: (photos: { blob: Blob; src?: string }[]) => void }) {
@@ -46,7 +44,10 @@ export function ProductMediaEditor({ placeholders, onCover, saved, onPhotos }: {
   const [session, setSession] = useState<Session>({ status: 'idle' })
   const [adapter, setAdapter] = useState<Adapter>('checking')
   const [token, setToken] = useState(readToken)
-  const [model, setModel] = useState(MODELS[0].id)
+  const [model, setModel] = useState(() => MODELS.find(m => m.admitted)?.id ?? MODELS[0].id)
+  const [matting, setMatting] = useState(false)
+  const [smooth, setSmooth] = useState(false)
+  const [live, setLive] = useState<Live>({ state: 'checking' })
   const [backdrop, setBackdrop] = useState<Backdrop>('checker')
   const [elapsed, setElapsed] = useState(0)
   const [notice, setNotice] = useState('')
@@ -97,19 +98,17 @@ export function ProductMediaEditor({ placeholders, onCover, saved, onPhotos }: {
 
   const editing = drafts.find(draft => draft.id === editingId && draft.original)
 
-  const modelAdmitted = MODELS.find(entry => entry.id === model)?.admitted === true
-  const unavailable = !modelAdmitted || adapter === 'unavailable'
+  const chosen = MODELS.find(entry => entry.id === model)!
+  const unavailable = !chosen.admitted || adapter === 'unavailable'
+  const why = chosen.admitted ? runState(chosen, live).reason : chosen.blocker
 
   const checkAdapter = useCallback(async () => {
-    if (!modelAdmitted) { setAdapter('unavailable'); return } // no request is made for a model that may not run
+    if (!chosen.admitted) { setAdapter('unavailable'); return } // the registry blocks it: no request is made for a model that may not run
     setAdapter('checking')
-    try {
-      const response = await fetch(`${ADAPTER}/health`, { signal: AbortSignal.timeout(3000) })
-      const body = await response.json()
-      const entry = response.ok ? (body.models as { id: string; ready: boolean; status?: string }[] | undefined)?.find(item => item.id === model) : undefined
-      setAdapter(entry && entry.status !== undefined && entry.status !== 'admitted' ? 'unavailable' : entry?.ready ? 'ready' : 'offline')
-    } catch { setAdapter('offline') }
-  }, [model, modelAdmitted])
+    const result = await fetchLive()
+    setLive(result)
+    setAdapter(runState(chosen, result).runnable ? 'ready' : result.state === 'offline' ? 'offline' : 'unavailable')
+  }, [model])
   useEffect(() => { if (editing) void checkAdapter() }, [editing?.id, checkAdapter])
 
   useEffect(() => {
@@ -163,15 +162,8 @@ export function ProductMediaEditor({ placeholders, onCover, saved, onPhotos }: {
     const limit = setTimeout(() => controller.abort(), REQUEST_LIMIT_MS)
     setSession({ status: 'processing' })
     try {
-      const response = await fetch(`${ADAPTER}/remove?model=${encodeURIComponent(model)}`, { method: 'POST', body: editing.original.blob, headers: { 'X-Adulis-Token': token.trim(), 'Content-Type': editing.original.blob.type }, signal: controller.signal })
-      if (!response.ok) {
-        const message = (await response.json().catch(() => null))?.error as string | undefined
-        throw new Error(response.status === 401 ? 'The adapter did not accept that token. Copy it again from the adapter window.' : message ?? `The adapter answered ${response.status}.`)
-      }
-      const blob = await response.blob()
+      const { blob, meta } = await runModel({ model: chosen, blob: editing.original.blob, settings: { ...DEFAULT_SETTINGS, alphaMatting: matting, postProcessMask: smooth }, token, signal: controller.signal })
       if (mine !== run.current) return // cancelled, or the selection changed: this result is stale
-      const header = (name: string) => response.headers.get(name) ?? ''
-      const meta: Meta = { model: header('X-Model'), inferenceMs: Number(header('X-Inference-Ms')), loadMs: Number(header('X-Load-Ms')), peakMb: Number(header('X-Peak-Rss-Mb')), provider: header('X-Provider'), size: header('X-Input-Size') }
       setSession({ status: 'done', result: { ...track(blob), meta } })
     } catch (error) {
       if (mine !== run.current) return
@@ -241,6 +233,8 @@ export function ProductMediaEditor({ placeholders, onCover, saved, onPhotos }: {
                 {MODELS.map(entry => <option key={entry.id} value={entry.id}>{entry.label}{entry.admitted ? '' : ' (unavailable)'}</option>)}
               </select>
             </label>
+            <label className="flex items-center gap-2 text-xs font-semibold text-text-secondary"><input type="checkbox" checked={matting} disabled={busy || unavailable || !chosen.settings.alphaMatting} onChange={event => { setMatting(event.target.checked); reset() }} /> Alpha matting</label>
+            <label className="flex items-center gap-2 text-xs font-semibold text-text-secondary"><input type="checkbox" checked={smooth} disabled={busy || unavailable || !chosen.settings.postProcessMask} onChange={event => { setSmooth(event.target.checked); reset() }} /> Smooth outline</label>
             <label className="min-w-48 flex-1 text-xs font-semibold text-text-secondary">Adapter token
               <input value={token} disabled={busy || unavailable} onChange={event => { setToken(event.target.value); storeToken(event.target.value) }} placeholder="Paste the token the adapter printed" autoComplete="off" spellCheck={false} className="mt-1 block h-10 w-full rounded-lg border border-border bg-surface px-3 font-mono text-xs text-text-primary" />
             </label>
@@ -250,7 +244,7 @@ export function ProductMediaEditor({ placeholders, onCover, saved, onPhotos }: {
           </div>
 
           <p role="status" className={`mb-3 text-xs ${adapter === 'ready' && !unavailable ? 'text-success' : 'text-text-muted'}`}>
-            {unavailable && <><span className="font-semibold text-text-primary">This model is unavailable.</span> Adulis has not confirmed permission to use this exact model file, so background removal is switched off and nothing is run or sent anywhere. Your photo is unchanged, and you can keep adding, replacing and previewing photos as usual.</>}
+            {unavailable && <><span className="font-semibold text-text-primary">This model is unavailable.</span> {why} Background removal is switched off for this model and nothing is run or sent anywhere. Your photo is unchanged, and you can keep adding, replacing and previewing photos as usual. The Background Removal Lab in the Prototype Guide lists every model and the reason.</>}
             {!unavailable && adapter === 'checking' && 'Checking for the local adapter…'}
             {!unavailable && adapter === 'ready' && 'Local adapter connected.'}
             {!unavailable && adapter === 'offline' && <>The local adapter is not running. Start it (see tools/bg-removal/README.md), then <button type="button" onClick={checkAdapter} className="font-semibold text-brand-text underline">check again</button>. The rest of the Product Editor works without it.</>}
