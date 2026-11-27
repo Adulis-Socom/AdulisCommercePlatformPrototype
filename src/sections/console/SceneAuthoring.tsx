@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from '
 import { Button } from '../../components/ui/Button'
 import { Textarea, TextInput } from '../../components/ui/Input'
 import { type Moment, type SellerId } from '../../demo-data'
-import { linkableProducts, sceneIssues, sceneVisibility, toThumbnail, useWorkspace, type WorkspaceState, type WsHotspot, type WsScene } from '../../seller-workspace'
+import { hotspotNumber, linkableProducts, sceneIssues, sceneReasons, sceneVisibility, toThumbnail, useWorkspace, type SceneVisibility, type WorkspaceState, type WsHotspot, type WsScene } from '../../seller-workspace'
 import { Card, Notice, SelectField, Thumb } from './kit'
 
 /** SC-004: Scene authoring. Real photo, caption, same-Seller Product tags with visual hotspots and an accessible list, publication rules, Private state. */
@@ -10,7 +10,8 @@ import { Card, Notice, SelectField, Thumb } from './kit'
 const ACCEPT = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_BYTES = 10 * 1024 * 1024
 const clamp = (n: number) => Math.min(100, Math.max(0, Math.round(n)))
-const VISIBILITY = { draft: 'Draft', public: 'Public', private: 'Private' } as const
+const VISIBILITY: Record<SceneVisibility, string> = { draft: 'Draft', public: 'Public', private: 'Private', archived: 'Archived', restricted: 'Restricted' }
+const BADGE: Record<SceneVisibility, string> = { public: 'bg-success-bg', private: 'bg-warning-bg', restricted: 'bg-danger-bg text-danger', draft: 'bg-surface-raised text-text-muted', archived: 'bg-surface-raised text-text-muted' }
 
 export default function SceneAuthoring({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const { state } = useWorkspace()
@@ -26,7 +27,7 @@ export default function SceneAuthoring({ sellerId, at }: { sellerId: SellerId; a
         ? <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-10 text-center"><div className="font-display text-lg font-semibold">No Scenes yet</div><p className="mt-1 text-sm text-text-muted">Create a Scene from a photo and tag the Products in it. You need at least one published, in-stock Product first.</p></div>
         : <ul className="overflow-hidden rounded-2xl border border-border bg-surface">{scenes.map(scene => {
           const vis = sceneVisibility(scene, state, at)
-          return <li key={scene.id} className="border-t border-border first:border-t-0"><button type="button" onClick={() => setEditing({ id: scene.id })} className="flex w-full items-center gap-4 p-4 text-left hover:bg-surface-raised"><Thumb src={scene.image} label={scene.caption || 'Scene'} className="h-14 w-14" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{scene.caption || 'Untitled Scene'}</span><span className="block font-mono text-[10px] text-text-muted">{scene.id} · {scene.tags.length} tag{scene.tags.length === 1 ? '' : 's'}</span></span><span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${vis === 'public' ? 'bg-success-bg' : vis === 'private' ? 'bg-warning-bg' : 'bg-surface-raised text-text-muted'}`}>{VISIBILITY[vis]}</span></button></li>
+          return <li key={scene.id} className="border-t border-border first:border-t-0"><button type="button" onClick={() => setEditing({ id: scene.id })} className="flex w-full items-center gap-4 p-4 text-left hover:bg-surface-raised"><Thumb src={scene.image} label={scene.caption || 'Scene'} className="h-14 w-14" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{scene.caption || 'Untitled Scene'}</span><span className="block font-mono text-[10px] text-text-muted">{scene.id} · {scene.tags.length} tag{scene.tags.length === 1 ? '' : 's'}</span>{sceneReasons(scene, state, at)[0] && <span className="block text-xs text-warning">{sceneReasons(scene, state, at)[0]}</span>}</span><span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${BADGE[vis]}`}>{VISIBILITY[vis]}</span></button></li>
         })}</ul>}
     </div>
   )
@@ -46,6 +47,7 @@ function SceneEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: Mom
   const nameOf = (pid: string) => linkableProducts(state, sellerId, at, true).find(p => p.id === pid)?.name ?? pid
   const availableIds = new Set(eligible.map(p => p.id))
   const visibility = sceneVisibility({ ...s, status: s.status }, state, at)
+  const reasons = s.id ? sceneReasons({ ...s }, state, at) : []
   const dirty = JSON.stringify(s) !== baseline.current
   const errors = attempted ? sceneIssues(s, state, at) : []
   const err = (f: string) => errors.find(e => e.field === f)?.message
@@ -57,7 +59,7 @@ function SceneEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: Mom
     if (file.size > MAX_BYTES) { setFileError('That photo is larger than 10 MB.'); return }
     setFileError(''); set({ image: await toThumbnail(file, 900) })
   }
-  const addTag = (x = 50, y = 50) => { if (!pick) return; set({ tags: [...s.tags, { product: pick, x, y }] }); setPick('') }
+  const addTag = (x = 50, y = 50) => { if (!pick) return; const n = s.nextN ?? s.tags.reduce((m, t, i) => Math.max(m, t.n ?? i + 1), 0) + 1; set({ tags: [...s.tags, { product: pick, x, y, n }], nextN: n + 1 }); setPick('') }
   const onImageClick = (event: MouseEvent<HTMLImageElement>) => { const r = event.currentTarget.getBoundingClientRect(); addTag(clamp(((event.clientX - r.left) / r.width) * 100), clamp(((event.clientY - r.top) / r.height) * 100)) }
   const moveTag = (i: number, patch: Partial<WsHotspot>) => set({ tags: s.tags.map((t, j) => (j === i ? { ...t, ...patch } : t)) })
   const onTagKey = (i: number, e: KeyboardEvent) => {
@@ -83,7 +85,7 @@ function SceneEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: Mom
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 className="font-display text-2xl font-semibold">{id ? 'Edit Scene' : 'Create Scene'} <span className="font-mono text-xs font-normal text-text-muted">{s.id || 'New'}</span></h2><Button variant="tertiary" onClick={() => (dirty ? setLeave(true) : onBack())}>← Back to Scenes</Button></div>
       {leave && <div className="mb-4"><Notice tone="warning" role="alert" title="Leave without saving?"><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => onBack()}>Discard changes</Button><Button size="sm" variant="tertiary" onClick={() => setLeave(false)}>Keep editing</Button></div></Notice></div>}
       {banner && <div className="mb-4"><Notice tone="success" role="status">{banner}</Notice></div>}
-      {s.status === 'published' && visibility === 'private' && <div className="mb-4"><Notice tone="warning" role="status" title="Private right now">Every Product tagged here is out of stock or unpublished, so Buyers cannot see this Scene. It becomes public again on its own as soon as a tagged Product is back in stock.</Notice></div>}
+      {s.id && reasons.length > 0 && <div className="mb-4"><Notice tone="warning" role="status" title={`${VISIBILITY[visibility]} right now`}><ul className="list-disc pl-5">{reasons.map(r => <li key={r}>{r}</li>)}</ul>{visibility === 'private' && <p className="mt-1">It becomes public again on its own as soon as every gate passes.</p>}</Notice></div>}
       {errors.length > 0 && <div ref={summary} tabIndex={-1} role="alert" className="mb-4 rounded-xl border border-danger bg-danger-bg p-4 text-sm outline-none"><div className="font-semibold">{errors.length} thing{errors.length === 1 ? '' : 's'} to fix before publishing</div><ul className="mt-1 list-disc pl-5">{errors.map(e => <li key={e.field}>{e.message}</li>)}</ul></div>}
       <div className="grid grid-cols-[1.2fr_.8fr] gap-5 max-lg:grid-cols-1">
         <div className="flex flex-col gap-5">
@@ -110,7 +112,7 @@ function SceneEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: Mom
               <div className="mt-3">
                 <div className="relative inline-block max-w-full leading-[0]">
                   <img src={s.image} alt={s.alt || 'Scene photo'} onClick={onImageClick} className={`block max-h-[420px] min-w-56 max-w-full rounded-xl ${pick ? 'cursor-crosshair ring-2 ring-brand' : ''}`} />
-                  {s.tags.map((t, i) => <button key={i} type="button" aria-label={`Hotspot ${i + 1}: ${nameOf(t.product)}. Arrow keys move it, Delete removes it.`} onKeyDown={e => onTagKey(i, e)} className={`absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white text-xs font-bold leading-none shadow-md ${availableIds.has(t.product) ? 'bg-brand text-on-brand' : 'bg-text-muted text-white'}`} style={{ left: `${t.x}%`, top: `${t.y}%` }}>{i + 1}</button>)}
+                  {s.tags.map((t, i) => <button key={i} type="button" aria-label={`Hotspot ${hotspotNumber(s, i)}: ${nameOf(t.product)}. Arrow keys move it, Delete removes it.`} onKeyDown={e => onTagKey(i, e)} className={`absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white text-xs font-bold leading-none shadow-md ${availableIds.has(t.product) ? 'bg-brand text-on-brand' : 'bg-text-muted text-white'}`} style={{ left: `${t.x}%`, top: `${t.y}%` }}>{hotspotNumber(s, i)}</button>)}
                 </div>
                 {pick && <p className="mt-1 text-xs font-semibold text-brand-text" role="status">Click the photo to place “{nameOf(pick)}”.</p>}
               </div>
@@ -119,17 +121,19 @@ function SceneEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: Mom
             {s.tags.length > 0 && (
               <ul className="mt-3 flex flex-col gap-2">{s.tags.map((t, i) => (
                 <li key={i} className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand text-xs font-bold text-on-brand">{i + 1}</span>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand text-xs font-bold text-on-brand">{hotspotNumber(s, i)}</span>
                   <span className="min-w-32 flex-1 text-sm font-semibold">{nameOf(t.product)}{!availableIds.has(t.product) && <span className="ml-2 text-xs font-semibold text-warning">Unavailable now</span>}</span>
-                  <label className="text-xs">X % <input type="number" min={0} max={100} value={t.x} onChange={e => moveTag(i, { x: clamp(Number(e.target.value)) })} className="ml-1 h-9 w-16 rounded-lg border border-border px-2" aria-label={`Hotspot ${i + 1} horizontal position, percent`} /></label>
-                  <label className="text-xs">Y % <input type="number" min={0} max={100} value={t.y} onChange={e => moveTag(i, { y: clamp(Number(e.target.value)) })} className="ml-1 h-9 w-16 rounded-lg border border-border px-2" aria-label={`Hotspot ${i + 1} vertical position, percent`} /></label>
-                  <Button variant="tertiary" size="sm" aria-label={`Remove tag ${i + 1}`} onClick={() => set({ tags: s.tags.filter((_, j) => j !== i) })}>Remove</Button>
+                  <label className="text-xs">X % <input type="number" min={0} max={100} value={t.x} onChange={e => moveTag(i, { x: clamp(Number(e.target.value)) })} className="ml-1 h-9 w-16 rounded-lg border border-border px-2" aria-label={`Hotspot ${hotspotNumber(s, i)} horizontal position, percent`} /></label>
+                  <label className="text-xs">Y % <input type="number" min={0} max={100} value={t.y} onChange={e => moveTag(i, { y: clamp(Number(e.target.value)) })} className="ml-1 h-9 w-16 rounded-lg border border-border px-2" aria-label={`Hotspot ${hotspotNumber(s, i)} vertical position, percent`} /></label>
+                  <Button variant="tertiary" size="sm" aria-label={`Remove tag ${hotspotNumber(s, i)}`} onClick={() => set({ tags: s.tags.filter((_, j) => j !== i) })}>Remove</Button>
                 </li>
               ))}</ul>
             )}
           </Card>
           <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 border-t border-border bg-background/95 py-3 backdrop-blur">
-            {s.status === 'draft' ? <><Button variant="secondary" onClick={saveDraft}>Save draft</Button><Button onClick={publish}>Publish Scene</Button></> : <><Button onClick={publish} disabled={!dirty}>Save changes</Button><Button variant="tertiary" onClick={() => persist('draft', 'Returned to draft. Buyers no longer see this Scene.')}>Return to draft</Button></>}
+            {s.status === 'draft' && <><Button variant="secondary" onClick={saveDraft}>Save draft</Button><Button onClick={publish}>Publish Scene</Button></>}
+            {s.status === 'published' && <><Button onClick={publish} disabled={!dirty}>Save changes</Button><Button variant="tertiary" onClick={() => persist('draft', 'Returned to draft. Buyers no longer see this Scene.')}>Return to draft</Button><Button variant="tertiary" onClick={() => persist('archived', 'Archived. Buyers no longer see this Scene; return it to draft to publish it again.')}>Archive</Button></>}
+            {s.status === 'archived' && <Button variant="secondary" onClick={() => persist('draft', 'Returned to draft. Edit it, then publish again.')}>Return to draft</Button>}
             {s.id && s.status === 'draft' && <Button variant="tertiary" onClick={() => { dispatch({ type: 'remove', collection: 'scenes', id: s.id }); onBack('Draft deleted.') }}>Delete draft</Button>}
             <span role="status" className="text-xs text-text-muted">{dirty ? 'Unsaved changes' : s.id ? 'All changes saved' : ''}</span>
           </div>
@@ -140,17 +144,17 @@ function SceneEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: Mom
   )
 }
 
-function ScenePreview({ s, state, at, visibility, nameOf }: { s: WsScene; state: WorkspaceState; at: Moment; visibility: 'draft' | 'public' | 'private'; nameOf: (id: string) => string }) {
+function ScenePreview({ s, state, at, visibility, nameOf }: { s: WsScene; state: WorkspaceState; at: Moment; visibility: SceneVisibility; nameOf: (id: string) => string }) {
   const ok = new Set(linkableProducts(state, s.seller, at).map(p => p.id))
   return (
     <aside aria-label="Scene preview" className="h-fit rounded-2xl border border-border bg-surface p-4 lg:sticky lg:top-4">
-      <div className="mb-2 flex items-center justify-between"><span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Buyer preview · simulated</span><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${visibility === 'public' ? 'bg-success-bg' : visibility === 'private' ? 'bg-warning-bg' : 'bg-surface-raised text-text-muted'}`}>{VISIBILITY[visibility]}</span></div>
+      <div className="mb-2 flex items-center justify-between"><span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Buyer preview · simulated</span><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${BADGE[visibility]}`}>{VISIBILITY[visibility]}</span></div>
       <div className="relative overflow-hidden rounded-xl bg-surface-raised leading-[0]">
         {s.image ? <img src={s.image} alt={s.alt || 'Scene photo'} className="block w-full" /> : <div className="flex aspect-[4/5] items-center justify-center text-xs leading-normal text-text-muted">No photo yet</div>}
-        {s.image && s.tags.filter(t => ok.has(t.product)).map((t, i) => <span key={i} aria-hidden="true" className="absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-brand text-[10px] font-bold leading-none text-on-brand" style={{ left: `${t.x}%`, top: `${t.y}%` }}>{s.tags.indexOf(t) + 1}</span>)}
+        {s.image && s.tags.filter(t => ok.has(t.product)).map((t, i) => <span key={i} aria-hidden="true" className="absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-brand text-[10px] font-bold leading-none text-on-brand" style={{ left: `${t.x}%`, top: `${t.y}%` }}>{hotspotNumber(s, s.tags.indexOf(t))}</span>)}
       </div>
       <p className="mt-3 text-sm leading-relaxed">{s.caption || 'Your caption appears here.'}</p>
-      {s.tags.some(t => ok.has(t.product)) && <ul className="mt-2 text-xs text-text-secondary">{s.tags.filter(t => ok.has(t.product)).map(t => <li key={t.product}>{s.tags.indexOf(t) + 1} · {nameOf(t.product)}</li>)}</ul>}
+      {s.tags.some(t => ok.has(t.product)) && <ul className="mt-2 text-xs text-text-secondary">{s.tags.filter(t => ok.has(t.product)).map(t => <li key={t.product}>{hotspotNumber(s, s.tags.indexOf(t))} · {nameOf(t.product)}</li>)}</ul>}
       <p className="mt-3 text-[11px] text-text-muted">Products out of stock are not shown as tags. A Scene with no available tagged Product is Private.</p>
     </aside>
   )

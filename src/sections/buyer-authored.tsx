@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 import { buyerVisibleSellers, initials, type Moment, type SellerId, type SellerStory, type SellerStoryGroup } from '../demo-data'
 import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
-import { formatBirr, linkableProducts, productPrices, productStock, variantPrice, sceneVisibility, stockState, storyPhase, useWorkspace, type WsProduct, type WsScene, type WorkspaceState } from '../seller-workspace'
+import { formatBirr, hotspotNumber, linkableProducts, productPrices, productStock, variantPrice, sceneVisibility, stockState, storyPhase, useWorkspace, type WsProduct, type WsScene, type WorkspaceState } from '../seller-workspace'
 import { Button } from '../components/ui/Button'
 
 /**
@@ -13,15 +13,15 @@ export type AuthoredView = { kind: 'scene' | 'product'; id: string; fromScene?: 
 
 const isSeededProduct = (id: string) => id in PRODUCTS
 
-export interface AuthoredTag { id: string; name: string; available: boolean; seeded: boolean; x: number; y: number }
+export interface AuthoredTag { id: string; name: string; available: boolean; seeded: boolean; x: number; y: number; n: number }
 export interface AuthoredSceneView { id: string; seller: SellerId; caption: string; image: string | null; alt: string; tags: AuthoredTag[] }
 
 function sceneView(scene: WsScene, state: WorkspaceState, at: Moment): AuthoredSceneView {
   const live = new Set(linkableProducts(state, scene.seller, at).map(p => p.id))
   return {
     id: scene.id, seller: scene.seller, caption: scene.caption, image: scene.image, alt: scene.alt,
-    tags: scene.tags.map(tag => ({
-      id: tag.product, available: live.has(tag.product), seeded: isSeededProduct(tag.product), x: tag.x, y: tag.y,
+    tags: scene.tags.map((tag, i) => ({
+      n: hotspotNumber(scene, i), id: tag.product, available: live.has(tag.product), seeded: isSeededProduct(tag.product), x: tag.x, y: tag.y,
       name: state.products[tag.product]?.name || (isSeededProduct(tag.product) ? PRODUCTS[tag.product as keyof typeof PRODUCTS].name : 'Product'),
     })),
   }
@@ -148,10 +148,10 @@ export function AuthoredScreen({ view, state, at, onBack, onOpen, onSeededProduc
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="relative bg-surface-raised">
             {v.image && <img src={v.image} alt={v.alt} className="block w-full" />}
-            {v.tags.filter(t => t.available).map((t, i) => (
-              <button key={t.id + i} onClick={() => t.seeded ? onSeededProduct(t.id) : onOpen({ kind: 'product', id: t.id, fromScene: v.id })} aria-label={`Product ${i + 1}: ${t.name}`}
+            {v.tags.filter(t => t.available).map(t => (
+              <button key={t.n} onClick={() => t.seeded ? onSeededProduct(t.id) : onOpen({ kind: 'product', id: t.id, fromScene: v.id })} aria-label={`Product ${t.n}: ${t.name}`}
                 style={{ left: `${t.x}%`, top: `${t.y}%`, outlineColor: 'var(--color-text-inverse)' }}
-                className="absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-brand text-xs font-bold text-white shadow">{i + 1}</button>
+                className="absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-brand text-xs font-bold text-white shadow">{t.n}</button>
             ))}
           </div>
           <div className="p-4">
@@ -162,8 +162,8 @@ export function AuthoredScreen({ view, state, at, onBack, onOpen, onSeededProduc
               {v.tags.map((t, i) => (
                 <li key={t.id + i}>
                   {t.available
-                    ? <button onClick={() => t.seeded ? onSeededProduct(t.id) : onOpen({ kind: 'product', id: t.id, fromScene: v.id })} className="flex w-full items-center justify-between rounded-xl border border-border bg-surface p-3 text-left text-sm font-semibold text-text-primary"><span>{i + 1}. {t.name}</span><span aria-hidden="true">›</span></button>
-                    : <div className="flex items-center justify-between rounded-xl border border-border bg-surface-raised p-3 text-sm text-text-muted"><span>{i + 1}. {t.name}</span><span>Not available right now</span></div>}
+                    ? <button onClick={() => t.seeded ? onSeededProduct(t.id) : onOpen({ kind: 'product', id: t.id, fromScene: v.id })} className="flex w-full items-center justify-between rounded-xl border border-border bg-surface p-3 text-left text-sm font-semibold text-text-primary"><span>{t.n}. {t.name}</span><span aria-hidden="true">›</span></button>
+                    : <div className="flex items-center justify-between rounded-xl border border-border bg-surface-raised p-3 text-sm text-text-muted"><span>{t.n}. {t.name}</span><span>Not available right now</span></div>}
                 </li>
               ))}
             </ul>

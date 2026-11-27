@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react'
-import { PRODUCTS, SELLERS, sellerProductsAt, type Moment, type SellerId } from './demo-data'
+import { MARKET, PRODUCTS, SELLERS, buyerVisibleSellers, sellerProductsAt, type Moment, type SellerId } from './demo-data'
 import { setLiveOverlay, type ProductOverlay, type SellerOverlay } from './demo-data/live'
 import { findTaxonomy } from './demo-data/taxonomy'
 import type { Knowledge } from './sections/console/chatbot-engine'
@@ -18,9 +18,18 @@ export interface WsProduct {
   options: { name: string; values: string[] }[]; variants: WsVariant[]
   price: string; stock: string; photos: string[]; fulfilment: Fulfilment[]; locallyMade: boolean; updated: number
 }
-export interface WsHotspot { product: string; x: number; y: number }
-export interface WsScene { id: string; seller: SellerId; status: 'draft' | 'published'; caption: string; image: string | null; alt: string; tags: WsHotspot[]; updated: number }
-export interface WsStory { id: string; seller: SellerId; image: string | null; alt: string; text: string; link: { kind: 'product' | 'scene'; id: string } | null; status: 'draft' | 'published' | 'withdrawn'; publishedAt: number | null }
+/** `n` is the hotspot's number: assigned once and never reused, so removing or losing a tag never renumbers the others. */
+export interface WsHotspot { product: string; x: number; y: number; n?: number }
+export interface WsScene {
+  id: string; seller: SellerId; status: 'draft' | 'published' | 'archived'; caption: string; image: string | null; alt: string; tags: WsHotspot[]; updated: number
+  /** Next hotspot number to hand out. */
+  nextN?: number
+  /** Set by Operator moderation (simulated). Only the Operator lifts it; stock changes never do. */
+  restricted?: { reason: string } | null
+}
+/** The number shown on a hotspot. */
+export const hotspotNumber = (scene: Pick<WsScene, 'tags'>, index: number) => scene.tags[index].n ?? index + 1
+export interface WsStory { id: string; seller: SellerId; image: string | null; alt: string; text: string; link: { kind: 'product' | 'scene'; id: string } | null; status: 'draft' | 'published' | 'withdrawn' | 'expired'; publishedAt: number | null }
 export interface WsSetup {
   storeName: string; handle: string; about: string; contactPhone: string; ownerName: string
   coverage: string[]; collection: { on: boolean; place: string }; sellerDelivery: { on: boolean; fee: string }; courier: boolean; blank: boolean
@@ -36,6 +45,7 @@ export interface WorkspaceState {
 type Action =
   | { type: 'product'; item: WsProduct } | { type: 'scene'; item: WsScene } | { type: 'story'; item: WsStory }
   | { type: 'remove'; collection: 'products' | 'scenes' | 'stories'; id: string }
+  | { type: 'restrict'; scene: string; reason: string | null }
   | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'knowledge'; seller: SellerId; entries: Knowledge[] } | { type: 'clock'; hours: number } | { type: 'reset' }
 
 const KEY = 'adulis.seller-workspace.v1'
@@ -49,9 +59,26 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
     case 'remove': { const next = { ...state[action.collection] }; delete next[action.id]; return { ...state, [action.collection]: next } }
     case 'setup': return { ...state, setup: { ...state.setup, [action.seller]: action.setup } }
     case 'knowledge': return { ...state, knowledge: { ...state.knowledge, [action.seller]: action.entries } }
-    case 'clock': return { ...state, clockHours: Math.max(0, state.clockHours + action.hours) }
+    case 'restrict': { const scene = state.scenes[action.scene]; return scene ? { ...state, scenes: { ...state.scenes, [scene.id]: { ...scene, restricted: action.reason ? { reason: action.reason } : null } } } : state }
+    case 'clock': return moveClock(state, action.hours)
     case 'reset': return EMPTY
   }
+}
+
+/**
+ * Moves the prototype clock. A Story that has run its 24 hours becomes `expired` for good, and a rewind keeps every live Story's
+ * remaining time (publishedAt moves with the clock), so neither a restock nor a clock reset can bring a finished Story back.
+ */
+function moveClock(state: WorkspaceState, delta: number): WorkspaceState {
+  const clockHours = Math.max(0, state.clockHours + delta)
+  const applied = clockHours - state.clockHours
+  const reach = Math.max(clockHours, state.clockHours)
+  const stories = Object.fromEntries(Object.entries(state.stories).map(([id, s]) => {
+    if (s.status !== 'published') return [id, s]
+    if (STORY_LIFETIME_HOURS - (reach - (s.publishedAt ?? 0)) <= 0) return [id, { ...s, status: 'expired' as const }]
+    return [id, applied < 0 ? { ...s, publishedAt: (s.publishedAt ?? 0) + applied } : s]
+  }))
+  return { ...state, clockHours, stories }
 }
 
 const load = (): WorkspaceState => { try { return { ...EMPTY, ...JSON.parse(sessionStorage.getItem(KEY) ?? 'null') } } catch { return EMPTY } }
@@ -184,10 +211,36 @@ export function linkableProducts(state: WorkspaceState, seller: SellerId, at: Mo
 }
 export const productAvailableNow = (state: WorkspaceState, id: string, seller: SellerId, at: Moment) => linkableProducts(state, seller, at).some(p => p.id === id)
 
-/** A Scene's effective Buyer visibility (rules 1.7, 1.9): Private while every tagged Product is unavailable; public again on its own. */
-export function sceneVisibility(scene: WsScene, state: WorkspaceState, at: Moment): 'draft' | 'public' | 'private' {
+export type SceneVisibility = 'draft' | 'public' | 'private' | 'archived' | 'restricted'
+export type SceneGate = 'product' | 'seller' | 'market' | 'media'
+/** Every public-visibility gate a published Scene fails now, each with the reason shown to the Seller. Empty means every gate passes. */
+export function sceneGateFailures(scene: WsScene, state: WorkspaceState, at: Moment): { gate: SceneGate; reason: string }[] {
+  const out: { gate: SceneGate; reason: string }[] = []
+  if (!scene.tags.some(tag => productAvailableNow(state, tag.product, scene.seller, at))) out.push({ gate: 'product', reason: 'Every tagged Product is out of stock or unpublished.' })
+  if (!buyerVisibleSellers().includes(scene.seller)) out.push({ gate: 'seller', reason: 'This Seller’s store is not visible to Buyers.' })
+  const setup = state.setup[scene.seller]
+  if (setup && !setup.blank && setup.coverage.length === 0) out.push({ gate: 'market', reason: `The store serves no area in ${MARKET.country}. Choose a service area in Store setup.` })
+  if (!scene.image || scene.alt.trim().length < 3) out.push({ gate: 'media', reason: 'The photo or its description is missing.' })
+  return out
+}
+/**
+ * A Scene's effective Buyer visibility (rules 1.7, 1.9). Draft, Archived and Restricted come from the Seller's or the Operator's
+ * decision; Private is every other gate failing (tagged Products, Seller, Market, media). Public returns on its own, but never past
+ * Archived or Restricted: a restock does not lift a moderation restriction.
+ */
+export function sceneVisibility(scene: WsScene, state: WorkspaceState, at: Moment): SceneVisibility {
   if (scene.status === 'draft') return 'draft'
-  return scene.tags.some(tag => productAvailableNow(state, tag.product, scene.seller, at)) ? 'public' : 'private'
+  if (scene.status === 'archived') return 'archived'
+  if (scene.restricted) return 'restricted'
+  return sceneGateFailures(scene, state, at).length ? 'private' : 'public'
+}
+/** Why a Scene is not public, in words for the Seller; empty when it is public or only a draft. */
+export function sceneReasons(scene: WsScene, state: WorkspaceState, at: Moment): string[] {
+  const vis = sceneVisibility(scene, state, at)
+  if (vis === 'archived') return ['You archived this Scene. Return it to draft to edit and publish it again.']
+  if (vis === 'restricted') return [`Restricted by Adulis moderation: ${scene.restricted!.reason}. Restocking does not lift this.`]
+  if (vis === 'private') return sceneGateFailures(scene, state, at).map(f => f.reason)
+  return []
 }
 export function sceneIssues(scene: WsScene, state: WorkspaceState, at: Moment): Issue[] {
   const issues: Issue[] = []
@@ -204,6 +257,7 @@ export type StoryPhase = 'draft' | 'live' | 'expired' | 'withdrawn' | 'hidden'
 export function storyPhase(story: WsStory, state: WorkspaceState, at: Moment): { phase: StoryPhase; hoursLeft: number } {
   if (story.status === 'draft') return { phase: 'draft', hoursLeft: STORY_LIFETIME_HOURS }
   if (story.status === 'withdrawn') return { phase: 'withdrawn', hoursLeft: 0 }
+  if (story.status === 'expired') return { phase: 'expired', hoursLeft: 0 }
   const left = STORY_LIFETIME_HOURS - (state.clockHours - (story.publishedAt ?? 0))
   if (left <= 0) return { phase: 'expired', hoursLeft: 0 }
   const link = story.link

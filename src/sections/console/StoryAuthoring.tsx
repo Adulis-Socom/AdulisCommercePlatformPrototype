@@ -16,18 +16,18 @@ const left = (h: number) => (h >= 1 ? `${Math.floor(h)} h left` : 'under 1 h lef
 
 export default function StoryAuthoring({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const { state, dispatch } = useWorkspace()
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState<{ id: string | null } | null>(null)
   const [notice, setNotice] = useState('')
   const stories = Object.values(state.stories).filter(s => s.seller === sellerId).sort((a, b) => Number(b.id.slice(-3)) - Number(a.id.slice(-3)))
-  if (editing) return <StoryEditor sellerId={sellerId} at={at} onBack={m => { setEditing(false); if (m) setNotice(m) }} />
+  if (editing) return <StoryEditor key={editing.id ?? 'new'} sellerId={sellerId} at={at} id={editing.id} onBack={m => { setEditing(null); if (m) setNotice(m) }} />
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><p className="max-w-2xl text-sm text-text-muted">A Story is one photo with optional short text and one link to your own Product or Scene. It stays live for {STORY_LIFETIME_HOURS} hours. Buyers cannot reply, react or comment.</p><Button onClick={() => { setNotice(''); setEditing(true) }}>Create Story</Button></div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><p className="max-w-2xl text-sm text-text-muted">A Story is one photo with optional short text and one link to your own Product or Scene. It stays live for {STORY_LIFETIME_HOURS} hours. Buyers cannot reply, react or comment.</p><Button onClick={() => { setNotice(''); setEditing({ id: null }) }}>Create Story</Button></div>
       <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-3 text-xs" role="group" aria-label="Prototype clock">
         <span className="font-semibold">Prototype clock: hour {state.clockHours}</span><span className="text-text-muted">Simulated time for demonstration, so expiry can be seen without waiting.</span>
         <span className="flex-1" />
         {[1, 12, 24].map(h => <Button key={h} size="sm" variant="secondary" onClick={() => dispatch({ type: 'clock', hours: h })}>+{h} h</Button>)}
-        <Button size="sm" variant="tertiary" onClick={() => dispatch({ type: 'clock', hours: -state.clockHours })} disabled={state.clockHours === 0}>Reset</Button>
+        <Button size="sm" variant="tertiary" onClick={() => dispatch({ type: 'clock', hours: -state.clockHours })} disabled={state.clockHours === 0} title="Rewinds the clock. Stories that already expired stay expired; live ones keep their remaining time.">Reset clock</Button>
       </div>
       {notice && <div className="mb-4"><Notice tone="success" role="status">{notice}</Notice></div>}
       {stories.length === 0
@@ -41,7 +41,7 @@ export default function StoryAuthoring({ sellerId, at }: { sellerId: SellerId; a
               <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{story.text || 'Photo only'}</div><div className="font-mono text-[10px] text-text-muted">{story.id}{target ? ` · links to ${target}` : ''}{phase === 'live' || phase === 'hidden' ? ` · ${left(hoursLeft)}` : ''}</div>{phase === 'hidden' && <div className="text-xs text-warning">Hidden from Buyers: the linked {story.link?.kind} is not available right now.</div>}</div>
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${PHASE[phase].cls}`}>{PHASE[phase].label}</span>
               {(phase === 'live' || phase === 'hidden') && <Button size="sm" variant="tertiary" onClick={() => dispatch({ type: 'story', item: { ...story, status: 'withdrawn' } })}>Withdraw</Button>}
-              {phase === 'draft' && <Button size="sm" variant="tertiary" onClick={() => dispatch({ type: 'remove', collection: 'stories', id: story.id })}>Delete</Button>}
+              {phase === 'draft' && <><Button size="sm" variant="secondary" aria-label={`Edit draft ${story.id}`} onClick={() => { setNotice(''); setEditing({ id: story.id }) }}>Edit</Button><Button size="sm" variant="tertiary" aria-label={`Delete draft ${story.id}`} onClick={() => dispatch({ type: 'remove', collection: 'stories', id: story.id })}>Delete</Button></>}
             </li>
           )
         })}</ul>}
@@ -49,10 +49,12 @@ export default function StoryAuthoring({ sellerId, at }: { sellerId: SellerId; a
   )
 }
 
-function StoryEditor({ sellerId, at, onBack }: { sellerId: SellerId; at: Moment; onBack: (message?: string) => void }) {
+function StoryEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: Moment; id: string | null; onBack: (message?: string) => void }) {
   const { state, dispatch, next } = useWorkspace()
-  const [image, setImage] = useState<string | null>(null); const [alt, setAlt] = useState(''); const [text, setText] = useState('')
-  const [kind, setKind] = useState<'none' | 'product' | 'scene'>('none'); const [target, setTarget] = useState('')
+  // Only a draft reopens for editing; a published, expired or withdrawn Story is never editable.
+  const draft = id && state.stories[id]?.status === 'draft' ? state.stories[id] : null
+  const [image, setImage] = useState<string | null>(draft?.image ?? null); const [alt, setAlt] = useState(draft?.alt ?? ''); const [text, setText] = useState(draft?.text ?? '')
+  const [kind, setKind] = useState<'none' | 'product' | 'scene'>(draft?.link?.kind ?? 'none'); const [target, setTarget] = useState(draft?.link?.id ?? '')
   const [attempted, setAttempted] = useState(false); const [fileError, setFileError] = useState('')
   const summary = useRef<HTMLDivElement>(null)
   const products = linkableProducts(state, sellerId, at)
@@ -74,10 +76,11 @@ function StoryEditor({ sellerId, at, onBack }: { sellerId: SellerId; at: Moment;
     if (!image) list.push('Choose one photo.')
     if (image && alt.trim().length < 3) list.push('Describe the photo for people who cannot see it.')
     if (kind !== 'none' && !target) list.push(`Choose the ${kind} to link, or choose “No link”.`)
+    else if (kind !== 'none' && !(kind === 'product' ? products : scenes).some(x => x.id === target)) list.push(`The ${kind} you linked is not available right now. Choose another or “No link”.`)
     return list
   }
   const errors = attempted ? problems() : []
-  const build = (status: WsStory['status']): WsStory => ({ id: next('story'), seller: sellerId, image, alt, text: text.trim(), link: kind === 'none' || !target ? null : { kind, id: target }, status, publishedAt: status === 'published' ? state.clockHours : null })
+  const build = (status: WsStory['status']): WsStory => ({ id: draft?.id ?? next('story'), seller: sellerId, image, alt, text: text.trim(), link: kind === 'none' || !target ? null : { kind, id: target }, status, publishedAt: status === 'published' ? state.clockHours : null })
   const publish = () => {
     if (problems().length) { setAttempted(true); requestAnimationFrame(() => summary.current?.focus()); return }
     dispatch({ type: 'story', item: build('published') }); onBack(`Story published (simulated). It stays live for ${STORY_LIFETIME_HOURS} prototype hours.`)
@@ -89,7 +92,7 @@ function StoryEditor({ sellerId, at, onBack }: { sellerId: SellerId; at: Moment;
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between"><h2 className="font-display text-2xl font-semibold">Create Story</h2><Button variant="tertiary" onClick={() => onBack()}>← Back to Stories</Button></div>
+      <div className="mb-4 flex items-center justify-between"><h2 className="font-display text-2xl font-semibold">{draft ? 'Edit draft Story' : 'Create Story'}{draft && <span className="ml-2 font-mono text-xs font-normal text-text-muted">{draft.id}</span>}</h2><Button variant="tertiary" onClick={() => onBack()}>← Back to Stories</Button></div>
       {notReady && <div className="mb-4"><Notice tone="warning" role="status" title="Store setup is incomplete">Stories can be published once your Store setup is ready. You can still save a draft.</Notice></div>}
       {errors.length > 0 && <div ref={summary} tabIndex={-1} role="alert" className="mb-4 rounded-xl border border-danger bg-danger-bg p-4 text-sm outline-none"><ul className="list-disc pl-5">{errors.map(e => <li key={e}>{e}</li>)}</ul></div>}
       <div className="grid grid-cols-[1.2fr_.8fr] gap-5 max-lg:grid-cols-1">
@@ -108,7 +111,7 @@ function StoryEditor({ sellerId, at, onBack }: { sellerId: SellerId; at: Moment;
             </div>
             {kind === 'scene' && !scenes.length && <p className="mt-2 text-xs text-text-muted">Only published, public Scenes can be linked. A Private Scene cannot be exposed through a Story.</p>}
           </Card>
-          <div className="sticky bottom-0 z-10 flex gap-2 border-t border-border bg-background/95 py-3 backdrop-blur"><Button variant="secondary" onClick={saveDraft}>Save draft</Button><Button onClick={publish}>Publish Story</Button></div>
+          <div className="sticky bottom-0 z-10 flex gap-2 border-t border-border bg-background/95 py-3 backdrop-blur"><Button variant="secondary" onClick={saveDraft}>Save draft</Button><Button onClick={publish}>Publish Story</Button>{draft && <Button variant="tertiary" onClick={() => { dispatch({ type: 'remove', collection: 'stories', id: draft.id }); onBack('Draft deleted.') }}>Delete draft</Button>}</div>
         </div>
         <aside aria-label="Story preview" className="h-fit lg:sticky lg:top-4">
           <div className="mx-auto w-64 overflow-hidden rounded-3xl border border-border bg-ink">
