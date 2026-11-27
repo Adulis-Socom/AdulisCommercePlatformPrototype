@@ -15,6 +15,7 @@ import { stageFor } from './demo-data'
 import { StoryProvider } from './StoryClock'
 import { ThemeLab } from './theme/ThemeLab'
 import { PrototypeModeProvider, SimulationBadge } from './prototype-mode'
+import { SellerWorkspaceProvider } from './seller-workspace'
 
 export type SectionKey =
   | '00-guide'
@@ -149,6 +150,7 @@ export default function App() {
 
   return (
     <PrototypeModeProvider value={{ simulation, setSimulation }}>
+    <SellerWorkspaceProvider>
     <div className={`app-shell flex h-screen overflow-hidden${journey ? ' flow-active' : ''}`} style={{ background: 'var(--color-background)', fontFamily: 'var(--font-body)' }}>
       {/* Sidebar */}
       <aside
@@ -266,6 +268,7 @@ export default function App() {
         </div>
       )}
     </div>
+    </SellerWorkspaceProvider>
     </PrototypeModeProvider>
   )
 }

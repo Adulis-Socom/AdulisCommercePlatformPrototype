@@ -5,7 +5,7 @@ import { StatusBadge } from '../components/ui/Badge'
 import { Skeleton } from '../components/ui/Overlay'
 import { SearchInput, Textarea, TextInput } from '../components/ui/Input'
 import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
-import { ProductMediaEditor } from './ProductMediaEditor'
+import ProductAuthoring from './console/ProductAuthoring'
 import {
   ConsoleTopBar, SidebarItem, SidebarSeparator, useDrawer,
   IconGrid, IconOrders, IconPackage, IconImage, IconInbox,
@@ -198,7 +198,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
         <div key={sellerId} className="seller-console-content flex-1 overflow-y-auto">
           {activeNav === 'home' && <HomePanel sellerId={sellerId} at={at} onOpenOrder={id => { setActiveNav('orders'); setSelectedOrder(id) }} onOpenOrders={() => navigate('orders')} onOpenContent={() => navigate('content')} onNavigate={navigate} />}
           {activeNav === 'orders' && (!simulation ? <SimulationGate title="Orders">Release 1 has no paid Orders: Buyers review a checkout preview and no Order is placed, so there is nothing to prepare, confirm or fulfil here.</SimulationGate> : selectedOrder ? <OrderDetail orderId={selectedOrder} at={at} courierChanges={courierChanges} onBack={() => setSelectedOrder(null)} /> : <OrdersPanel sellerId={sellerId} at={at} onOpenOrder={setSelectedOrder} />)}
-          {activeNav === 'products' && <ProductsPanel sellerId={sellerId} at={at} />}
+          {activeNav === 'products' && <ProductAuthoring sellerId={sellerId} at={at} />}
           {activeNav === 'content' && <ContentPanel sellerId={sellerId} at={at} />}
           {activeNav === 'inbox' && <InboxPanel sellerId={sellerId} at={at} />}
           {activeNav === 'claims' && (simulation ? <ClaimsPanel sellerId={sellerId} at={at} /> : <SimulationGate title="Claims">Payment and refund Claims are deferred. Release 1 has no paid Orders to raise a Claim against.</SimulationGate>)}
@@ -534,106 +534,6 @@ function availabilityLabel(id: ProductId) {
 function discountLabel(id: ProductId) {
   const discount = activeDiscount(id)
   return discount && `${discount.percent}% · ${formatEtb(discount.price)} ${discount.ends ? `until ${formatDate(discount.ends)}` : '· no end date'}`
-}
-
-function ProductsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
-  const [screen, setScreen] = useState<ProductScreen>('list')
-  const [selectedId, setSelectedId] = useState<ProductId | null>(sellerProductsAt(sellerId, at)[0] ?? null)
-  const openProduct = (id: ProductId) => { setSelectedId(id); setScreen('detail') }
-  if (screen === 'detail' && selectedId) return <ProductDetailPanel sellerId={sellerId} at={at} productId={selectedId} onBack={() => setScreen('list')} onEdit={() => setScreen('editor')} />
-  if (screen === 'editor') return <ProductEditor sellerId={sellerId} at={at} productId={selectedId} onBack={() => setScreen(selectedId ? 'detail' : 'list')} />
-  return <ProductsList sellerId={sellerId} at={at} onOpen={openProduct} onCreate={() => { setSelectedId(null); setScreen('editor') }} />
-}
-
-function ProductsList({ sellerId, at, onOpen, onCreate }: { sellerId: SellerId; at: Moment; onOpen: (id: ProductId) => void; onCreate: () => void }) {
-  const [query, setQuery] = useState('')
-  const [status, setStatus] = useState('all')
-  // The Seller's Products at the story moment; every DEMO_DATA Product is published. The Performance summary is
-  // DEMO_DATA's 7-day figures (specification §31); no figure is computed here.
-  const rows = sellerProductsAt(sellerId, at).filter(id => (status === 'all' || status === 'published') && PRODUCTS[id].name.toLowerCase().includes(query.toLowerCase()))
-  return (
-    <div className="mx-auto max-w-7xl p-8">
-      <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">Products</h1><p className="mt-1 text-sm text-text-muted">Manage canonical Products and their single-Product commerce posts.</p></div><Button onClick={onCreate}>Create Product</Button></div>
-      <div className="mb-5 flex items-center gap-3"><div className="w-80"><SearchInput value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} placeholder="Search Products" /></div><Segmented options={[['all', 'All'], ['published', 'Published'], ['draft', 'Drafts']]} active={status} onChange={setStatus} small /></div>
-      <div className="rtable rtable-scroll overflow-hidden rounded-2xl border border-border bg-surface" style={{ '--rtable-min': '780px' } as CSSProperties}>
-        <div className="rtable-head grid grid-cols-[72px_1.5fr_1fr_120px_130px_100px_90px_20px] gap-4 bg-surface-raised px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted"><span>Media</span><span>Product</span><span>Performance</span><span>Price</span><span>Inventory</span><span>Variants</span><span>Status</span><span /></div>
-        {rows.map((id, index) => {
-          const performance = PRODUCT_PERFORMANCE_7D[id]
-          const discount = activeDiscount(id)
-          return <button key={id} onClick={() => onOpen(id)} className="rtable-row grid w-full grid-cols-[72px_1.5fr_1fr_120px_130px_100px_90px_20px] items-center gap-4 border-t border-border px-5 py-4 text-left hover:bg-surface-raised"><ProductThumb index={index} className="rtable-media" /><span className="rtable-primary"><span className="block text-sm font-semibold">{PRODUCTS[id].name}</span><span className="font-mono text-[10px] text-text-muted">{id}</span></span>{performance ? <span data-label="Performance"><span className="block text-xs font-semibold">{formatEtb(performance.gmv)}</span><span className="text-[10px] text-text-muted"><span className="whitespace-nowrap">{performance.views.toLocaleString('en-US')} views</span> · <span className="whitespace-nowrap">{performance.unitsSold} sold</span></span></span> : <span data-label="Performance" className="text-xs text-text-secondary">—</span>}<span data-label="Price"><span className="block text-sm font-semibold">{formatEtb(currentPrice(id))}</span>{discount && <span className="text-[10px] text-text-muted"><s>{formatEtb(PRODUCTS[id].price)}</s> · {discount.percent}% off</span>}</span><span data-label="Inventory"><span className={PRODUCTS[id].availability !== 'Available' ? 'block text-xs font-semibold text-warning' : 'block text-xs text-text-secondary'}>{PRODUCTS[id].stock} available</span><span className="text-[10px] text-text-muted">{availabilityLabel(id)}</span></span><span data-label="Variants" className="text-xs text-text-secondary">{variantCount(id)}</span><span className="rtable-cell" data-label="Status"><StatusBadge status="published" size="sm" /></span><span className="rtable-end">›</span></button>
-        })}
-        {rows.length === 0 && <div className="border-t border-border px-5 py-8 text-center text-sm text-text-muted">No Products in this view</div>}
-      </div>
-      {/* The 7-day window ends at the default snapshot, 10:25 on the story day. */}
-      <p className="mt-3 text-[10px] text-text-muted">Performance covers product views, units sold and GMV over the 7 days to {formatDayMonth(DEFAULT_SNAPSHOT.at)} {formatClock(DEFAULT_SNAPSHOT.at)}. GMV counts each unit at the price paid; a current discount applies only to new Orders.</p>
-      <div className="mt-4 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Each Product Post represents exactly one Product. Product Posts are commerce detail surfaces and are never For You feed units.</div>
-    </div>
-  )
-}
-
-function ProductDetailPanel({ sellerId, at, productId, onBack, onEdit }: { sellerId: SellerId; at: Moment; productId: ProductId; onBack: () => void; onEdit: () => void }) {
-  // DEMO_DATA gives Products unlabelled attributes, no category, no inventory policy and no demo embed.
-  const product = PRODUCTS[productId]
-  const quality = productQualityAt(productId, at)
-  const discount = discountLabel(productId)
-  return (
-    <div className="mx-auto max-w-6xl p-8">
-      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back to Products</button>
-      <div className="mb-6 flex items-start justify-between"><div><div className="flex items-center gap-3"><h1 className="font-display text-3xl font-semibold">{product.name}</h1><StatusBadge status="published" /></div><p className="mt-1 font-mono text-xs text-text-muted">{productId} · Product Post</p></div><div className="flex gap-2"><Button variant="tertiary">Preview</Button><Button onClick={onEdit}>Edit Product</Button></div></div>
-      <div className="grid grid-cols-[1.2fr_1fr] gap-5">
-        <div className="flex flex-col gap-5">
-          <DetailCard title="Media"><div className="grid grid-cols-3 gap-3"><ProductMedia large /><ProductMedia /><ProductMedia muted /></div></DetailCard>
-          <DetailCard title="Product information"><div className="grid grid-cols-2 gap-5"><Field label="Name" value={product.name} /><Field label="Category" value="—" /><Field label="Description" value={product.description ?? '—'} /><Field label="Fulfilment" value={fulfilmentOptionsAt(sellerId, at).map(option => option.mode).join(' · ') || '—'} /><Field label="Product Quality" value={quality ? `${quality.average} (${quality.ratings} rating${quality.ratings === 1 ? '' : 's'})` : quality === null ? 'No ratings yet' : '—'} /><Field label="Locally made" value={product.locallyMade ? 'Yes' : 'No'} /></div></DetailCard>
-          <DetailCard title="Structured attributes"><div className="grid grid-cols-3 gap-4">{(product.attributes.length ? product.attributes : ['—']).map(attribute => <Field key={attribute} label="—" value={attribute} />)}</div></DetailCard>
-        </div>
-        <div className="flex flex-col gap-5">
-          <DetailCard title="Price and inventory"><InfoGrid rows={[[discount ? 'Regular price' : 'Price', formatEtb(product.price)], ...(discount ? [['Active discount', discount] as [string, string]] : []), ['Inventory', `${product.stock} available`], ['Inventory policy', '—'], ['Availability', availabilityLabel(productId)]]} /></DetailCard>
-          <DetailCard title="Variants"><VariantTable productId={productId} /></DetailCard>
-          <DetailCard title="Product demo embed"><InfoGrid rows={[['Configuration', '—'], ['Provider', '—'], ['Placement', '—']]} /></DetailCard>
-          <DetailCard title="Concept boundary"><p className="text-sm leading-relaxed text-text-secondary">This Product Post contains exactly one canonical Product and its commerce information. It is not a Scene Post and cannot be used as a top-level For You unit.</p></DetailCard>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ProductEditor({ sellerId, at, productId, onBack }: { sellerId: SellerId; at: Moment; productId: ProductId | null; onBack: () => void }) {
-  // An existing Product opens with its DEMO_DATA values; DEMO_DATA has no category, labelled attributes or demo media.
-  const existing = productId ? PRODUCTS[productId] : undefined
-  const [name, setName] = useState(existing?.name ?? '')
-  const [category, setCategory] = useState('')
-  const [description, setDescription] = useState(existing?.description ?? '')
-  const [price, setPrice] = useState(existing ? String(existing.price / 100) : '')
-  const [inventory, setInventory] = useState(existing ? String(existing.stock) : '')
-  const [demoEmbed, setDemoEmbed] = useState(false)
-  const [preview, setPreview] = useState(false)
-  const [published, setPublished] = useState(false)
-  const [cover, setCover] = useState<string | null>(null)
-  const offered = fulfilmentOptionsAt(sellerId, at).map(option => option.mode)
-  return (
-    <div className="mx-auto max-w-7xl p-8">
-      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back</button>
-      <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">{existing ? 'Edit Product' : 'Create Product'}</h1><p className="mt-1 text-sm text-text-muted">One Product Editor creates one Product Post.</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setPreview(!preview)}>{preview ? 'Close Preview' : 'Preview'}</Button><Button disabled={!name || !price} onClick={() => setPublished(true)}>Publish Product</Button></div></div>
-      {published && <SuccessBanner title="Product published" detail={`${name} now has one published Product Post.`} />}
-      <div className={`grid gap-5 ${preview ? 'grid-cols-[1.3fr_.7fr]' : 'grid-cols-1'}`}>
-        <div className="flex flex-col gap-5">
-          <EditorSection step="01" title="Media">
-            <ProductMediaEditor key={`${sellerId}:${productId ?? 'new'}`} placeholders={existing ? 3 : 1} onCover={setCover} />
-          </EditorSection>
-          <EditorSection step="02" title="Core information"><div className="grid grid-cols-2 gap-4"><TextInput label="Product name" value={name} onChange={event => setName(event.target.value)} placeholder="Product name" /><TextInput label="Category" value={category} onChange={event => setCategory(event.target.value)} placeholder="Category" /><div className="col-span-2"><Textarea label="Description" value={description} onChange={event => setDescription(event.target.value)} rows={4} placeholder="Describe this Product" /></div></div></EditorSection>
-          <EditorSection step="03" title="Structured attributes"><div className="grid grid-cols-3 gap-4"><TextInput label="Material" defaultValue="" /><TextInput label="Made in" defaultValue="" /><TextInput label="Care" defaultValue="" /></div></EditorSection>
-          <EditorSection step="04" title="Variants"><VariantEditor productId={productId} /></EditorSection>
-          <EditorSection step="05" title="Price and inventory"><div className="grid grid-cols-3 gap-4"><TextInput label="Price (ETB)" value={price} onChange={event => setPrice(event.target.value)} placeholder="0" /><TextInput label="Available inventory" value={inventory} onChange={event => setInventory(event.target.value)} placeholder="0" /><TextInput label="Inventory policy" defaultValue="" /></div></EditorSection>
-          <EditorSection step="06" title="Fulfilment"><div className="flex gap-3"><CheckOption label="Buyer Collection" checked={offered.includes('Buyer Collection')} /><CheckOption label="Seller Delivery" checked={offered.includes('Seller Delivery')} /><CheckOption label="Courier Delivery" checked={offered.includes('Courier Delivery')} /></div></EditorSection>
-          <EditorSection step="07" title="Product demo embed">
-            <div className="flex items-start justify-between"><div><div className="text-sm font-semibold">Demo media</div><div className="text-xs text-text-muted">Optional embed shown in this Product Post gallery.</div></div><Toggle label="Demo media" checked={demoEmbed} onChange={() => setDemoEmbed(!demoEmbed)} /></div>
-            {demoEmbed && <div className="mt-4"><TextInput label="Demo URL" defaultValue="" hint="Supported provider embeds are rendered in the Product Post." /></div>}
-          </EditorSection>
-        </div>
-        {preview && <ProductPreview image={cover} name={name || 'Untitled Product'} category={category || 'Category'} price={price ? `ETB ${price}` : 'Price not set'} description={description} />}
-      </div>
-    </div>
-  )
 }
 
 /** A Scene Post's publication at the story moment: Draft, Published, or Restricted after a moderation action. */

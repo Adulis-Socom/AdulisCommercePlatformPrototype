@@ -20,7 +20,7 @@ const TOKEN_KEY = 'adulis.bg-adapter-token'
 
 type Meta = { model: string; inferenceMs: number; loadMs: number; peakMb: number; provider: string; size: string }
 type Photo = { url: string; blob: Blob }
-type Draft = { id: number; name: string; original?: Photo; edited?: Photo & { meta: Meta }; showing: 'original' | 'edited' }
+type Draft = { id: number; name: string; saved?: string; original?: Photo; edited?: Photo & { meta: Meta }; showing: 'original' | 'edited' }
 type Session =
   | { status: 'idle'; note?: string }
   | { status: 'processing' }
@@ -39,7 +39,7 @@ const readToken = () => { try { return sessionStorage.getItem(TOKEN_KEY) ?? '' }
 const storeToken = (value: string) => { try { sessionStorage.setItem(TOKEN_KEY, value) } catch { /* the token is just not remembered */ } }
 const shown = (draft: Draft) => (draft.showing === 'edited' && draft.edited ? draft.edited : draft.original)
 
-export function ProductMediaEditor({ placeholders, onCover }: { placeholders: number; onCover: (url: string | null) => void }) {
+export function ProductMediaEditor({ placeholders, onCover, saved, onPhotos }: { placeholders: number; onCover: (url: string | null) => void; saved?: string[]; onPhotos?: (photos: { blob: Blob; src?: string }[]) => void }) {
   const nextId = useRef(placeholders)
   const [drafts, setDrafts] = useState<Draft[]>(() => Array.from({ length: placeholders }, (_, id) => ({ id, name: `Demo placeholder ${id + 1}`, showing: 'original' as const })))
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -76,6 +76,24 @@ export function ProductMediaEditor({ placeholders, onCover }: { placeholders: nu
 
   const cover = drafts.map(shown).find(Boolean)?.url ?? null
   useEffect(() => { onCover(cover) }, [cover, onCover])
+
+  // SC-002: photos saved in the Seller workspace (thumbnails) come back as drafts once; the shown photos are reported upward,
+  // with the saved source for an untouched one so it is not re-encoded. Nothing is reported until the saved photos have loaded.
+  const [savedReady, setSavedReady] = useState(!saved?.length)
+  useEffect(() => {
+    if (!saved?.length) return
+    let live = true
+    Promise.all(saved.map(async src => ({ src, blob: await (await fetch(src)).blob() }))).then(items => {
+      if (!live) return
+      setDrafts(list => [...list, ...items.map(({ src, blob }, index) => ({ id: nextId.current++, name: `Saved photo ${index + 1}`, saved: src, original: track(blob), showing: 'original' as const }))].slice(0, MAX_ITEMS))
+      setSavedReady(true)
+    }).catch(() => setSavedReady(true))
+    return () => { live = false }
+  }, [])
+  useEffect(() => {
+    if (!savedReady || !onPhotos) return
+    onPhotos(drafts.flatMap(draft => { const photo = shown(draft); return photo ? [{ blob: photo.blob, src: photo === draft.original ? draft.saved : undefined }] : [] }))
+  }, [drafts, savedReady])
 
   const editing = drafts.find(draft => draft.id === editingId && draft.original)
 
