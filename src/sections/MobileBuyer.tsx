@@ -8,6 +8,7 @@ import {
   IconSearch, IconChevronDown, IconChevronRight,
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
+import { AuthoredSceneCard, AuthoredScreen, AuthoredSearchResults, useAuthoredBuyer, type AuthoredView } from './buyer-authored'
 import {
   BUYERS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DELETION_CONSEQUENCES, DELETION_REASONS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
   MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
@@ -37,7 +38,7 @@ type Screen =
   | 'orders' | 'order-detail' | 'delegated-recipient' | 'qr-scanner' | 'qr-camera'
   | 'qr-verifying' | 'qr-failed' | 'delivery-confirmed' | 'otp' | 'completed' | 'review'
   | 'claim-start' | 'claim-form' | 'claim-status' | 'chats' | 'conversation'
-  | 'chatbot' | 'notifications' | 'you' | 'sign-in-phone' | 'sign-in-code' | 'cart-check'
+  | 'chatbot' | 'notifications' | 'you' | 'sign-in-phone' | 'sign-in-code' | 'cart-check' | 'authored'
   | AccountScreen
 /** The You tab's account screens (refinement PR-006), each reached from its account menu. */
 type AccountScreen = 'purchased-products' | 'edit-profile' | 'appearance' | 'notification-settings' | 'privacy-security' | 'help-support' | 'delete-account'
@@ -319,6 +320,11 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const focus = story.focus
   // The step's story moment; it moves on as the Buyer performs the step's documented events (payment, scan, review).
   const [at, advanceTo] = useStoryMoment()
+  // MB-001/003: Scenes, Products and Stories a Seller authored in the Seller Console, read live from the shared workspace.
+  const authoredContent = useAuthoredBuyer(at)
+  const [authored, setAuthored] = useState<AuthoredView | null>(null)
+  const [authoredFrom, setAuthoredFrom] = useState<Screen>('feed')
+  const openAuthored = (view: AuthoredView) => { setStorySeller(null); setDiscoverySheet(null); setAuthored(view); if (screen !== 'authored') setAuthoredFrom(screen); setScreen('authored') }
   const [postId, setPostId] = useState<ShoppablePostId>(focus?.post ?? SURFACE_DEFAULTS.post)
   const [productId, setProductId] = useState<ProductId>(focus?.product ?? SURFACE_DEFAULTS.product)
   const [sellerId, setSellerId] = useState<SellerId>(SHOPPABLE_POSTS[focus?.post ?? SURFACE_DEFAULTS.post].seller)
@@ -654,6 +660,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'start' && <AppStart onExplore={() => { setAuth('guest'); setActiveTab('home'); setScreen('feed') }} onSignIn={() => startSignIn({ screen: 'feed', tab: 'home' })} />}
         {shown === 'sign-in-phone' && <SignInPhone phone={phone} setPhone={setPhone} onBack={() => setScreen(signInFrom)} onContinue={() => setScreen('sign-in-code')} />}
         {shown === 'sign-in-code' && <SignInCode phone={phone} code={code} setCode={setCode} onBack={() => setScreen('sign-in-phone')} onVerify={signIn} />}
+        {shown === 'authored' && authored && <AuthoredScreen view={authored} state={authoredContent.state} at={at} onBack={() => authored.kind === 'product' && authored.fromScene ? setAuthored({ kind: 'scene', id: authored.fromScene }) : setScreen(authoredFrom)} onOpen={setAuthored} onSeededProduct={id => openProduct(id as ProductId)} onSeller={openSeller} />}
         {shown === 'feed' && (
           <Home
             at={at}
@@ -684,7 +691,9 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onShare={post => { setPostId(post); setDiscoverySheet({ kind: 'share' }) }}
             onReviews={post => { setPostId(post); setDiscoverySheet({ kind: 'reviews' }) }}
             onMore={post => { setPostId(post); setDiscoverySheet({ kind: 'more', channel }) }}
-            stories={storyGroupsAt(at)}
+            stories={authoredContent.mergeStoryGroups(storyGroupsAt(at))}
+            authoredScenes={authoredContent.scenes}
+            onAuthoredScene={id => openAuthored({ kind: 'scene', id })}
             seenStories={seenStories}
             onStory={group => { setStorySeller(group.seller); setSeenStories(seen => [...new Set([...seen, ...group.stories.map(story => story.id)])]) }}
           />
@@ -759,6 +768,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onProduct={openProduct}
             onPost={openPost}
             onSeller={openSeller}
+            authored={<AuthoredSearchResults query={query} content={authoredContent} onOpen={openAuthored} />}
           />
         )}
         {shown === 'saved' && <Saved changes={savedChanges} onCollection={id => { setCollectionId(id); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
@@ -913,7 +923,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
           // The moderation case DEMO_DATA records for this Scene's report; a report on another Scene is transient.
           : <ReportSheet title="Report Scene" subject={SHOPPABLE_POSTS[postId].title} caseId={(Object.keys(MODERATION_CASES) as ModerationId[]).find(id => MODERATION_CASES[id].post === postId)} onClose={() => setReportOpen(false)} />)}
         {shown === 'feed' && storySeller && (() => {
-          const group = storyGroupsAt(at).find(g => g.seller === storySeller)
+          const group = authoredContent.mergeStoryGroups(storyGroupsAt(at)).find(g => g.seller === storySeller)
           return group && (
             <StoryViewer
               group={group}
@@ -921,6 +931,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
               onClose={() => setStorySeller(null)}
               onProduct={id => { setStorySeller(null); openProduct(id) }}
               onPost={id => { setStorySeller(null); openPost(id) }}
+              onAuthored={link => openAuthored(link)}
             />
           )
         })()}
@@ -1606,7 +1617,7 @@ function GuestStrip({ onSignIn }: { onSignIn: () => void }) {
   )
 }
 
-function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden, hiddenScenes, follows, canonicalFollows, isSaved, isLiked, scroll, onScrolled, onSignIn, onSignInFollowing, onNotifications, onSearch, onPost, onProduct, onSeller, onFollow, onLike, onSave, onShare, onReviews, onMore, stories, seenStories, onStory }: {
+function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden, hiddenScenes, follows, canonicalFollows, isSaved, isLiked, scroll, onScrolled, onSignIn, onSignInFollowing, onNotifications, onSearch, onPost, onProduct, onSeller, onFollow, onLike, onSave, onShare, onReviews, onMore, stories, seenStories, onStory, authoredScenes, onAuthoredScene }: {
   at: Moment; guest: boolean; channel: Channel; onChannel: (channel: Channel) => void
   area: string | null; areaChosen: boolean; onArea: (area: string) => void
   hidden: readonly ShoppablePostId[]; hiddenScenes: readonly ShoppablePostId[]
@@ -1619,6 +1630,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
   onSave: (post: ShoppablePostId) => void; onShare: (post: ShoppablePostId) => void
   onReviews: (post: ShoppablePostId) => void; onMore: (post: ShoppablePostId) => void
   stories: readonly SellerStoryGroup[]; seenStories: readonly StoryId[]; onStory: (group: SellerStoryGroup) => void
+  authoredScenes: ReturnType<typeof useAuthoredBuyer>['scenes']; onAuthoredScene: (id: string) => void
 }) {
   // Each channel shows its own canonical list (DEMO_DATA › Buyer Home channels); no screen computes its own. A guest sees
   // the Guest/default discovery ranking: the same records, in the same order, never described as Maya's personal feed.
@@ -1655,6 +1667,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
       <div id="home-channel-panel" role="tabpanel" aria-labelledby={`home-channel-${channel}`} className="flex min-h-0 flex-1 flex-col">
         <div ref={panel} onScroll={event => onScrolled(channel, event.currentTarget.scrollTop)} className={`min-h-0 flex-1 overflow-y-auto bg-background ${posts ? 'snap-y snap-mandatory' : ''}`}>
           {channel === 'nearby' && <div className="snap-start"><NearbyAreas area={area} chosen={areaChosen} onArea={onArea} /></div>}
+          {channel === 'foryou' && authoredScenes.map(scene => <AuthoredSceneCard key={scene.id} scene={scene} onExplore={() => onAuthoredScene(scene.id)} onSeller={() => onSeller(scene.seller)} />)}
           {posts?.map(id => (
             <ShoppablePostUnit
               key={id}
@@ -1817,8 +1830,8 @@ function StoriesRow({ groups, seen, onOpen }: { groups: readonly SellerStoryGrou
  * A Seller's Stories (PR-003): lightweight and view-only. The Seller, the Story's media, its text, the Product's active
  * discount where it is a discount Story, and its linked Product or Scene. No replies, reactions or comments.
  */
-function StoryViewer({ group, at, onClose, onProduct, onPost }: {
-  group: SellerStoryGroup; at: Moment; onClose: () => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void
+function StoryViewer({ group, at, onClose, onProduct, onPost, onAuthored }: {
+  group: SellerStoryGroup; at: Moment; onClose: () => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onAuthored: (view: AuthoredView) => void
 }) {
   const [index, setIndex] = useState(0)
   const story = group.stories[Math.min(index, group.stories.length - 1)]
@@ -1835,12 +1848,12 @@ function StoryViewer({ group, at, onClose, onProduct, onPost }: {
         <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-muted text-xs font-bold text-brand-dark">{initials(seller.name)}</span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{seller.name}</div>
-          <div className="text-xs text-white/70">{trustLabel(trustAt(group.seller, at))} seller · {formatAge(story.posted, at.at)}</div>
+          <div className="text-xs text-white/70">{trustLabel(trustAt(group.seller, at))} seller · {story.hoursLeft !== undefined ? `${story.hoursLeft} h left` : formatAge(story.posted, at.at)}</div>
         </div>
         <button ref={close} onClick={onClose} aria-label="Close story" style={ON_PHOTO} className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white/15 text-lg">×</button>
       </div>
       <div className="relative mx-4 min-h-0 flex-1 overflow-hidden rounded-2xl" style={{ background: 'linear-gradient(160deg, #6B5444 0%, #2E2520 100%)' }}>
-        <Placeholder label={`${seller.name} story media`} initialsOf={seller.name} dark className="h-full w-full text-5xl" />
+        {story.image ? <img src={story.image} alt={story.alt || `${seller.name} story`} className="h-full w-full object-cover" /> : <Placeholder label={`${seller.name} story media`} initialsOf={seller.name} dark className="h-full w-full text-5xl" />}
         <span className="absolute left-3 top-3 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider">{kind}</span>
       </div>
       <div className="flex-shrink-0 px-4 pb-5 pt-4">
@@ -1851,7 +1864,9 @@ function StoryViewer({ group, at, onClose, onProduct, onPost }: {
             <PriceTag productId={story.product} ends={story.kind === 'discount'} className="mt-1" />
           </div>
         )}
+        {story.authoredLink && <div className="mt-3 rounded-xl bg-surface p-3 text-sm font-semibold text-text-primary">{story.authoredLink.label}</div>}
         <div className="mt-3 flex gap-2">
+          {story.authoredLink && <Button style={{ flex: 1 }} onClick={() => onAuthored({ kind: story.authoredLink!.kind, id: story.authoredLink!.id })}>{story.authoredLink.kind === 'product' ? 'View Product' : 'View Scene'}</Button>}
           {story.product && <Button style={{ flex: 1 }} onClick={() => onProduct(story.product!)}>View Product</Button>}
           {!story.product && story.post && <Button style={{ flex: 1 }} onClick={() => onPost(story.post!)}>View Scene</Button>}
           {index < group.stories.length - 1 && <Button variant="secondary" onClick={() => setIndex(i => i + 1)}>Next</Button>}
@@ -2708,9 +2723,9 @@ function SellerAbout({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   )
 }
 
-function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, onSeller }: {
+function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, onSeller, authored }: {
   at: Moment; recent: readonly string[]; query: string; setQuery: (q: string) => void; tab: SearchTab; setTab: (t: SearchTab) => void
-  onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void
+  onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void; authored?: ReactNode
 }) {
   // Search behaves as before: any query other than the zero-result example shows the same results, which are the
   // canonical Products, Scene Posts and Sellers that Buyers can see.
@@ -2734,6 +2749,7 @@ function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, o
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-4">
+            {tab !== 'sellers' && authored}
             {tab === 'top' && <TopResults at={at} onProduct={onProduct} onPost={onPost} onSeller={onSeller} />}
             {tab === 'products' && <ProductResults at={at} onProduct={onProduct} />}
             {tab === 'posts' && <PostResults at={at} onPost={onPost} />}

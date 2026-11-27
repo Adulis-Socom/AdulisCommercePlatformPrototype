@@ -26,6 +26,11 @@ export interface SellerStory {
   readonly product?: ProductId
   /** The Scene the Story links to. */
   readonly post?: ShoppablePostId
+  /** Seller-authored Stories (Seller Console workspace) only: the Seller's own photo and description, hours left, and a link to an authored Product or Scene. */
+  readonly image?: string
+  readonly alt?: string
+  readonly hoursLeft?: number
+  readonly authoredLink?: { readonly kind: 'product' | 'scene'; readonly id: string; readonly label: string }
 }
 
 /** One Seller's live Stories, as Home's Stories row shows them: one entry per Seller, its Stories oldest first. */
