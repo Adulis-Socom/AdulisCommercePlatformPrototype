@@ -19,6 +19,8 @@ import {
   type VerificationId,
 } from '../demo-data'
 
+import { SimulationGate, usePrototypeMode } from '../prototype-mode'
+
 type NavKey =
   | 'overview'
   | 'work-queue' | 'wq-support' | 'wq-moderation' | 'wq-claims' | 'wq-verification' | 'wq-trust-appeals' | 'wq-handoff'
@@ -106,7 +108,7 @@ function workItems(at: Moment): WorkItem[] {
   }
   for (const id of keys(MODERATION_CASES)) {
     const m = MODERATION_CASES[id]
-    if (open(m.reported, m.action.at)) items.push(item('Moderation', id, `Reported Shoppable Post · ${m.post}`, m.reported, 'Unassigned', 'Open'))
+    if (open(m.reported, m.action.at)) items.push(item('Moderation', id, `Reported Scene Post · ${m.post}`, m.reported, 'Unassigned', 'Open'))
   }
   for (const id of keys(SUPPORT_CASES)) {
     const s = SUPPORT_CASES[id]
@@ -172,7 +174,9 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
   }, [drawer.open])
   // The story moment of the guided-flow step (the 10:25 snapshot otherwise). Queue badges count its open work.
   const { moment: at } = useStory()
-  const work = workItems(at)
+  // FE-001: payment Claims and Manual Handoff cases belong to the internal simulation (no paid Orders or handoff in Release 1).
+  const { simulation } = usePrototypeMode()
+  const work = workItems(at).filter(item => simulation || (item.queue !== 'Claims' && item.queue !== 'Manual Handoff'))
   const queueCount = (queue: QueueFilter) => work.filter(item => queue === 'All' || item.queue === queue).length
   const badges: Partial<Record<NavKey, number>> = {
     'work-queue': queueCount('All'), 'wq-support': queueCount('Support'), 'wq-moderation': queueCount('Moderation'), 'wq-claims': queueCount('Claims'),
@@ -214,7 +218,9 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
           {/* Below desktop widths (index.css): the Operator Console stays desktop-first (spec §4). */}
           <p className="operator-desktop-note" role="note">Desktop recommended</p>
           {activeNav === 'overview' && <OverviewPanel at={at} work={work} onQueue={() => setActiveNav('work-queue')} />}
-          {isQueueNav(activeNav) && <WorkQueuePanel key={activeNav} at={at} work={work} initialQueue={queueForNav(activeNav)} />}
+          {isQueueNav(activeNav) && (!simulation && (activeNav === 'wq-claims' || activeNav === 'wq-handoff')
+            ? <div className="mx-auto my-8 max-w-lg rounded-2xl border border-border bg-surface"><SimulationGate title={activeNav === 'wq-claims' ? 'Claims queue' : 'Manual Handoff queue'} compact>{activeNav === 'wq-claims' ? 'Payment and refund Claims are deferred: Release 1 has no paid Orders to dispute.' : 'Manual Handoff review needs live delivery handoff, which Release 1 does not include.'}</SimulationGate></div>
+            : <WorkQueuePanel key={activeNav} at={at} work={work} initialQueue={queueForNav(activeNav)} />)}
           {activeNav === 'search-global' && <SearchPanel at={at} mode="global" />}
           {activeNav === 'search-sellers' && <SearchPanel at={at} mode="seller" />}
           {activeNav === 'search-accounts' && <SearchPanel at={at} mode="account" />}
@@ -383,9 +389,9 @@ function ModerationCase({ id, at }: { id: ModerationId; at: Moment }) {
   const report = MODERATION_CASES[id]
   const post = SHOPPABLE_POSTS[report.post]
   const seller = SELLERS[post.seller]
-  const [target, setTarget] = useState('Shoppable Post')
+  const [target, setTarget] = useState('Scene Post')
   const [action, setAction] = useState('')
-  const targets = ['Product Post', 'Shoppable Post', 'Review', 'Seller safety case']
+  const targets = ['Product Post', 'Scene Post', 'Review', 'Seller safety case']
   const distribution = [isForYouEligibleAt(report.post, at) && 'FYP', isPubliclyEligibleAt(report.post, at) && 'Search', isPubliclyEligibleAt(report.post, at) && 'Storefront'].filter(Boolean).join(' · ') || '—'
   const reports = keys(MODERATION_CASES).filter(other => MODERATION_CASES[other].post === report.post && happenedBefore(MODERATION_CASES[other].reported, at)).length
   const revision = post.published ? `Revision published ${formatDate(post.published)}` : '—'
@@ -563,7 +569,7 @@ function ActionResult({ children }: { children: ReactNode }) {
 type SearchEntity = 'Account' | 'Seller' | 'Order' | 'Claim' | 'Content'
 interface SearchResult { type: SearchEntity; ref: string; title: string; detail: string; restricted: boolean }
 
-/** Every searchable canonical record at the story moment: Buyer accounts, Sellers, Orders, Claims and Shoppable Posts. */
+/** Every searchable canonical record at the story moment: Buyer accounts, Sellers, Orders, Claims and Scene Posts. */
 function searchRecords(at: Moment): SearchResult[] {
   const post = (id: (typeof SHOPPABLE_POST_IDS)[number]) => (SHOPPABLE_POSTS[id].publication === 'Draft' ? 'Draft' : restrictionAt(id, at) ? 'Restricted' : 'Published')
   return [

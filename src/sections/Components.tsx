@@ -57,7 +57,7 @@ const COURIER_CARD = courierCardAt(SELLER, SURFACE_DEFAULTS.courier, AT)
 /** The default Buyer's Orders, and the ones she pays for on the story day. */
 const BUYER_ORDERS = ordersAt({ buyer: SURFACE_DEFAULTS.buyer }, AT)
 const TODAYS_ORDERS = BUYER_ORDERS.filter(id => paidAt(id).slice(0, 10) === AT.at.slice(0, 10))
-/** The default Shoppable Post's tagged Products, and the default Seller's low-stock Product. */
+/** The default Scene Post's tagged Products, and the default Seller's low-stock Product. */
 const POST_PRODUCTS = SHOPPABLE_POSTS[SURFACE_DEFAULTS.post].tags
 const LOW_STOCK = sellerProductsAt(SELLER, AT).find(id => PRODUCTS[id].availability === 'Low Stock')!
 const CLAIM_DEADLINE = CLAIMS[SURFACE_DEFAULTS.claim].responseDeadline!
@@ -551,7 +551,7 @@ function CardShowcase() {
         </Row>
       </ShowSection>
 
-      <ShowSection title="Shoppable Post Card">
+      <ShowSection title="Scene Post Card">
         <Row gap={16}>
           <ShoppablePostCard post={postCard(SURFACE_DEFAULTS.post, '#C8B89A')} />
           <ShoppablePostCard post={postCard(untaggedPost, '#B8A898')} />
@@ -751,7 +751,7 @@ function OverlayShowcase() {
         <Confirmation
           open={confirmOpen} onClose={() => setConfirmOpen(false)} onConfirm={() => {}}
           title={`Delete ${PRODUCTS[SURFACE_DEFAULTS.product].name}?`}
-          message="This product will be removed from your catalogue. Any published Shoppable Posts that reference it will become tag-less for this product. This action cannot be undone."
+          message="This product will be removed from your catalogue. Any published Scene Posts that reference it will become tag-less for this product. This action cannot be undone."
           confirmLabel="Delete product" variant="destructive"
         />
       </ShowSection>
@@ -920,7 +920,7 @@ function OperationalShowcase() {
     ({ id: caseRef, queue, caseRef, subject, market: MARKET.id, age: formatAge(opened, AT.at), state })
   const workItems: WorkQueueItem[] = [
     ...CLAIM_IDS.filter(id => claimStateAt(id, AT) && claimStateAt(id, AT) !== 'Resolved').map(id => item('Claims', id, `${CLAIMS[id].issue} · ${CLAIMS[id].order}`, claimSubmitted(id), CLAIM_BADGE[claimStateAt(id, AT)!])),
-    ...keysOf(MODERATION_CASES).filter(id => open(MODERATION_CASES[id].reported, MODERATION_CASES[id].action.at)).map(id => item('Moderation', id, `Reported Shoppable Post · ${MODERATION_CASES[id].post}`, MODERATION_CASES[id].reported, 'open')),
+    ...keysOf(MODERATION_CASES).filter(id => open(MODERATION_CASES[id].reported, MODERATION_CASES[id].action.at)).map(id => item('Moderation', id, `Reported Scene Post · ${MODERATION_CASES[id].post}`, MODERATION_CASES[id].reported, 'open')),
     ...keysOf(SUPPORT_CASES).filter(id => open(SUPPORT_CASES[id].raised, SUPPORT_CASES[id].resolved.at)).map(id => item('Support', id, `Seller support request · ${SUPPORT_CASES[id].order}`, SUPPORT_CASES[id].raised, 'open')),
     ...keysOf(VERIFICATION_CASES).filter(id => open(VERIFICATION_CASES[id].submitted)).map(id => item('Verification', id, `${VERIFICATION_CASES[id].kind} · ${shortName(BUYERS[VERIFICATION_CASES[id].buyer].name)}`, VERIFICATION_CASES[id].submitted, 'open')),
     ...keysOf(TRUST_APPEALS).filter(id => open(TRUST_APPEALS[id].submitted)).map(id => item('Trust Appeals', id, `Seller Trust appeal · ${SELLERS[TRUST_APPEALS[id].seller].handle}`, TRUST_APPEALS[id].submitted, 'open')),

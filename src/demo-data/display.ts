@@ -36,9 +36,9 @@ export function formatPin(pin: { readonly lat: number; readonly lon: number }): 
 
 /**
  * The chat context selector's groups, in the order DEMO_DATA lists each conversation's options: General / Seller on its
- * own, then the Product Posts, the Shoppable Posts and the Orders. `kind` is the context's field (MessageContext).
+ * own, then the Product Posts, the Scene Posts and the Orders. `kind` is the context's field (MessageContext).
  */
-export const CONTEXT_GROUPS = [{ kind: 'general' }, { kind: 'product', label: 'Product Posts' }, { kind: 'post', label: 'Shoppable Posts' }, { kind: 'order', label: 'Orders' }] as const
+export const CONTEXT_GROUPS = [{ kind: 'general' }, { kind: 'product', label: 'Product Posts' }, { kind: 'post', label: 'Scene Posts' }, { kind: 'order', label: 'Orders' }] as const
 
 /** 'Buyer Collection (free) · Courier Delivery ETB 180': a Seller's fulfilment options and charges on one line. */
 export function describeFulfilment(options: readonly FulfilmentOption[]): string {

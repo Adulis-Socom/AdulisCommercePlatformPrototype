@@ -351,7 +351,7 @@ const TYPE_SCALE = [
     fontWeight: 400,
     lineHeight: 1.65,
     letterSpacing: '0',
-    sample: 'Adulis combines structured Product Posts with creative Shoppable Posts so buyers can move from inspiration to accurate product information.',
+    sample: 'Adulis combines structured Product Posts with creative Scene Posts so buyers can move from inspiration to accurate product information.',
     usage: 'Lead copy on Website, onboarding explanations, long-form content.',
   },
   {
@@ -912,7 +912,7 @@ function IconSystem() {
     { icon: '💬', label: 'Chat' },
     { icon: '🔔', label: 'Notifications' },
     { icon: '⚙️', label: 'Settings' },
-    { icon: '✨', label: 'Shoppable Post' },
+    { icon: '✨', label: 'Scene Post' },
     { icon: '📱', label: 'Product Post' },
     { icon: '🚴', label: 'Courier' },
     { icon: '📍', label: 'Location' },
@@ -1036,7 +1036,7 @@ function AccessibilityChecks() {
     { icon: '🎨', title: 'Status is never color-only', desc: 'Every status badge uses text + color. Trust levels, order states, payment states, and moderation states always include a text label. Color is always an additive signal.' },
     { icon: '⌨️', title: 'Keyboard navigation on desktop', desc: 'Seller Console and Operator Console must support full keyboard navigation. Focus indicators use the established accessible focus color for the surface, with sufficient contrast against the surrounding background: info blue by default, and light/inverse on dark or photo surfaces when necessary. Tab order follows logical reading flow.' },
     { icon: '🔎', title: 'Focus visible on all surfaces', desc: 'Focus rings are never hidden in the prototype. Mobile surfaces show focus for accessibility testing even if users typically rely on tap gestures.' },
-    { icon: '📋', title: 'Product hotspots are not the only access method', desc: 'Shoppable Post tagged products are always accessible via a "Products in this post" list — never only via visual hotspot overlay. This serves keyboard users and screen reader users.' },
+    { icon: '📋', title: 'Product hotspots are not the only access method', desc: 'Scene Post tagged products are always accessible via a "Products in this post" list — never only via visual hotspot overlay. This serves keyboard users and screen reader users.' },
   ]
 
   return (

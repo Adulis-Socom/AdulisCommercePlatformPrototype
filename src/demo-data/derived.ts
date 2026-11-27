@@ -91,7 +91,7 @@ export function sellerProductsAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT
   return byId(PRODUCT_IDS.filter(id => PRODUCTS[id].seller === seller && productExistsAt(id, at)))
 }
 
-/** The Seller's Shoppable Posts that exist at `at` (Drafts included), in ID order. */
+/** The Seller's Scene Posts that exist at `at` (Drafts included), in ID order. */
 export function sellerPostsAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
   return byId(SHOPPABLE_POST_IDS.filter(id => SHOPPABLE_POSTS[id].seller === seller && happenedBefore(SHOPPABLE_POSTS[id].created, at)))
 }
@@ -139,7 +139,7 @@ export function productQualityAt(product: ProductId, at: Moment = DEFAULT_SNAPSH
   return { average: base.average, ratings: base.ratings + REVIEW_IDS.filter(id => writtenAfterSnapshot(id, at) && REVIEWS[id].productQuality.some(q => q.product === product)).length }
 }
 
-// ---------- Shoppable Posts and Buyer Home channels ----------
+// ---------- Scene Posts and Buyer Home channels ----------
 
 export function isPublishedAt(post: ShoppablePostId, at: Moment = DEFAULT_SNAPSHOT): boolean {
   const p = SHOPPABLE_POSTS[post]
@@ -200,7 +200,7 @@ export function isBuyerVisiblePostAt(post: ShoppablePostId, at: Moment = DEFAULT
 }
 
 /**
- * Seller Console Home › Shoppable Posts needing action (specification §29): published, tagged, no tagged Product
+ * Seller Console Home › Scene Posts needing action (specification §29): published, tagged, no tagged Product
  * available. A restricted or removed post is a moderation problem, listed only under Moderation issues.
  */
 export function postsNeedingAttentionAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
@@ -251,7 +251,7 @@ export function isPurchasableAt(product: ProductId, at: Moment = DEFAULT_SNAPSHO
   return isBuyerVisibleAt(product, at) && PRODUCTS[product].availability !== 'Out of Stock'
 }
 
-/** The Shoppable Posts Buyers can see at `at` (published, not restricted, not Private), in ID order. */
+/** The Scene Posts Buyers can see at `at` (published, not restricted, not Private), in ID order. */
 export function buyerVisiblePostsAt(at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
   return buyerVisibleSellers().flatMap(seller => sellerPostsAt(seller, at).filter(id => isBuyerVisiblePostAt(id, at)))
 }
@@ -825,7 +825,7 @@ export function awaitingSellerReplyAt(conversation: ConversationId, at: Moment =
 
 /**
  * Context selector options (rules 12.5–12.6): General / Seller, the Seller's Product Posts and publicly eligible
- * Shoppable Posts, and the Orders that belong to both this Buyer and this Seller.
+ * Scene Posts, and the Orders that belong to both this Buyer and this Seller.
  */
 export function contextOptionsAt(conversation: ConversationId, at: Moment = DEFAULT_SNAPSHOT) {
   const { buyer, seller } = CONVERSATIONS[conversation]
@@ -836,7 +836,7 @@ export function contextOptionsAt(conversation: ConversationId, at: Moment = DEFA
   }
 }
 
-/** General / Seller: a message about the Buyer–Seller relationship, naming no Product Post, Shoppable Post or Order. */
+/** General / Seller: a message about the Buyer–Seller relationship, naming no Product Post, Scene Post or Order. */
 export const GENERAL_CONTEXT: MessageContext = { general: true }
 
 /** The record a context names, as one value: 'general', or the record's kind and identifier ('order:…'). */
@@ -853,7 +853,7 @@ export function sameContext(a: MessageContext, b: MessageContext): boolean {
 
 /**
  * The context selector's choices for the conversation at `at`, in DEMO_DATA's order: General / Seller, then the Product
- * Posts, the Shoppable Posts and the Orders of contextOptionsAt (rules 12.5–12.6).
+ * Posts, the Scene Posts and the Orders of contextOptionsAt (rules 12.5–12.6).
  */
 export function contextChoicesAt(conversation: ConversationId, at: Moment = DEFAULT_SNAPSHOT): MessageContext[] {
   const { products, posts, orders } = contextOptionsAt(conversation, at)
@@ -865,10 +865,10 @@ export function isContextChoiceAt(conversation: ConversationId, context: Message
   return contextChoicesAt(conversation, at).some(choice => sameContext(choice, context))
 }
 
-/** What a context chip names, in the specification §22 form: the Product's name, '<title> Shoppable Post' or 'Order <reference>'. */
+/** What a context chip names, in the specification §22 form: the Product's name, '<title> Scene Post' or 'Order <reference>'. */
 export function contextSubject(context: MessageContext): string {
   if ('product' in context) return PRODUCTS[context.product].name
-  if ('post' in context) return `${SHOPPABLE_POSTS[context.post].title} Shoppable Post`
+  if ('post' in context) return `${SHOPPABLE_POSTS[context.post].title} Scene Post`
   if ('order' in context) return `Order ${context.order}`
   return 'General / Seller'
 }

@@ -8,7 +8,7 @@ import type { ProductId } from './products.ts'
 import type { SellerId, StaffId } from './sellers.ts'
 
 /**
- * What a message is about (rule 12.2): General / Seller, which names no record, or a Product Post, a Shoppable Post or an
+ * What a message is about (rule 12.2): General / Seller, which names no record, or a Product Post, a Scene Post or an
  * Order. It belongs to the message, never to the conversation. DEMO_DATA's messages are each about a record.
  */
 export type MessageContext = { readonly general: true } | { readonly product: ProductId } | { readonly post: ShoppablePostId } | { readonly order: OrderId }

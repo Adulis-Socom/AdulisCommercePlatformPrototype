@@ -51,7 +51,7 @@ const SCENARIOS: Scenario[] = [
     surface: 'Buyer',
     kind: 'empty',
     title: 'This Collection is empty',
-    description: 'Saved Products and Shoppable Posts will appear here.',
+    description: 'Saved Products and Scene Posts will appear here.',
     actionLabel: 'Explore products',
     outcome: {
       kind: 'success',
@@ -77,7 +77,7 @@ const SCENARIOS: Scenario[] = [
     id: 'restricted-post',
     surface: 'Buyer',
     kind: 'permission',
-    title: 'Shoppable Post restricted',
+    title: 'Scene Post restricted',
     description: 'This revision is unavailable in For You and Search following moderation review.',
     detail: 'Tagged Products remain governed by their own publication and availability states.',
   },

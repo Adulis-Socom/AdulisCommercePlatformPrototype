@@ -1,4 +1,4 @@
-// Shoppable Posts (docs/DEMO_DATA.md › Shoppable Posts, › Records created during the demo). Every tag is a
+// Scene Posts (docs/DEMO_DATA.md › Scene Posts, › Records created during the demo). Every tag is a
 // same-Seller Product (rule 1.5). For You eligibility is derived (derived.ts), never stored.
 import type { CalendarDate, Moment } from '../time.ts'
 import type { PublicationState } from '../types.ts'
@@ -47,7 +47,7 @@ export type ShoppablePostId = keyof typeof POST_RECORDS
 export const SHOPPABLE_POSTS: Readonly<Record<ShoppablePostId, ShoppablePostRecord>> = POST_RECORDS
 export const SHOPPABLE_POST_IDS = Object.keys(POST_RECORDS) as ShoppablePostId[]
 
-/** Seller Console Home › Shoppable Posts needing action (specification §29). */
+/** Seller Console Home › Scene Posts needing action (specification §29). */
 export const POST_NEEDS_ATTENTION = {
   title: 'Needs attention',
   message: 'No tagged products are currently available. This post is no longer eligible for For You discovery.',

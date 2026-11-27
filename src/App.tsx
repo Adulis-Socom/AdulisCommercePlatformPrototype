@@ -14,6 +14,7 @@ import SystemStates from './sections/SystemStates'
 import { stageFor } from './demo-data'
 import { StoryProvider } from './StoryClock'
 import { ThemeLab } from './theme/ThemeLab'
+import { PrototypeModeProvider, SimulationBadge } from './prototype-mode'
 
 export type SectionKey =
   | '00-guide'
@@ -124,7 +125,9 @@ export default function App() {
   const [active, setActive] = useState<SectionKey>('10-demo-flows')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [journey, setJourney] = useState<{ id: FlowId; stage: number } | null>(null)
-  const flow = journey ? FLOW_DEFINITIONS.find(item => item.id === journey.id)! : null
+  // FE-001: the ordinary prototype is the current MVP; the historical paid-commerce design is an explicit, labelled simulation.
+  const [simulation, setSimulation] = useState(false)
+  const flow =journey ? FLOW_DEFINITIONS.find(item => item.id === journey.id)! : null
   const flowStage = flow && journey ? flow.stages[journey.stage] : null
   const themeLabSlot = useRef<HTMLDivElement>(null)
   const mainArea = useRef<HTMLElement>(null)
@@ -133,6 +136,7 @@ export default function App() {
   const startFlow = (id: FlowId) => {
     const definition = FLOW_DEFINITIONS.find(item => item.id === id)!
     setJourney({ id, stage: 0 })
+    setSimulation(!!definition.simulation)
     setActive(definition.stages[0].section as SectionKey)
   }
 
@@ -144,6 +148,7 @@ export default function App() {
   }
 
   return (
+    <PrototypeModeProvider value={{ simulation, setSimulation }}>
     <div className={`app-shell flex h-screen overflow-hidden${journey ? ' flow-active' : ''}`} style={{ background: 'var(--color-background)', fontFamily: 'var(--font-body)' }}>
       {/* Sidebar */}
       <aside
@@ -217,6 +222,11 @@ export default function App() {
         {/* Sidebar footer */}
         {sidebarOpen && (
           <div className="flex-shrink-0 p-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+            <div role="group" aria-label="Prototype mode" className="mb-2 flex gap-1 rounded-lg p-1 text-[11px] font-semibold" style={{ background: 'var(--color-surface-raised)' }}>
+              {([[false, 'Current MVP'], [true, 'Internal simulation']] as const).map(([on, label]) => (
+                <button key={label} type="button" aria-pressed={simulation === on} onClick={() => setSimulation(on)} className="min-h-8 flex-1 rounded-md px-1 leading-tight" style={{ background: simulation === on ? (on ? 'var(--color-warning-bg)' : 'var(--color-brand)') : 'transparent', color: simulation === on && !on ? 'var(--color-on-brand)' : 'var(--color-text-secondary)' }}>{label}</button>
+              ))}
+            </div>
             <div
               className="rounded-lg p-3 text-xs leading-relaxed"
               style={{ background: 'var(--color-surface-raised)', color: 'var(--color-text-muted)' }}
@@ -224,7 +234,7 @@ export default function App() {
               <div className="font-semibold mb-1" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
                 PROTOTYPE v0.1
               </div>
-              ADULIS MASTER DEMO
+              {simulation ? 'INTERNAL SIMULATION · DEMO' : 'ADULIS MASTER DEMO'}
             </div>
           </div>
         )}
@@ -243,6 +253,7 @@ export default function App() {
         <StoryProvider stage={stageFor(journey?.id, journey?.stage ?? 0)}>
           <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} />
         </StoryProvider>
+        <SimulationBadge />
       </main>
 
       {/* The guided-flow card. On desktop it floats over the bottom-right corner. Below desktop widths index.css docks it
@@ -255,6 +266,7 @@ export default function App() {
         </div>
       )}
     </div>
+    </PrototypeModeProvider>
   )
 }
 

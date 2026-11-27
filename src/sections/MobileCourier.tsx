@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { Button } from '../components/ui/Button'
 import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
 import {
@@ -14,7 +15,7 @@ import {
 
 type TabKey = 'assignments' | 'active' | 'history' | 'account'
 type Availability = 'available' | 'busy' | 'unavailable'
-type Screen = 'tabs' | 'offer' | 'opportunity' | 'relationships' | 'pickup-scan' | 'pickup-verified' | 'pickup-checkpoint' | 'delivery' | 'delivery-qr' | 'waiting' | 'delivery-verified' | 'delivery-checkpoint'
+type Screen = 'gated' | 'tabs' | 'offer' | 'opportunity' | 'relationships' | 'pickup-scan' | 'pickup-verified' | 'pickup-checkpoint' | 'delivery' | 'delivery-qr' | 'waiting' | 'delivery-verified' | 'delivery-checkpoint'
 type ActiveStage = 'none' | 'accepted' | 'pickup-verified' | 'delivering' | 'waiting' | 'verified'
 type CheckpointState = 'recorded' | 'unavailable'
 
@@ -92,11 +93,15 @@ export default function MobileCourier({ demoTarget }: { demoTarget?: string }) {
   const [offerId, setOfferId] = useState<OrderId | undefined>()
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
   const [availability, setAvailability] = useState<Availability>(courierAvailabilityAt(courierId, at).toLowerCase() as Availability)
-  const [screen, setScreen] = useState<Screen>(initialScreen)
+  const { simulation } = usePrototypeMode()
+  // FE-001: offers, active deliveries, QR handoff and delivery history belong to the internal simulation. Seller
+  // relationships and invitations (opportunities) stay in the current MVP.
+  const [rawScreen, setScreen] = useState<Screen>(initialScreen)
+  const screen: Screen = !simulation && !['tabs', 'opportunity', 'relationships'].includes(rawScreen) ? 'gated' : rawScreen
   const [stage, setStage] = useState<ActiveStage>(activeStage(orderId, at))
   const [pickupCheckpoint, setPickupCheckpoint] = useState<CheckpointState>((orderId && ORDERS[orderId].pickup?.location) || 'recorded')
   const [deliveryCheckpoint, setDeliveryCheckpoint] = useState<CheckpointState>((orderId && ORDERS[orderId].finalHandoff?.location) || 'recorded')
-  const offers = pendingOffers(courierId, at)
+  const offers = simulation ? pendingOffers(courierId, at) : []
   // The Sellers whose pool the Courier has applied to, awaiting their decision.
   const opportunities = COURIER_RELATIONSHIPS.filter(r => r.courier === courierId && relationshipStatusAt(r, at) === 'Application pending').map(r => r.seller)
   const [opportunity, setOpportunity] = useState<SellerId | undefined>(opportunities[0])
@@ -114,14 +119,16 @@ export default function MobileCourier({ demoTarget }: { demoTarget?: string }) {
           <>
             <CourierHeader courierId={courierId} tab={activeTab} availability={availability} onAvailability={setAvailability} />
             <div className="flex-1 overflow-y-auto">
-              {activeTab === 'assignments' && <CourierHome activeOrder={stage !== 'none' && stage !== 'verified' ? orderId : undefined} offers={offers} opportunities={opportunities} availability={availability} onOffer={id => { setOfferId(id); setScreen('offer') }} onOpportunity={openOpportunity} />}
-              {activeTab === 'active' && <ActiveAssignment orderId={orderId} at={at} stage={stage} onAssignments={() => selectTab('assignments')} onScan={() => setScreen('pickup-scan')} onDelivery={() => setScreen('delivery')} onWaiting={() => setScreen('waiting')} />}
-              {activeTab === 'history' && <HistoryTab courierId={courierId} at={at} />}
+              {activeTab === 'assignments' && <CourierHome activeOrder={simulation && stage !== 'none' && stage !== 'verified' ? orderId : undefined} offers={offers} opportunities={opportunities} availability={availability} onOffer={id => { setOfferId(id); setScreen('offer') }} onOpportunity={openOpportunity} />}
+              {activeTab === 'active' && !simulation && <SimulationGate title="Active delivery" compact>Live courier assignment and delivery handoff are not part of Release 1.</SimulationGate>}
+              {activeTab === 'active' && simulation && <ActiveAssignment orderId={orderId} at={at} stage={stage} onAssignments={() => selectTab('assignments')} onScan={() => setScreen('pickup-scan')} onDelivery={() => setScreen('delivery')} onWaiting={() => setScreen('waiting')} />}
+              {activeTab === 'history' && (simulation ? <HistoryTab courierId={courierId} at={at} /> : <SimulationGate title="Delivery history" compact>There are no deliveries in Release 1, so there is no delivery history to show.</SimulationGate>)}
               {activeTab === 'account' && <AccountTab courierId={courierId} at={at} availability={availability} onAvailability={setAvailability} onRelationships={() => setScreen('relationships')} opportunity={opportunities[0]} onOpportunity={openOpportunity} />}
             </div>
             <BottomNav items={TABS.map(tab => (tab.key === 'assignments' ? { ...tab, badge: offers.length } : tab))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-courier-brand)" onAccent="var(--color-on-courier-brand)" />
           </>
         )}
+        {screen === 'gated' && <SimulationGate title="Delivery" compact onBack={() => setScreen('tabs')}>Delivery offers, pickup and handoff belong to the historical paid-commerce design, which Release 1 does not include.</SimulationGate>}
         {screen === 'offer' && offerId && <OfferDetail orderId={offerId} hasActive={stage !== 'none' && stage !== 'verified'} onBack={() => setScreen('tabs')} onAccept={() => { setOrderId(offerId); setStage('accepted'); setActiveTab('active'); setScreen('tabs') }} />}
         {orderId && <>
           {screen === 'pickup-scan' && <PickupScanner onBack={() => setScreen('tabs')} onScan={() => { const t = stateTime(orderId, 'Pickup Verified'); if (t) advanceTo(t); setScreen('pickup-verified') }} />}

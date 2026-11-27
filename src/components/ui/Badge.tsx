@@ -83,7 +83,7 @@ const STATUS_MAP: Record<string, StatusConfig> = {
 const LABEL_FAMILY: Record<string, StatusFamily> = {
   'active · Current':         'info',    // the current Trust level; the current session
   'active · # open':          'info',    // the Daily Operations Brief's count of open priorities ("6 open")
-  'published · Will publish': 'pending', // the Shoppable Post editor's preview: not yet published
+  'published · Will publish': 'pending', // the Scene Post editor's preview: not yet published
   'resolved · None':          'info',    // Order Detail with no active claim
 }
 const labelKey = (status: string, label: string) => `${status} · ${label.replace(/^\d+(?= open$)/, '#')}`

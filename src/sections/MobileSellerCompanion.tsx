@@ -17,8 +17,10 @@ import {
   type OrderId, type OrderState, type SellerId, type Timestamp,
 } from '../demo-data'
 
+import { SimulationGate, usePrototypeMode } from '../prototype-mode'
+
 type TabKey = 'alerts' | 'orders' | 'inbox' | 'more'
-type Screen = 'tabs' | 'order' | 'prepare' | 'couriers' | 'offer' | 'pickup-qr' | 'pickup-verified' | 'delivery' | 'handoff-qr' | 'handoff-otp' | 'handoff-verified' | 'collection-qr' | 'conversation' | 'claim'
+type Screen = 'tabs' | 'order' | 'prepare' | 'couriers' | 'offer' | 'pickup-qr' | 'pickup-verified' | 'delivery' | 'handoff-qr' | 'handoff-otp' | 'handoff-verified' | 'collection-qr' | 'conversation' | 'claim' | 'gated'
 type HandoffMethod = 'QR' | 'OTP fallback'
 type OrderStage = 'paid' | 'preparing' | 'ready' | 'offer' | 'assigned' | 'pickup' | 'delivery'
 type Tone = 'brand' | 'danger' | 'warning' | 'info' | 'success'
@@ -31,6 +33,8 @@ const TABS = [
 ]
 
 // Active Order states the Seller still has to act on: preparation, then handing over.
+// The alerts that exist in the current MVP: stock and Buyer messages. Order, payment, Courier and Claim alerts are simulation-only.
+const MVP_ALERTS: readonly string[] = ['Low stock', 'Buyer message']
 const NEEDS_PREP: readonly OrderState[] = ['Paid', 'Preparing']
 const READY: readonly OrderState[] = ['Ready for Courier', 'Ready for Seller Delivery', 'Ready for Collection', 'Courier Assigned']
 
@@ -119,7 +123,10 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
   const initialOrder = [focus?.order, SURFACE_DEFAULTS.order].find(id => id && ORDERS[id].seller === sellerId) ?? activeOrders(sellerId, at)[0] ?? ordersAt({ seller: sellerId }, at)[0]
   const initialConversation = [focus?.conversation, SURFACE_DEFAULTS.conversation].find(id => id && CONVERSATIONS[id].seller === sellerId) ?? sellerThreads(sellerId, at)[0]?.id
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
-  const [screen, setScreen] = useState<Screen>(initialScreen)
+  const { simulation } = usePrototypeMode()
+  // FE-001: Order handling (preparation, Courier offers, QR handoff) and Claims belong to the internal simulation.
+  const [rawScreen, setScreen] = useState<Screen>(initialScreen)
+  const screen: Screen = !simulation && rawScreen !== 'tabs' && rawScreen !== 'conversation' ? 'gated' : rawScreen
   const [orderId, setOrderId] = useState<OrderId | undefined>(initialOrder)
   const advance = (state: OrderState | undefined) => { const t = orderId && state && stateTime(orderId, state); if (t) advanceTo(t) }
   const fulfilment = orderId && ORDERS[orderId].fulfilment
@@ -168,9 +175,9 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
   // Tab badges: alerts needing attention, active Orders awaiting the Seller, and conversations and Claims awaiting a reply.
   const active = activeOrders(sellerId, at)
   const badges: Partial<Record<TabKey, number>> = {
-    alerts: notificationsAt(sellerId, at).filter(n => alertFor(n).attention).length,
-    orders: active.filter(id => [...NEEDS_PREP, ...READY].includes(orderStateAt(id, at)!)).length,
-    inbox: sellerThreads(sellerId, at).filter(({ id }) => awaitingSellerReplyAt(id, at)).length + openClaims(sellerId, at).length,
+    alerts: notificationsAt(sellerId, at).filter(n => (simulation || MVP_ALERTS.includes(n.event.kind)) && alertFor(n).attention).length,
+    orders: simulation ? active.filter(id => [...NEEDS_PREP, ...READY].includes(orderStateAt(id, at)!)).length : undefined,
+    inbox: sellerThreads(sellerId, at).filter(({ id }) => awaitingSellerReplyAt(id, at)).length + (simulation ? openClaims(sellerId, at).length : 0),
   }
 
   return (
@@ -180,13 +187,14 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
           <CompanionHeader tab={activeTab} sellerId={sellerId} onSwitchSeller={() => setSwitcherOpen(true)} />
           <div className="flex-1 overflow-y-auto">
             {activeTab === 'alerts' && <AlertsTab sellerId={sellerId} at={at} onOrder={openOrder} onClaim={openClaim} onConversation={openConversation} onLowStock={() => selectTab('more')} />}
-            {activeTab === 'orders' && <OrdersTab sellerId={sellerId} at={at} onOrder={openOrder} />}
+            {activeTab === 'orders' && (simulation ? <OrdersTab sellerId={sellerId} at={at} onOrder={openOrder} /> : <SimulationGate title="Orders" compact>Release 1 has no paid Orders, so there is nothing to prepare or hand over. Your catalogue, messages and alerts are available.</SimulationGate>)}
             {activeTab === 'inbox' && <InboxTab sellerId={sellerId} at={at} sent={sentReplies} onConversation={openConversation} onClaim={openClaim} />}
             {activeTab === 'more' && <MoreTab sellerId={sellerId} at={at} notice={consoleNotice} onConsole={() => setConsoleNotice(true)} />}
           </div>
           <BottomNav items={TABS.map(tab => ({ ...tab, badge: badges[tab.key] }))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-brand)" />
         </>
       )}
+      {screen === 'gated' && <SimulationGate title="Order handling" compact onBack={() => { setActiveTab('alerts'); setScreen('tabs') }}>Preparing Orders, Courier offers and QR handoff belong to the historical paid-commerce design, which Release 1 does not include.</SimulationGate>}
       {screen === 'order' && orderId && (
         <OrderDetail
           orderId={orderId}
@@ -271,7 +279,8 @@ function AlertsTab({ sellerId, at, onOrder, onClaim, onConversation, onLowStock 
   sellerId: SellerId; at: Moment; onOrder: (id: OrderId) => void; onClaim: (id: ClaimId) => void; onConversation: (id: ConversationId) => void; onLowStock: () => void
 }) {
   // The Seller's notifications at the story moment: the actionable ones need attention, the rest are updates.
-  const rows = notificationsAt(sellerId, at).map(n => {
+  const { simulation } = usePrototypeMode()
+  const rows = notificationsAt(sellerId, at).filter(n => simulation || MVP_ALERTS.includes(n.event.kind)).map(n => {
     const e = n.event
     const time = notificationTime(n)
     const open = () => {
@@ -689,7 +698,8 @@ function InboxTab({ sellerId, at, sent, onConversation, onClaim }: {
   const threads = sellerThreads(sellerId, at)
   const rows = threads.flatMap(({ id }) => { const last = effectiveMessagesAt(id, at, sent[id]).pop(); return last ? [{ id, last }] : [] })
     .sort((a, b) => byMessageTime(b.last, a.last))
-  const claims = openClaims(sellerId, at)
+  const { simulation } = usePrototypeMode()
+  const claims = simulation ? openClaims(sellerId, at) : []
   if (threads.length === 0 && claims.length === 0) return (
     <div className="px-6 py-16 text-center"><div className="font-display text-lg font-semibold">Inbox is empty</div><p className="mt-1 text-sm text-text-muted">Buyer conversations and Claims that need your response appear here.</p></div>
   )

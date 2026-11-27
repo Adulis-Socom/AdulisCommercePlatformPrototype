@@ -27,6 +27,8 @@ import {
   type OrderId, type OrderState, type ProductId, type SceneStatus, type SellerId, type SellerRole, type ShoppablePostId, type StaffId, type TeamMember, type TeamRole, type Timestamp,
 } from '../demo-data'
 
+import { SimulationGate, usePrototypeMode } from '../prototype-mode'
+
 type NavKey = 'home' | 'orders' | 'products' | 'content' | 'inbox' | 'claims' | 'reviews' | 'trust' | 'insights' | 'store' | 'couriers' | 'automation' | 'settings'
 type HomeMode = 'pre-publication' | 'active'
 type OrderBucket = 'needs-action' | 'preparing' | 'ready' | 'delivery' | 'completed' | 'cancelled'
@@ -151,6 +153,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
   // The top bar's menu button opens the navigation as a drawer: on a phone the only navigation, on a tablet the full,
   // labelled navigation beside the icon rail (index.css; spec §4).
   const drawer = useDrawer()
+  const { simulation } = usePrototypeMode() // FE-001: Orders and Claims belong to the internal simulation
 
   const navigate = (key: NavKey) => {
     setActiveNav(key)
@@ -170,6 +173,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
     inbox: sellerThreads(sellerId, at).filter(({ id }) => awaitingSellerReplyAt(id, at)).length,
     claims: sellerClaims(sellerId, at).filter(id => claimStateAt(id, at) !== 'Resolved').length,
   }
+  if (!simulation) { delete badges.orders; delete badges.claims }
 
   return (
     <div className="seller-console flex" style={{ height: '100%', background: 'var(--color-background)' }}>
@@ -192,12 +196,12 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
         <ConsoleTopBar sellerName={SELLERS[sellerId].name} sellerSelector sellerOptions={sellerOptions} selectedSeller={sellerId} onSelectSeller={switchSeller} menu={drawer.menu('Open Seller Console navigation')} />
         {/* Keyed by Seller: each panel starts again from the selected Seller's records. */}
         <div key={sellerId} className="seller-console-content flex-1 overflow-y-auto">
-          {activeNav === 'home' && <HomePanel sellerId={sellerId} at={at} onOpenOrder={id => { setActiveNav('orders'); setSelectedOrder(id) }} onOpenOrders={() => navigate('orders')} onOpenContent={() => navigate('content')} />}
-          {activeNav === 'orders' && (selectedOrder ? <OrderDetail orderId={selectedOrder} at={at} courierChanges={courierChanges} onBack={() => setSelectedOrder(null)} /> : <OrdersPanel sellerId={sellerId} at={at} onOpenOrder={setSelectedOrder} />)}
+          {activeNav === 'home' && <HomePanel sellerId={sellerId} at={at} onOpenOrder={id => { setActiveNav('orders'); setSelectedOrder(id) }} onOpenOrders={() => navigate('orders')} onOpenContent={() => navigate('content')} onNavigate={navigate} />}
+          {activeNav === 'orders' && (!simulation ? <SimulationGate title="Orders">Release 1 has no paid Orders: Buyers review a checkout preview and no Order is placed, so there is nothing to prepare, confirm or fulfil here.</SimulationGate> : selectedOrder ? <OrderDetail orderId={selectedOrder} at={at} courierChanges={courierChanges} onBack={() => setSelectedOrder(null)} /> : <OrdersPanel sellerId={sellerId} at={at} onOpenOrder={setSelectedOrder} />)}
           {activeNav === 'products' && <ProductsPanel sellerId={sellerId} at={at} />}
           {activeNav === 'content' && <ContentPanel sellerId={sellerId} at={at} />}
           {activeNav === 'inbox' && <InboxPanel sellerId={sellerId} at={at} />}
-          {activeNav === 'claims' && <ClaimsPanel sellerId={sellerId} at={at} />}
+          {activeNav === 'claims' && (simulation ? <ClaimsPanel sellerId={sellerId} at={at} /> : <SimulationGate title="Claims">Payment and refund Claims are deferred. Release 1 has no paid Orders to raise a Claim against.</SimulationGate>)}
           {activeNav === 'insights' && <InsightsPanel sellerId={sellerId} at={at} />}
           {activeNav === 'reviews' && <ReviewsPanel sellerId={sellerId} at={at} />}
           {activeNav === 'trust' && <TrustPanel sellerId={sellerId} at={at} />}
@@ -211,7 +215,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
   )
 }
 
-function HomePanel({ sellerId, at, onOpenOrder, onOpenOrders, onOpenContent }: { sellerId: SellerId; at: Moment; onOpenOrder: (id: OrderId) => void; onOpenOrders: () => void; onOpenContent: () => void }) {
+function HomePanel({ sellerId, at, onOpenOrder, onOpenOrders, onOpenContent, onNavigate }: { sellerId: SellerId; at: Moment; onOpenOrder: (id: OrderId) => void; onOpenOrders: () => void; onOpenContent: () => void; onNavigate: (key: NavKey) => void }) {
   // The Seller's current Home is the Daily Operations Brief. The pre-publication Home is offered only where DEMO_DATA
   // records a Pre-publication Setup Snapshot: a historical replay that leaves the Seller's current state unchanged.
   const snapshot = prepublicationSnapshotFor(sellerId)
@@ -223,15 +227,16 @@ function HomePanel({ sellerId, at, onOpenOrder, onOpenOrders, onOpenContent }: {
         <div><h1 className="font-display text-3xl font-semibold text-text-primary">{showing === 'active' ? `${greeting(at)}, ${SELLERS[sellerId].name}` : 'Prepare your store for publication'}</h1><p className="mt-1 text-sm text-text-muted">{showing === 'active' ? `${formatWeekday(at.at)}, ${formatDate(at.at)} · Here is what needs attention today.` : 'Complete the required foundations before your store is published.'}</p></div>
         {snapshot && <Segmented options={[['pre-publication', 'Pre-publication'], ['active', 'Active Seller']]} active={showing} onChange={value => setMode(value as HomeMode)} />}
       </div>
-      {showing === 'pre-publication' ? <PublicationReadiness /> : <DailyOperations sellerId={sellerId} at={at} onOpenOrder={onOpenOrder} onOpenOrders={onOpenOrders} onOpenContent={onOpenContent} />}
+      {showing === 'pre-publication' ? <PublicationReadiness /> : <DailyOperations sellerId={sellerId} at={at} onOpenOrder={onOpenOrder} onOpenOrders={onOpenOrders} onOpenContent={onOpenContent} onNavigate={onNavigate} />}
     </div>
   )
 }
 
 function PublicationReadiness() {
+  const { simulation } = usePrototypeMode() // payment-provider readiness is not an MVP foundation (D24-01)
   // The pre-publication state is DEMO_DATA's historical setup snapshot of a Seller, labelled with its Seller and time.
   const ACTION: Record<string, string> = { 'Social-commerce eligibility': 'Review eligibility', 'Store setup': 'Review store setup', 'Fulfilment setup': 'Review fulfilment', 'First Product readiness': 'Review Product', 'Payment-provider readiness': 'View provider status' }
-  const cards = prepublicationCards().map(card => ({ title: card.card, detail: card.detail.charAt(0).toUpperCase() + card.detail.slice(1), status: card.state === 'Complete' ? 'complete' : card.state === 'In progress' ? 'checking' : 'ready', state: card.state, action: ACTION[card.card] ?? 'Review' }))
+  const cards = prepublicationCards().filter(card => simulation || card.card !== 'Payment-provider readiness').map(card => ({ title: card.card, detail: card.detail.charAt(0).toUpperCase() + card.detail.slice(1), status: card.state === 'Complete' ? 'complete' : card.state === 'In progress' ? 'checking' : 'ready', state: card.state, action: ACTION[card.card] ?? 'Review' }))
   const complete = cards.filter(card => card.status === 'complete').length
   const percent = Math.round((complete / cards.length) * 100)
   const snapshot = VOLT_HOUSE_PREPUBLICATION
@@ -244,7 +249,7 @@ function PublicationReadiness() {
       <div className="grid grid-cols-3 gap-4">
         {cards.map(card => <ReadinessCard key={card.title} {...card} />)}
       </div>
-      <div className="mt-5 flex items-start gap-3 rounded-xl border border-info/20 bg-info-bg p-4"><InfoIcon /><div><div className="text-sm font-semibold text-info">Launch requirement</div><div className="mt-1 text-xs leading-relaxed text-text-secondary">A Shoppable Post is not required to publish your Store. Your first Product, fulfilment setup, store profile and payment-provider readiness are required foundations.</div></div></div>
+      <div className="mt-5 flex items-start gap-3 rounded-xl border border-info/20 bg-info-bg p-4"><InfoIcon /><div><div className="text-sm font-semibold text-info">Launch requirement</div><div className="mt-1 text-xs leading-relaxed text-text-secondary">{simulation ? 'A Scene Post is not required to publish your Store. Your first Product, fulfilment setup, store profile and payment-provider readiness are required foundations.' : 'A Scene Post is not required to publish your Store. Your first Product, fulfilment setup and store profile are required foundations.'}</div></div></div>
     </>
   )
 }
@@ -260,7 +265,8 @@ function ReadinessCard({ title, detail, status, state, action }: { title: string
   )
 }
 
-function DailyOperations({ sellerId, at, onOpenOrder, onOpenOrders, onOpenContent }: { sellerId: SellerId; at: Moment; onOpenOrder: (id: OrderId) => void; onOpenOrders: () => void; onOpenContent: () => void }) {
+function DailyOperations({ sellerId, at, onOpenOrder, onOpenOrders, onOpenContent, onNavigate }: { sellerId: SellerId; at: Moment; onOpenOrder: (id: OrderId) => void; onOpenOrders: () => void; onOpenContent: () => void; onNavigate: (key: NavKey) => void }) {
+  const { simulation } = usePrototypeMode()
   // The specification §29 priorities, counted from the Seller's records at the story moment. Deadlines are each
   // record's own demo timestamps, not Adulis-wide preparation or Claim policy.
   const orders = sellerOrders(sellerId, at)
@@ -278,16 +284,18 @@ function DailyOperations({ sellerId, at, onOpenOrder, onOpenOrders, onOpenConten
   // A delivery exception is a failed final handoff escalated to Handoff Manual Review.
   const exceptions = Object.values(HANDOFF_REVIEWS).filter(review => ORDERS[review.order].seller === sellerId && happenedBefore(review.escalated.at, at))
   const oldest = (time?: string) => (time ? `Oldest waiting ${formatAge(time, at.at)}` : '—')
-  const priorities = [
+  const allPriorities = [
     { rank: 1, label: 'Orders requiring preparation', count: toPrepare.length, detail: `${oldest(toPrepare.map(paidAt).sort()[0])}${prepareBy ? ` · prepare by ${dueLabel(prepareBy)}` : ''}`, tone: 'brand', action: () => onOpenOrders() },
     { rank: 2, label: 'Claims', count: claims.length, detail: dueClaim ? `${dueClaim} · response due ${dueLabel(CLAIMS[dueClaim].responseDeadline!)}` : '—', tone: 'danger' },
     { rank: 3, label: 'Orders ready for fulfilment', count: ready.length, detail: [...new Set(ready.map(id => orderStateAt(id, at)!))].join(' · ') || '—', tone: 'info' },
     { rank: 4, label: 'Delivery exceptions', count: exceptions.length, detail: exceptions.length ? 'Handoff manual review' : '—', tone: 'warning' },
     { rank: 5, label: 'Inventory risks', count: stockRisks.length, detail: stockRisks.map(id => PRODUCTS[id].name).join(' · ') || '—', tone: 'warning' },
     { rank: 6, label: 'Unanswered messages', count: awaiting.length, detail: oldest(awaiting.map(t => t.last.at).sort()[0]), tone: 'brand' },
-    { rank: 7, label: 'Shoppable Posts needing action', count: posts.length, detail: posts.map(id => SHOPPABLE_POSTS[id].title).join(' · ') || '—', tone: 'warning', action: posts.length ? onOpenContent : undefined },
+    { rank: 7, label: 'Scene Posts needing action', count: posts.length, detail: posts.map(id => SHOPPABLE_POSTS[id].title).join(' · ') || '—', tone: 'warning', action: posts.length ? onOpenContent : undefined },
     { rank: 8, label: 'Moderation issues', count: restricted.length, detail: restricted.length ? `Restricted · ${restricted.map(id => SHOPPABLE_POSTS[id].title).join(' · ')}` : '—', tone: 'danger' },
   ]
+  // The current MVP has no Orders, Claims, fulfilment or delivery exceptions: only inventory, messages, Scene Posts and moderation.
+  const priorities = simulation ? allPriorities : allPriorities.filter(item => item.rank >= 5)
   return (
     <div className="grid grid-cols-[1.45fr_1fr] gap-5">
       <div className="rounded-2xl border border-border bg-surface p-5">
@@ -297,18 +305,19 @@ function DailyOperations({ sellerId, at, onOpenOrder, onOpenOrders, onOpenConten
         </div>
       </div>
       <div className="flex flex-col gap-5">
-        <div className="rounded-2xl border border-border bg-surface p-5">
+        {!simulation && <div className="rounded-2xl border border-border bg-surface p-5"><div className="font-semibold">Start here</div><p className="mt-1 text-xs text-text-muted">Your storefront is built from Products, Scene Posts and Stories.</p><div className="mt-3 flex flex-col gap-2">{([['products', 'Manage Products'], ['content', 'Create or edit a Scene Post'], ['inbox', 'Reply to Buyers']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => onNavigate(key)} className="flex min-h-11 items-center justify-between rounded-xl border border-border px-3 text-left text-sm font-semibold text-text-primary">{label}<span aria-hidden="true" className="text-text-muted">→</span></button>)}</div></div>}
+        {simulation && <div className="rounded-2xl border border-border bg-surface p-5">
           <div className="mb-4 flex items-center justify-between"><div className="font-semibold">Next Paid Orders</div><button onClick={onOpenOrders} className="text-xs font-semibold text-brand-text">View all</button></div>
           {toPrepare.slice(0, 3).map(id => <button key={id} onClick={() => onOpenOrder(id)} className="flex w-full items-center gap-3 border-b border-border py-3 text-left last:border-b-0"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted font-mono text-[9px] font-bold text-brand-dark">{id.slice(-3)}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{orderItems(id)}</span><span className="text-[10px] text-text-muted">{shortName(BUYERS[ORDERS[id].buyer].name)} · {formatAge(paidAt(id), at.at)}</span></span><StatusBadge {...stateBadge(orderStateAt(id, at)!)} size="sm" /></button>)}
           {toPrepare.length === 0 && <p className="py-2 text-xs text-text-muted">No Orders requiring preparation.</p>}
-        </div>
-        <PerformanceCard sellerId={sellerId} />
+        </div>}
+        {simulation && <PerformanceCard sellerId={sellerId} />}
       </div>
     </div>
   )
 }
 
-/** DEMO_DATA's "Needs attention" record for a post under Shoppable Posts needing action. The post stays published (rule 1.8). */
+/** DEMO_DATA's "Needs attention" record for a post under Scene Posts needing action. The post stays published (rule 1.8). */
 function PostNeedingAction({ postId }: { postId: ShoppablePostId }) {
   return (
     <div className="mb-3 ml-[52px] rounded-xl border border-warning/20 bg-warning-bg p-3">
@@ -581,7 +590,7 @@ function ProductDetailPanel({ sellerId, at, productId, onBack, onEdit }: { selle
           <DetailCard title="Price and inventory"><InfoGrid rows={[[discount ? 'Regular price' : 'Price', formatEtb(product.price)], ...(discount ? [['Active discount', discount] as [string, string]] : []), ['Inventory', `${product.stock} available`], ['Inventory policy', '—'], ['Availability', availabilityLabel(productId)]]} /></DetailCard>
           <DetailCard title="Variants"><VariantTable productId={productId} /></DetailCard>
           <DetailCard title="Product demo embed"><InfoGrid rows={[['Configuration', '—'], ['Provider', '—'], ['Placement', '—']]} /></DetailCard>
-          <DetailCard title="Concept boundary"><p className="text-sm leading-relaxed text-text-secondary">This Product Post contains exactly one canonical Product and its commerce information. It is not a Shoppable Post and cannot be used as a top-level For You unit.</p></DetailCard>
+          <DetailCard title="Concept boundary"><p className="text-sm leading-relaxed text-text-secondary">This Product Post contains exactly one canonical Product and its commerce information. It is not a Scene Post and cannot be used as a top-level For You unit.</p></DetailCard>
         </div>
       </div>
     </div>
@@ -627,7 +636,7 @@ function ProductEditor({ sellerId, at, productId, onBack }: { sellerId: SellerId
   )
 }
 
-/** A Shoppable Post's publication at the story moment: Draft, Published, or Restricted after a moderation action. */
+/** A Scene Post's publication at the story moment: Draft, Published, or Restricted after a moderation action. */
 function publicationOf(postId: ShoppablePostId, at: Moment) {
   return SHOPPABLE_POSTS[postId].publication === 'Draft' ? 'draft' : restrictionAt(postId, at) ? 'restricted' : 'published'
 }
@@ -643,19 +652,19 @@ function ContentPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
 
 function ShoppablePostsList({ sellerId, at, onOpen, onCreate }: { sellerId: SellerId; at: Moment; onOpen: (id: ShoppablePostId) => void; onCreate: () => void }) {
   const [bucket, setBucket] = useState<ContentBucket>('published')
-  // The Seller's Shoppable Posts at the story moment, by publication; For You eligibility is derived (rules 1.7–1.8).
+  // The Seller's Scene Posts at the story moment, by publication; For You eligibility is derived (rules 1.7–1.8).
   const all = sellerPostsAt(sellerId, at)
   const inBucket = (key: ContentBucket) => all.filter(id => publicationOf(id, at) === { drafts: 'draft', published: 'published', restricted: 'restricted' }[key])
   const posts = inBucket(bucket)
   return (
     <div className="mx-auto max-w-7xl p-8">
-      <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">Shoppable Posts</h1><p className="mt-1 text-sm text-text-muted">Image-led content with optional same-Seller Product tags and hotspots.</p></div><Button onClick={onCreate}>Create Shoppable Post</Button></div>
+      <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">Scene Posts</h1><p className="mt-1 text-sm text-text-muted">Image-led content with optional same-Seller Product tags and hotspots.</p></div><Button onClick={onCreate}>Create Scene Post</Button></div>
       <div className="mb-5 flex gap-2"><Pill active={bucket === 'drafts'} onClick={() => setBucket('drafts')}>Drafts · {inBucket('drafts').length}</Pill><Pill active={bucket === 'published'} onClick={() => setBucket('published')}>Published · {inBucket('published').length}</Pill><Pill active={bucket === 'restricted'} onClick={() => setBucket('restricted')}>Restricted / Removed · {inBucket('restricted').length}</Pill></div>
       <div className="grid grid-cols-3 gap-4">
         {posts.map((id, index) => <button key={id} onClick={() => onOpen(id)} className="overflow-hidden rounded-2xl border border-border bg-surface text-left shadow-sm"><ContentMedia index={index} /><div className="p-4"><div className="flex items-center justify-between"><span className="font-mono text-[10px] text-text-muted">{id}</span><StatusBadge status={publicationOf(id, at)} size="sm" /></div><p className="mt-3 line-clamp-2 text-sm font-semibold">{SHOPPABLE_POSTS[id].caption}</p><div className="mt-4 flex items-center justify-between border-t border-border pt-3"><span><span className="block text-xs text-text-secondary">{SHOPPABLE_POSTS[id].tags.length ? `${SHOPPABLE_POSTS[id].tags.length} tagged Product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}` : 'No Product tags'}</span><span className="text-[10px] text-text-muted">{SHOPPABLE_POSTS[id].hotspots ? `${SHOPPABLE_POSTS[id].hotspots} hotspot${SHOPPABLE_POSTS[id].hotspots === 1 ? '' : 's'}` : 'No hotspots'}</span></span><EligibilityBadge eligible={isForYouEligibleAt(id, at)} /></div></div></button>)}
-        {posts.length === 0 && <div className="col-span-3 rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-text-muted">No Shoppable Posts in this list</div>}
+        {posts.length === 0 && <div className="col-span-3 rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-text-muted">No Scene Posts in this list</div>}
       </div>
-      <div className="mt-5 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Publication and For You eligibility are separate states. A Shoppable Post can be Published with zero Products and remain ineligible for For You.</div>
+      <div className="mt-5 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Publication and For You eligibility are separate states. A Scene Post can be Published with zero Products and remain ineligible for For You.</div>
     </div>
   )
 }
@@ -667,14 +676,14 @@ function ShoppablePostDetail({ sellerId, at, postId, onBack, onEdit }: { sellerI
   const eligible = isForYouEligibleAt(postId, at)
   return (
     <div className="mx-auto max-w-6xl p-8">
-      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back to Shoppable Posts</button>
-      <div className="mb-6 flex items-start justify-between"><div><div className="flex items-center gap-3"><h1 className="font-display text-3xl font-semibold">{postId}</h1><StatusBadge status={publication} /><EligibilityBadge eligible={eligible} /></div><p className="mt-1 text-sm text-text-muted">Shoppable Post · {SELLERS[sellerId].name}</p></div><div className="flex gap-2"><Button variant="tertiary">Preview</Button><Button onClick={onEdit}>Edit Post</Button></div></div>
+      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back to Scene Posts</button>
+      <div className="mb-6 flex items-start justify-between"><div><div className="flex items-center gap-3"><h1 className="font-display text-3xl font-semibold">{postId}</h1><StatusBadge status={publication} /><EligibilityBadge eligible={eligible} /></div><p className="mt-1 text-sm text-text-muted">Scene Post · {SELLERS[sellerId].name}</p></div><div className="flex gap-2"><Button variant="tertiary">Preview</Button><Button onClick={onEdit}>Edit Post</Button></div></div>
       <div className="grid grid-cols-[1fr_1fr] gap-5">
         <DetailCard title="Media and hotspots"><div className="relative"><ContentMedia index={zeroProduct ? 1 : 0} large />{!zeroProduct && <><span className="absolute left-[42%] top-[35%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-on-brand shadow">+</span><span className="absolute right-[20%] top-[58%] flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-brand text-on-brand shadow">+</span></>}</div></DetailCard>
         <div className="flex flex-col gap-5">
           <DetailCard title="Caption"><p className="text-sm leading-relaxed text-text-secondary">{post.caption}</p></DetailCard>
           <DetailCard title="Product selection">{zeroProduct ? <div><div className="text-sm font-semibold">No Products selected</div><p className="mt-1 text-xs text-text-muted">This is valid and does not block publication.</p></div> : <div className="space-y-2">{post.tags.map(id => <SelectedProduct key={id} name={PRODUCTS[id].name} />)}</div>}</DetailCard>
-          <DetailCard title="Distribution"><div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">Publication</span><span className="text-xs text-text-muted">{publication === 'published' ? 'Visible on Store and direct links' : publication === 'draft' ? 'Not yet published' : 'Restricted from public surfaces'}</span></span><StatusBadge status={publication} /></div><div className="mt-4 flex items-center justify-between border-t border-border pt-4"><span><span className="block text-sm font-semibold">For You eligibility</span><span className="text-xs text-text-muted">{eligible ? 'Eligible as a Shoppable Post' : zeroProduct ? 'Requires at least one Product tag' : 'Not currently eligible'}</span></span><EligibilityBadge eligible={eligible} /></div></DetailCard>
+          <DetailCard title="Distribution"><div className="flex items-center justify-between"><span><span className="block text-sm font-semibold">Publication</span><span className="text-xs text-text-muted">{publication === 'published' ? 'Visible on Store and direct links' : publication === 'draft' ? 'Not yet published' : 'Restricted from public surfaces'}</span></span><StatusBadge status={publication} /></div><div className="mt-4 flex items-center justify-between border-t border-border pt-4"><span><span className="block text-sm font-semibold">For You eligibility</span><span className="text-xs text-text-muted">{eligible ? 'Eligible as a Scene Post' : zeroProduct ? 'Requires at least one Product tag' : 'Not currently eligible'}</span></span><EligibilityBadge eligible={eligible} /></div></DetailCard>
         </div>
       </div>
     </div>
@@ -698,9 +707,9 @@ function ShoppablePostEditor({ sellerId, at, initialProduct, onBack }: { sellerI
   const eligible = eligibility === 'eligible'
   return (
     <div className="mx-auto max-w-7xl p-8">
-      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back to Shoppable Posts</button>
-      <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">Create Shoppable Post</h1><p className="mt-1 text-sm text-text-muted">Product selection and hotspots are optional.</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setPreview(!preview)}>{preview ? 'Close Preview' : 'Preview'}</Button><Button onClick={() => setPublished(true)}>Publish</Button></div></div>
-      {published && <div className="mb-5 rounded-xl border border-success/20 bg-success-bg p-4"><div className="flex items-center gap-3"><CheckIcon /><div className="min-w-60 flex-1"><div className="text-sm font-semibold text-success">Shoppable Post published</div><div className="mt-1 text-xs text-text-secondary">{eligibility === 'eligible' ? 'Published · FYP Eligible' : eligibility === 'unavailable' ? NOT_ELIGIBLE.publication : 'Published · Not eligible for For You because no Products are tagged.'}</div>{eligibility === 'unavailable' && <div className="mt-1 text-xs text-text-secondary">{NOT_ELIGIBLE.sentence}</div>}</div><div className="flex items-center gap-3"><StatusBadge status="published" /><EligibilityBadge eligible={eligible} /></div></div></div>}
+      <button onClick={onBack} className="mb-5 text-sm font-semibold text-brand-text">← Back to Scene Posts</button>
+      <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold">Create Scene Post</h1><p className="mt-1 text-sm text-text-muted">Product selection and hotspots are optional.</p></div><div className="flex gap-2"><Button variant="tertiary" onClick={() => setPreview(!preview)}>{preview ? 'Close Preview' : 'Preview'}</Button><Button onClick={() => setPublished(true)}>Publish</Button></div></div>
+      {published && <div className="mb-5 rounded-xl border border-success/20 bg-success-bg p-4"><div className="flex items-center gap-3"><CheckIcon /><div className="min-w-60 flex-1"><div className="text-sm font-semibold text-success">Scene Post published</div><div className="mt-1 text-xs text-text-secondary">{eligibility === 'eligible' ? 'Published · FYP Eligible' : eligibility === 'unavailable' ? NOT_ELIGIBLE.publication : 'Published · Not eligible for For You because no Products are tagged.'}</div>{eligibility === 'unavailable' && <div className="mt-1 text-xs text-text-secondary">{NOT_ELIGIBLE.sentence}</div>}</div><div className="flex items-center gap-3"><StatusBadge status="published" /><EligibilityBadge eligible={eligible} /></div></div></div>}
       <div className={`grid gap-5 ${preview ? 'grid-cols-[1.25fr_.75fr]' : 'grid-cols-1'}`}>
         <div className="flex flex-col gap-5">
           <EditorSection step="01" title="Media"><div className="grid grid-cols-[220px_1fr] gap-4"><ContentMedia index={0} large /><button className="flex min-h-56 items-center justify-center rounded-xl border border-dashed border-border-strong bg-surface-raised text-sm font-semibold text-text-muted">Replace media</button></div></EditorSection>
@@ -737,7 +746,7 @@ const NOT_ELIGIBLE = {
   publication: 'Published · Not eligible for For You',
 }
 
-/** Why a tagged post isn't eligible for For You, in the pattern Home uses for Shoppable Posts needing action. */
+/** Why a tagged post isn't eligible for For You, in the pattern Home uses for Scene Posts needing action. */
 function NotEligibleNote() {
   return <p className="mt-3 rounded-xl border border-warning/20 bg-warning-bg px-4 py-3 text-xs leading-relaxed text-text-secondary"><span className="font-semibold text-warning">{NOT_ELIGIBLE.label}</span> {NOT_ELIGIBLE.reason}</p>
 }
@@ -751,7 +760,7 @@ function ProductPreview({ image, name, category, price, description }: { image: 
 }
 
 function ShoppablePreview({ seller, caption, productCount, hotspots, eligibility }: { seller: string; caption: string; productCount: number; hotspots: boolean; eligibility: EditorEligibility }) {
-  return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-ink p-3 text-white shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-white/60">Shoppable Post Preview</div><div className="relative mt-3 h-[460px] overflow-hidden rounded-2xl bg-gradient-to-br from-brand to-brand-dark">{hotspots && productCount > 0 && <span className="absolute left-[45%] top-[38%] flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-brand text-on-brand">+</span>}<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-5 pt-20"><div className="text-sm font-semibold">{seller}</div><p className="mt-2 text-sm leading-relaxed text-white/80">{caption}</p>{productCount > 0 && <div className="mt-3 inline-flex rounded-full bg-surface px-3 py-2 text-xs font-semibold text-text-primary">In this post · {productCount} Product{productCount > 1 ? 's' : ''}</div>}</div></div><div className="mt-3 text-center text-[10px] text-white/60">{eligibility === 'eligible' ? 'Published · FYP Eligible' : NOT_ELIGIBLE.publication}</div>{eligibility === 'unavailable' && <p className="mx-2 mt-1 text-center text-[10px] leading-relaxed text-white/60">{NOT_ELIGIBLE.sentence}</p>}</aside>
+  return <aside className="sticky top-4 h-fit rounded-3xl border border-border bg-ink p-3 text-white shadow-lg"><div className="text-center font-mono text-[10px] uppercase tracking-wider text-white/60">Scene Post Preview</div><div className="relative mt-3 h-[460px] overflow-hidden rounded-2xl bg-gradient-to-br from-brand to-brand-dark">{hotspots && productCount > 0 && <span className="absolute left-[45%] top-[38%] flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-brand text-on-brand">+</span>}<div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-5 pt-20"><div className="text-sm font-semibold">{seller}</div><p className="mt-2 text-sm leading-relaxed text-white/80">{caption}</p>{productCount > 0 && <div className="mt-3 inline-flex rounded-full bg-surface px-3 py-2 text-xs font-semibold text-text-primary">In this post · {productCount} Product{productCount > 1 ? 's' : ''}</div>}</div></div><div className="mt-3 text-center text-[10px] text-white/60">{eligibility === 'eligible' ? 'Published · FYP Eligible' : NOT_ELIGIBLE.publication}</div>{eligibility === 'unavailable' && <p className="mx-2 mt-1 text-center text-[10px] leading-relaxed text-white/60">{NOT_ELIGIBLE.sentence}</p>}</aside>
 }
 
 // A Product's variant groups as DEMO_DATA gives them: one price per Product, with no inventory tracking defined.
@@ -908,7 +917,7 @@ function InsightsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const i = INSIGHTS_7D[sellerId]
   const overview: [string, string, string][] = i ? [
     ['Paid Orders', String(i.paidOrders), '—'], ['Completed Orders', String(i.completedOrders), '—'], ['GMV', formatEtb(i.gmv), '—'],
-    ['Product views', i.productViews.toLocaleString('en-US'), '—'], ['Shoppable impressions', i.qualifiedImpressions.toLocaleString('en-US'), '—'], ['Product-tag CTR', `${i.tagCtrPercent}%`, '—'],
+    ['Product views', i.productViews.toLocaleString('en-US'), '—'], ['Scene impressions', i.qualifiedImpressions.toLocaleString('en-US'), '—'], ['Product-tag CTR', `${i.tagCtrPercent}%`, '—'],
     ['Storefront visits', i.storefrontVisits.toLocaleString('en-US'), '—'], ['Claims', String(i.claims), '—'], ['Cancellation', `${i.cancellationRatePercent}%`, '—'],
     ['Response reliability', `${i.responseReliabilityPercent}%`, '—'], ['Fulfilment reliability', `${i.fulfilmentReliabilityPercent}%`, '—'],
   ] : []

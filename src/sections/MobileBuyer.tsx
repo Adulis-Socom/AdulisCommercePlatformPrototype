@@ -23,6 +23,8 @@ import {
   type SellerId, type ShoppablePostId, type Timestamp,
 } from '../demo-data'
 
+import { CHECKOUT_PREVIEW_NOTICE, SimulationGate, usePrototypeMode } from '../prototype-mode'
+
 type TabKey = 'home' | 'shop' | 'saved' | 'orders' | 'you'
 /** Buyer Home's discovery channels (rule 2.3, specification §7). For You is the FYP; the others aren't synonyms for it. */
 type Channel = 'foryou' | 'following' | 'nearby' | 'discounts' | 'locally-made'
@@ -41,7 +43,7 @@ type Screen =
 type AccountScreen = 'purchased-products' | 'edit-profile' | 'appearance' | 'notification-settings' | 'privacy-security' | 'help-support' | 'delete-account'
 /** A guest browses public content; signing in shows Maya's signed-in state (rules 3.1–3.12, specification §12). */
 type Auth = 'guest' | 'signed-in'
-/** A Save target: a Product Post or a whole Shoppable Post (rule 2.5), never one standing in for the other. */
+/** A Save target: a Product Post or a whole Scene Post (rule 2.5), never one standing in for the other. */
 type SaveKey = `product:${ProductId}` | `post:${ShoppablePostId}`
 /**
  * Where the Buyer was heading when sign-in was required: it resumes after sign-in (rule 3.10, specification §7, §12),
@@ -147,6 +149,10 @@ const ORDER_SCREENS: readonly Screen[] = ['orders', 'order-detail', 'delegated-r
 const CHECKOUT_SCREENS: readonly Screen[] = ['cart-check', 'checkout-coordinator', 'seller-checkout', 'payment-transition', 'payment-processing', 'payment-success', 'payment-failed', 'payment-checking']
 // A guided-flow step that opens on a cart or checkout screen starts with DEMO_DATA's Flow D carts.
 const CART_SCREENS: readonly Screen[] = ['seller-cart', 'multi-cart', ...CHECKOUT_SCREENS]
+// FE-001: paid-commerce screens belong to the internal simulation. In the current MVP they show a gate; the cart screens and
+// the checkout review ('seller-checkout') stay available as a preview.
+const SIMULATION_SCREENS: readonly Screen[] = [...ORDER_SCREENS, 'payment-transition', 'payment-processing', 'payment-success', 'payment-failed', 'payment-checking', 'purchased-products']
+const SIMULATION_TITLE = (screen: Screen) => screen === 'orders' ? 'Orders' : screen === 'purchased-products' ? 'Purchased Products' : screen.startsWith('payment') ? 'Payment' : screen.startsWith('claim') ? 'Claims' : screen === 'review' ? 'Order reviews' : 'Order handoff'
 
 // The You tab and its account screens hold the signed-in Buyer's profile, purchases and Account settings (rule 3.7).
 const ACCOUNT_SCREENS: readonly Screen[] = ['you', 'purchased-products', 'edit-profile', 'appearance', 'notification-settings', 'privacy-security', 'help-support', 'delete-account']
@@ -251,7 +257,7 @@ function availabilityText(id: ProductId) {
   return availability === 'Out of Stock' ? 'Currently unavailable' : availability
 }
 
-/** A Collection item's Save key: a Product Post or a whole Shoppable Post. */
+/** A Collection item's Save key: a Product Post or a whole Scene Post. */
 function saveKeyOf(item: CollectionItem): SaveKey {
   return 'product' in item ? `product:${item.product}` : `post:${item.post}`
 }
@@ -628,8 +634,9 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   }
 
   const showNav = ['feed', 'search', 'saved', 'orders', 'you'].includes(screen)
+  const { simulation } = usePrototypeMode()
   const gate = signedIn ? null : signInGate(screen)
-  const shown: Screen | 'gated' = gate ? 'gated' : screen
+  const shown: Screen | 'gated' | 'simulation-only' = gate ? 'gated' : !simulation && SIMULATION_SCREENS.includes(screen) ? 'simulation-only' : screen
 
   return (
     <PhoneFrame
@@ -779,6 +786,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'payment-success' && payingOrder && <PaymentSuccess order={payingOrder} progress={progress} next={nextUp && SELLERS[nextUp.seller].name} onNext={() => nextUp && startCheckout(nextUp.seller)} onDone={() => { setActiveTab('orders'); setScreen('orders') }} />}
         {shown === 'payment-failed' && payingOrder && <PaymentFailed order={payingOrder} progress={progress} onRetry={() => retryPayment(payingOrder)} onCart={() => { setCartSeller(payingOrder.seller); setScreen('seller-cart') }} />}
         {shown === 'payment-checking' && <PaymentChecking onRefresh={() => setScreen('payment-processing')} onDone={resolvePayment} />}
+        {shown === 'simulation-only' && <><Header title={SIMULATION_TITLE(screen)} onBack={() => goTab('home')} /><SimulationGate title={SIMULATION_TITLE(screen)} compact>{screen === 'orders' || screen === 'purchased-products' ? 'Release 1 has no paid Orders: checkout is a preview, so nothing is purchased and there is nothing to track. Messages and notifications still work.' : undefined}</SimulationGate></>}
         {shown === 'orders' && <OrdersList at={at} onOrder={openOrder} onChats={() => { setChatsFrom('orders'); setScreen('chats') }} onNotifications={() => { setNotificationsFrom('orders'); setScreen('notifications') }} />}
         {shown === 'order-detail' && <OrderDetail orderId={orderId} at={at} stage={orderStage} setStage={selectStage} onBack={() => setScreen('orders')} onDelegate={() => setScreen('delegated-recipient')} onScan={() => setScreen('qr-scanner')} onOtp={() => openCode('order-detail')} onCompleted={() => setScreen('completed')} onClaim={openClaim} onChat={() => openConversation({ seller: ORDERS[orderId].seller, context: { order: orderId }, from: 'order-detail' })} />}
         {shown === 'delegated-recipient' && <DelegatedRecipient handoff={finalHandoffAt(orderId, at)} onBack={() => setScreen('order-detail')} onSave={() => setScreen('order-detail')} />}
@@ -1449,16 +1457,17 @@ function PrivacySecurity({ onBack, onDelete }: { onBack: () => void; onDelete: (
  * Company Website's, not a second one in the app.
  */
 function HelpSupport({ onBack, onOrders, onChats }: { onBack: () => void; onOrders: () => void; onChats: () => void }) {
+  const { simulation } = usePrototypeMode()
   return (
     <>
       <Header title="Help & Support" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-5">
         <div className="flex flex-col gap-2">
-          <MenuRow label="Help with an Order" detail="Track it, verify its handoff or start a Claim from the Order" onClick={onOrders} />
-          <MenuRow label="Message a Seller" detail="Questions about a Product or an Order go to its Seller" onClick={onChats} />
+          {simulation && <MenuRow label="Help with an Order" detail="Track it, verify its handoff or start a Claim from the Order" onClick={onOrders} />}
+          <MenuRow label="Message a Seller" detail={simulation ? 'Questions about a Product or an Order go to its Seller' : 'Questions about a Product or Scene go to its Seller'} onClick={onChats} />
         </div>
         <SectionLabel>Adulis Help Centre</SectionLabel>
-        <div className="rounded-xl bg-surface-raised p-4 text-sm leading-relaxed text-text-secondary">Answers about orders and checkout, delivery and handoff, and Reviews and Claims are in the Help Centre on the Adulis website, with Contact us for anything else.</div>
+        <div className="rounded-xl bg-surface-raised p-4 text-sm leading-relaxed text-text-secondary">{simulation ? 'Answers about orders and checkout, delivery and handoff, and Reviews and Claims are in the Help Centre on the Adulis website, with Contact us for anything else.' : 'Answers about discovery, messaging and Reviews are in the Help Centre on the Adulis website, with Contact us for anything else.'}</div>
         <PrototypeNote>The Help Centre and Contact pages are in this prototype's Company Website section.</PrototypeNote>
       </div>
     </>
@@ -2408,7 +2417,7 @@ function MoreSheet({ postId, notInterested, onClose, onNotInterested, onHide, on
 }
 
 /**
- * Share names the Shoppable Post or Product Post, its Seller and the Seller's handle, never a URL: no Adulis web address
+ * Share names the Scene Post or Product Post, its Seller and the Seller's handle, never a URL: no Adulis web address
  * is approved (DEMO_DATA › Sellers). It's public, so no sign-in.
  */
 function ShareSheet({ title, sellerId, onClose }: { title: string; sellerId: SellerId; onClose: () => void }) {
@@ -2455,7 +2464,7 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
   onOrder: (options: readonly string[], quantity: number) => void; onAskSeller: () => void
 }) {
   const product = PRODUCTS[productId]
-  // A Product that is out of stock stays viewable, but nothing offers it for purchase (rule 1.8; DEMO_DATA › Shoppable Posts).
+  // A Product that is out of stock stays viewable, but nothing offers it for purchase (rule 1.8; DEMO_DATA › Scene Posts).
   const purchasable = !withdrawn && isPurchasableAt(productId, at)
   const availability = withdrawn ? 'Out of Stock' : product.availability
   const seller = SELLERS[product.seller]
@@ -2521,7 +2530,7 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
       <div className="absolute bottom-0 left-0 right-0 flex gap-2 border-t border-border bg-surface p-3 pb-5">
         <Button variant="tertiary" size="lg" aria-pressed={saved} onClick={onSave}>{saved ? 'Saved' : 'Save'}</Button>
         <Button variant="tertiary" size="lg" onClick={onAskSeller}>Ask Seller</Button>
-        <Button size="lg" style={{ flex: 1 }} disabled={!purchasable} onClick={() => onOrder(choices, quantity)}>Order</Button>
+        <Button size="lg" style={{ flex: 1 }} disabled={!purchasable} onClick={() => onOrder(choices, quantity)}>Add to Cart</Button>
       </div>
     </>
   )
@@ -2704,7 +2713,7 @@ function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, o
   onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void
 }) {
   // Search behaves as before: any query other than the zero-result example shows the same results, which are the
-  // canonical Products, Shoppable Posts and Sellers that Buyers can see.
+  // canonical Products, Scene Posts and Sellers that Buyers can see.
   const zero = query.toLowerCase() === BUYERS[BUYER].zeroResultQuery
   const active = query.length > 0
   return (
@@ -2812,7 +2821,7 @@ function collectionContents(id: CollectionId, changes: Partial<Record<SaveKey, b
 
 function Saved({ changes, onCollection, onProduct, onPost }: { changes: Partial<Record<SaveKey, boolean>>; onCollection: (id: CollectionId) => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void }) {
   const collections = COLLECTION_IDS.filter(id => COLLECTIONS[id].owner === BUYER)
-  // "Recently saved" shows the latest Product Post and whole Shoppable Post saved this session, otherwise the default
+  // "Recently saved" shows the latest Product Post and whole Scene Post saved this session, otherwise the default
   // Collection's first of each.
   const recent = collectionContents(collections.find(id => COLLECTIONS[id].isDefault) ?? collections[0], changes)
   const latest = (prefix: 'product:' | 'post:') => (Object.keys(changes) as SaveKey[]).filter(key => changes[key] && key.startsWith(prefix)).map(itemOf).pop()
@@ -3506,7 +3515,7 @@ function ChatMessage({ message, spaced }: { message: MessageRecord; spaced?: boo
   )
 }
 
-// The Buyer app names chat contexts publicly (PR-005): Products and Scenes, never Product Posts or Shoppable Posts. The
+// The Buyer app names chat contexts publicly (PR-005): Products and Scenes, never Product Posts or Scene Posts. The
 // shared wording, which the Seller surfaces use, is unchanged.
 const BUYER_CONTEXT_LABEL: Partial<Record<(typeof CONTEXT_GROUPS)[number]['kind'], string>> = { product: 'Products', post: 'Scenes' }
 const buyerContextSubject = (context: MessageContext) => ('post' in context ? `${SHOPPABLE_POSTS[context.post].title} Scene` : contextSubject(context))
@@ -3577,11 +3586,15 @@ function notificationText(n: NotificationRecord): { title: string; detail: strin
 
 function Notifications({ at, onBack, onOrder }: { at: Moment; onBack: () => void; onOrder: (id: OrderId) => void }) {
   // The Buyer's notifications at the story moment. DEMO_DATA records no read state, so none is marked unread.
+  // The current MVP has no Orders, so notifications about Orders, payments, Claims and delivery belong to the simulation.
+  const { simulation } = usePrototypeMode()
+  const items = notificationsAt(BUYER, at).filter(n => simulation || !notificationText(n).order)
   return (
     <>
       <Header title="Notifications" onBack={onBack} />
       <div className="flex-1 overflow-y-auto">
-        {notificationsAt(BUYER, at).map((n, index) => {
+        {items.length === 0 && <p className="p-8 text-center text-sm text-text-muted">No notifications yet.</p>}
+        {items.map((n, index) => {
           const { title, detail, order } = notificationText(n)
           const time = notificationTime(n)
           return <NotificationItem key={index} title={title} detail={detail} time={time ? formatAge(time, at.at) : '—'} onClick={() => order && onOrder(order)} />
@@ -3691,7 +3704,7 @@ function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held
           <PriceRow label="Products" value={formatEtb(subtotal)} />
           <div className="mt-3 border-t border-border pt-3"><PriceRow label="Cart subtotal" value={formatEtb(subtotal)} strong /></div>
         </div>
-        <p className="mt-3 text-xs leading-relaxed text-text-muted">Fulfilment and applicable fees are selected during checkout. This checkout creates an order with {seller} only.</p>
+        <CartNote seller={seller} />
       </div>}
       {lines.length > 0 && <div className="border-t border-border bg-surface p-4 pb-6">
         {held
@@ -3730,9 +3743,7 @@ function MultiCart({ carts, first, isAvailable, openOrderFor, progress, onBack, 
           ? <CartSummary key={item.seller} seller={item.seller} lines={item.lines} status={status(item.seller)} blocked={!openOrderFor(item.seller) && !!isAvailable && item.lines.some(line => !isAvailable(line.product))} onCheckout={() => onCheckout(item.seller)} actionLabel={openOrderFor(item.seller) ? 'Retry payment' : undefined} />
           : <CartSummary key={item.seller} seller={item.seller} lines={item.lines} status={status(item.seller)} onCheckout={() => setNotice(item.seller)} actionLabel="Review separately" />))}
         {notice && ordered[0] && <div className="mt-3 rounded-xl bg-brand-muted p-3 text-xs leading-relaxed text-brand-dark">{SELLERS[notice].name} remains a separate Seller cart. Finish or leave the {SELLERS[ordered[0].seller].name} checkout before starting this one.</div>}
-        <div className="mt-5 rounded-xl border border-info/20 bg-info-bg p-3 text-xs leading-relaxed text-info">
-          Adulis coordinates your carts, but each checkout creates one distinct Seller Order. Amounts, fulfilment and payment status are never combined across sellers.
-        </div>
+        <MultiCartNote />
       </div>
     </>
   )
@@ -3764,6 +3775,7 @@ function CartSummary({ seller: sellerId, lines, status, blocked, onCheckout, act
 
 function CheckoutCoordinator({ seller: sellerId, lines, others, onBack, onContinue }: { seller: SellerId; lines: readonly CartLine[]; others: readonly SellerId[]; onBack: () => void; onContinue: () => void }) {
   // One checkout for one Seller cart; the Buyer's other Seller carts stay as they are (rules 4.1–4.3).
+  const { simulation } = usePrototypeMode()
   const seller = SELLERS[sellerId].name
   return (
     <>
@@ -3773,7 +3785,7 @@ function CheckoutCoordinator({ seller: sellerId, lines, others, onBack, onContin
         <div className="mt-4 font-display text-2xl font-semibold">Checkout {seller}</div>
         <p className="mt-2 text-sm leading-relaxed text-text-secondary">You are starting one checkout for one Seller cart.{others.map(other => ` Your ${SELLERS[other].name} cart stays saved and unchanged.`)}</p>
         <div className="mt-6 rounded-2xl border border-brand/20 bg-brand-muted p-4">
-          <div className="text-xs font-semibold uppercase tracking-wider text-brand-dark">Seller Order</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-brand-dark">{simulation ? 'Seller Order' : 'Seller cart'}</div>
           <div className="mt-2 flex items-center justify-between"><span className="font-semibold">{seller}</span><span className="font-bold">{formatEtb(productsSubtotal(lines))}</span></div>
           <div className="mt-1 text-xs text-text-secondary">{lines.length} product{lines.length === 1 ? '' : 's'} · Fulfilment selected next</div>
         </div>
@@ -3784,7 +3796,7 @@ function CheckoutCoordinator({ seller: sellerId, lines, others, onBack, onContin
           </div>
         ))}
         <div className="mt-6 flex gap-3 text-xs text-text-muted">
-          <StepDot active label="Seller" /><StepLine /><StepDot label="Fulfilment" /><StepLine /><StepDot label="Payment" />
+          <StepDot active label="Seller" /><StepLine /><StepDot label="Fulfilment" /><StepLine /><StepDot label={simulation ? 'Payment' : 'Review'} />
         </div>
       </div>
       <div className="border-t border-border bg-surface p-4 pb-6"><Button size="lg" onClick={onContinue} style={{ width: '100%' }}>Continue with {seller}</Button></div>
@@ -3803,6 +3815,7 @@ function SellerCheckout({ at, seller: sellerId, lines, mode, onMode, note, onBac
   // The options the Seller offers at the story moment, with its own charges. DEMO_DATA quotes no delivery time.
   const seller = SELLERS[sellerId]
   const buyer = BUYERS[BUYER]
+  const { simulation } = usePrototypeMode()
   const options = fulfilmentOptionsAt(sellerId, at)
   const courier = options.find(option => option.mode === 'Courier Delivery')
   // The Products at current prices, the Seller's charge for the mode, and the 0.5% surcharge on the Products alone (WO-006).
@@ -3814,14 +3827,14 @@ function SellerCheckout({ at, seller: sellerId, lines, mode, onMode, note, onBac
   }
   return (
     <>
-      <Header title={`${seller.name} checkout`} onBack={onBack} />
+      <Header title={simulation ? `${seller.name} checkout` : `${seller.name} checkout review`} onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="rounded-xl bg-surface-raised p-3"><SellerIdentity initials={initials(seller.name)} name={seller.name} meta={`Seller Order · ${lines.length} product${lines.length === 1 ? '' : 's'}`} /></div>
+        <div className="rounded-xl bg-surface-raised p-3"><SellerIdentity initials={initials(seller.name)} name={seller.name} meta={`${simulation ? 'Seller Order · ' : ''}${lines.length} product${lines.length === 1 ? '' : 's'}`} /></div>
         <SectionLabel>Fulfilment</SectionLabel>
         {options.map(option => <FulfilmentOption key={option.mode} active={mode === option.mode} onClick={() => onMode(option.mode)} title={option.mode} detail={detail[option.mode]} price={option.charge ? formatEtb(option.charge) : 'No delivery fee'} />)}
         {mode === 'Courier Delivery' && courier && (
           <div className="mt-2 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">
-            The {formatEtb(courier.charge)} Courier Delivery fee is shown now and is separate from the Adulis surcharge.
+            The {formatEtb(courier.charge)} Courier Delivery fee {simulation ? 'is shown now and is separate from the Adulis surcharge.' : 'is the Seller’s estimate; nothing is charged.'}
           </div>
         )}
         {/* Buyer Collection isn't a delivery, so it shows no delivery address (WO-006 pre-commit correction 2). */}
@@ -3835,17 +3848,21 @@ function SellerCheckout({ at, seller: sellerId, lines, mode, onMode, note, onBac
             </div>
           </>
         )}
-        <SectionLabel>Payment breakdown</SectionLabel>
+        <SectionLabel>{simulation ? 'Payment breakdown' : 'Estimated costs'}</SectionLabel>
         <div className="rounded-xl bg-surface-raised p-4">
           <PriceRow label="Products" value={formatEtb(totals.products)} />
           <PriceRow label={mode} value={formatEtb(totals.delivery)} />
-          <PriceRow label={SURCHARGE_LABEL} value={formatEtb(totals.surcharge)} />
-          <div className="mt-3 border-t border-border pt-3"><PriceRow label="Total" value={formatEtb(totals.total)} strong /></div>
+          {simulation && <PriceRow label={SURCHARGE_LABEL} value={formatEtb(totals.surcharge)} />}
+          <div className="mt-3 border-t border-border pt-3"><PriceRow label={simulation ? 'Total' : 'Estimated total'} value={formatEtb(simulation ? totals.total : totals.products + totals.delivery)} strong /></div>
         </div>
-        <p className="mt-3 text-xs leading-relaxed text-text-muted">Payment status is established by the payment provider and Adulis backend. The seller does not confirm payment.</p>
+        {simulation
+          ? <p className="mt-3 text-xs leading-relaxed text-text-muted">Payment status is established by the payment provider and Adulis backend. The seller does not confirm payment.</p>
+          : <p role="note" className="mt-3 rounded-xl bg-info-bg p-3 text-xs font-semibold leading-relaxed text-info">{CHECKOUT_PREVIEW_NOTICE}</p>}
       </div>
       <div className="border-t border-border bg-surface p-4 pb-6">
-        {note
+        {!simulation
+          ? <Button size="lg" disabled style={{ width: '100%' }}>Order submission unavailable</Button>
+          : note
           ? <div className="rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary"><span className="mb-1 block font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype</span>{note}</div>
           : <Button size="lg" onClick={onPay} style={{ width: '100%' }}>Continue to payment · {formatEtb(totals.total)}</Button>}
       </div>
@@ -4140,4 +4157,15 @@ function ScanIcon() {
 
 function CheckIconSmall() {
   return <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.2 2.2 4.8-4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+}
+
+/** Cart footnote: current-MVP wording has no Seller Order or fees (FE-001). */
+function CartNote({ seller }: { seller: string }) {
+  const { simulation } = usePrototypeMode()
+  return <p className="mt-3 text-xs leading-relaxed text-text-muted">{simulation ? `Fulfilment and applicable fees are selected during checkout. This checkout creates an order with ${seller} only.` : `Fulfilment is chosen in the checkout review, which covers ${seller} only. Checkout is a preview: no Order is placed.`}</p>
+}
+
+function MultiCartNote() {
+  const { simulation } = usePrototypeMode()
+  return <div className="mt-5 rounded-xl border border-info/20 bg-info-bg p-3 text-xs leading-relaxed text-info">{simulation ? 'Adulis coordinates your carts, but each checkout creates one distinct Seller Order. Amounts, fulfilment and payment status are never combined across sellers.' : 'Adulis keeps your carts separate by Seller. Amounts and fulfilment are never combined across Sellers. Checkout is a preview: no Order is placed and no money is collected.'}</div>
 }

@@ -37,7 +37,7 @@ export interface StoryStage {
 export const DEFAULT_STAGE: StoryStage = { moment: DEFAULT_SNAPSHOT }
 
 export type CanonicalFlowId = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M'
-export type InheritedFlowId = 'MASTER' | 'E2'
+export type InheritedFlowId = 'MASTER' | 'E2' | 'MVP' | 'CR'
 
 /** Flows A–M, one entry per step of FLOW_DEFINITIONS (src/sections/DemoFlows.tsx). */
 export const CANONICAL_FLOW_STAGES: Readonly<Record<CanonicalFlowId, readonly StoryStage[]>> = {
@@ -104,6 +104,26 @@ export const CANONICAL_FLOW_STAGES: Readonly<Record<CanonicalFlowId, readonly St
 
 /** Inherited, non-canonical paths. Each step borrows the moment of the canonical step it repeats. */
 export const INHERITED_FLOW_STAGES: Readonly<Record<InheritedFlowId, readonly StoryStage[]>> = {
+  // MVP (FE-001): the current-MVP walkthrough. Buyer steps show the 10:05 snapshot (before ADU-24091 exists), so the Cart
+  // and checkout review read DEMO_DATA's Flow D carts; no step shows a payment or an Order.
+  MVP: [
+    { moment: DEFAULT_SNAPSHOT },
+    { moment: DEFAULT_SNAPSHOT, seller: 'SEL-ADDIS-ATELIER', focus: { product: 'PRD-AA-001' } },
+    { moment: { at: '2026-10-02T10:05:00+03:00' }, focus: { post: 'SHP-AA-001', product: 'PRD-AA-001' } },
+    { moment: { at: '2026-10-02T10:05:00+03:00' }, focus: { product: 'PRD-AA-001' } },
+    { moment: { at: '2026-10-02T10:05:00+03:00' } },
+    { moment: { at: '2026-10-02T10:05:00+03:00' }, focus: { product: 'PRD-NG-001', order: 'ADU-24091' } },
+    { moment: { at: '2026-10-02T10:05:00+03:00' }, focus: { order: 'ADU-24091' } },
+    { moment: DEFAULT_SNAPSHOT },
+    { moment: DEFAULT_SNAPSHOT },
+    { moment: DEFAULT_SNAPSHOT },
+    { moment: { at: '2026-10-02T11:05:00+03:00' }, focus: { moderation: 'MOD-1001', post: 'SHP-VH-004' } },
+  ],
+  // CR (FE-001): Cart and checkout review, the same two Flow D cart moments.
+  CR: [
+    { moment: { at: '2026-10-02T10:05:00+03:00' }, focus: { product: 'PRD-NG-001', order: 'ADU-24091' } },
+    { moment: { at: '2026-10-02T10:05:00+03:00' }, focus: { order: 'ADU-24091' } },
+  ],
   MASTER: [
     { moment: { at: '2026-10-02T10:05:00+03:00' } },
     { moment: { at: '2026-10-02T10:05:00+03:00' }, seller: 'SEL-ADDIS-ATELIER', focus: { product: 'PRD-AA-001' } },

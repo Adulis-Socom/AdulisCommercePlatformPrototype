@@ -161,7 +161,7 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
           {([
             { mode: 'bio-link' as EntryMode,       label: 'Bio Link → Storefront' },
             { mode: 'product-link' as EntryMode,   label: 'Product Link → Direct' },
-            { mode: 'shoppable-link' as EntryMode, label: 'Shoppable Link → Direct' },
+            { mode: 'shoppable-link' as EntryMode, label: 'Scene Link → Direct' },
           ]).map(opt => (
             <button
               key={opt.mode}
@@ -205,7 +205,7 @@ function StorefrontStage({ entryMode }: { entryMode: EntryMode }) {
   const [screen, setScreen] = useState<Screen>(initialScreen)
   // The Open in Adulis sheet, with its line for what's being opened; null while it's closed.
   const [openInAdulisNote, setOpenInAdulisNote] = useState<string | null>(null)
-  const openInAdulis = (note = 'Browse, order, and track in the app.') => setOpenInAdulisNote(note)
+  const openInAdulis = (note = 'Browse Scenes and Products and message the Seller in the app. Ordering is not available yet.') => setOpenInAdulisNote(note)
 
   const navigate = (s: Screen) => setScreen(s)
   const goBack = () => {
@@ -778,11 +778,11 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
             style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <AdulisLogo size={18} />
-            Open in Adulis to Order
+            Open in Adulis
           </button>
         )}
         <p style={{ fontSize: 10, color: 'var(--color-text-muted)', textAlign: 'center', margin: '6px 0 0' }}>
-          No checkout on the web storefront · Orders placed in the Adulis app
+          No checkout on the web storefront · Ordering is not available yet; see the product in the Adulis app
         </p>
       </div>
       {/* DEMO_DATA approves no share link for a Product: the sheet omits the link row. */}
@@ -930,7 +930,7 @@ function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
           Open in Adulis
         </button>
       </div>
-      {/* DEMO_DATA approves no share link for a Shoppable Post: the sheet omits the link row. */}
+      {/* DEMO_DATA approves no share link for a Scene Post: the sheet omits the link row. */}
       {shareShown && <ShareSheet onClose={() => setShareShown(false)} />}
     </div>
   )

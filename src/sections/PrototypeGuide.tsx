@@ -35,6 +35,7 @@ export default function PrototypeGuide({ onNavigate }: PrototypeGuideProps) {
     <div style={{ fontFamily: 'var(--font-body)', color: 'var(--color-text-primary)' }}>
       <GuideHeader />
       <div className="max-w-6xl mx-auto px-8 pb-24 space-y-16">
+        <ReleaseScope />
         <EcosystemMap />
         <PrimaryActors />
         <CanonicalObjects />
@@ -91,9 +92,10 @@ function GuideHeader() {
           </div>
         </div>
         <p style={{ color: '#C8BDB5', fontSize: 16, maxWidth: 640, lineHeight: 1.65, margin: '0 0 32px' }}>
-          A commerce platform ecosystem connecting buyers, sellers, and couriers through structured
-          product discovery, verified fulfilment, and trust-based commerce. This prototype demonstrates
-          seven product surfaces and {CANONICAL_FLOWS.length} end-to-end demo flows.
+          A social-commerce platform connecting buyers and sellers through Scene discovery, Seller
+          operations, Stories and messaging, with a checkout preview. Release 1 has no payments or paid
+          Orders; the earlier paid-commerce design stays available as a labelled internal simulation
+          ({CANONICAL_FLOWS.length} historical flows, A to M). This prototype shows seven product surfaces.
         </p>
         <div className="flex flex-wrap gap-3">
           {[
@@ -116,6 +118,33 @@ function GuideHeader() {
         </div>
       </div>
     </div>
+  )
+}
+
+/* ─── Release scope (FE-001): what is current MVP and what is simulation ─── */
+
+const RELEASE_SCOPE = [
+  { label: 'Current MVP (Release 1)', tone: 'var(--color-success)', items: 'Seller onboarding and catalogue, Scene Posts, Seller Stories, Buyer discovery (For You, Following, Nearby), Search, saves, messaging with Sellers, the public Storefront, Seller-separated Cart' },
+  { label: 'Preview, not a transaction', tone: 'var(--color-info)', items: 'Checkout review. No Order is placed and no money is collected.' },
+  { label: 'Internal simulation (DEMO only)', tone: 'var(--color-warning)', items: 'Payments, paid Orders, the Adulis surcharge, refunds, Courier dispatch and QR handoff, purchased Review Grants, payment Claims. Switch it on with the sidebar mode control; it is always labelled.' },
+  { label: 'Deferred', tone: 'var(--color-text-muted)', items: 'Real paid commerce and payment authority, fee configuration, Creator profiles, Amharic release, other Markets, Staff Operator go-live' },
+]
+
+function ReleaseScope() {
+  return (
+    <GuideSection number="0" title="Release scope: current MVP and internal simulation">
+      <p className="mb-4 text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+        Founder decisions of 24 November 2026 govern this prototype. Sections below that describe payment, Orders, handoff, Claims or the surcharge describe the historical design, not Release 1.
+      </p>
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))' }}>
+        {RELEASE_SCOPE.map(entry => (
+          <div key={entry.label} className="rounded-xl p-4 border" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', borderLeft: `4px solid ${entry.tone}` }}>
+            <div className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{entry.label}</div>
+            <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--color-text-secondary)', margin: 0 }}>{entry.items}</p>
+          </div>
+        ))}
+      </div>
+    </GuideSection>
   )
 }
 
@@ -183,7 +212,7 @@ const SURFACES = [
     icon: '📱',
     color: 'var(--color-brand)',
     bg: 'var(--color-brand-muted)',
-    desc: 'For You discovery, search, cart, checkout, orders, handoff, reviews, and claims.',
+    desc: 'For You discovery, search, Stories, messaging, cart and checkout review. Orders, handoff and claims are internal-simulation only.',
     actors: ['Buyer', 'Delegated Recipient'],
   },
   {
@@ -310,7 +339,7 @@ const ACTORS = [
     name: 'Buyer',
     emoji: '🛍️',
     demo: BUYER_NAME,
-    description: 'Discovers products through Shoppable Posts and the For You Page. Adds to cart, checks out via gateway payment, receives deliveries, reviews, and raises claims. The primary consumer of the Adulis mobile experience.',
+    description: 'Discovers products through Scene Posts and the For You Page, saves, messages Sellers and views Stories. Builds Seller-separated carts and reviews checkout (preview only in Release 1; payment, deliveries, purchase reviews and claims are internal-simulation only). The primary consumer of the Adulis mobile experience.',
     surfaces: ['Mobile — Buyer'],
     permissions: ['Browse', 'Cart & Checkout', 'Order management', 'Review', 'Claim', 'Chat'],
   },
@@ -318,7 +347,7 @@ const ACTORS = [
     name: 'Seller Owner',
     emoji: '🏷️',
     demo: buyerVisibleSellers().map(id => SELLERS[id].name).join(' / '),
-    description: 'Creates and manages product posts and shoppable content. Administers orders, fulfilment, couriers, insights, and store settings via Seller Console. Handles urgent operations via the Seller Companion mobile app.',
+    description: 'Creates and manages product posts and Scene content. Administers orders, fulfilment, couriers, insights, and store settings via Seller Console. Handles urgent operations via the Seller Companion mobile app.',
     surfaces: ['Seller Console', 'Mobile — Seller Companion', 'Seller Storefront'],
     permissions: ['Full console access', 'Product publishing', 'Order management', 'Courier pool', 'Insights', 'Settings'],
   },
@@ -416,13 +445,13 @@ const OBJECTS = [
     rules: ['One product only — never a collection', 'Owns price and stock', 'Variants belong here', 'FYP eligibility: NEVER as standalone feed item'],
   },
   {
-    name: 'Shoppable Post',
+    name: 'Scene Post',
     color: '#2D7A4F',
     bg: '#EAF5EE',
     icon: '✨',
     definition: 'Creative merchandising/discovery content. May tag 0..N same-seller Product Posts.',
     fields: ['Primary image(s)', 'Caption', 'Seller', 'Product tags (optional)', 'Hotspots (optional)', 'Publication state'],
-    rules: ['May publish with zero product tags', 'Zero-tag post: NOT FYP eligible', 'Does not own price or stock', 'Cross-seller product tags: NOT SUPPORTED in MVP', 'A Lifestyle Scene is a presentation pattern of a Shoppable Post — not a separate entity'],
+    rules: ['May publish with zero product tags', 'Zero-tag post: NOT FYP eligible', 'Does not own price or stock', 'Cross-seller product tags: NOT SUPPORTED in MVP', 'A Lifestyle Scene is a presentation pattern of a Scene Post — not a separate entity'],
   },
   {
     name: 'Seller',
@@ -588,7 +617,7 @@ const JOURNEY_STEPS = [
   {
     step: 1,
     label: 'Discovery',
-    detail: 'Buyer browses the For You Page (Shoppable Posts only) or uses Search',
+    detail: 'Buyer browses the For You Page (Scene Posts only) or uses Search',
     actors: ['Buyer'],
     surface: 'Mobile — Buyer',
     color: '#2D5CC2',
@@ -685,7 +714,7 @@ const JOURNEY_STEPS = [
 
 function CommerceJourney() {
   return (
-    <GuideSection number="4" title="High-Level Commerce Journey">
+    <GuideSection number="4" title="High-Level Commerce Journey (historical design, internal simulation)">
       <div className="relative">
         {/* Timeline spine */}
         <div
@@ -746,6 +775,9 @@ function CommerceJourney() {
    5. PROTOTYPE DEMO FLOWS
 ═══════════════════════════════════════════════ */
 
+// Flows that exercise the historical paid-commerce design (FE-001); the app runs them in internal-simulation mode.
+const SIMULATION_FLOW_IDS = ['C', 'D', 'G', 'H', 'I', 'J', 'M']
+
 const DEMO_FLOWS = [
   {
     id: 'A',
@@ -764,7 +796,7 @@ const DEMO_FLOWS = [
   {
     id: 'C',
     label: 'Discovery to Purchase',
-    path: 'For You → Shoppable Post → Product hotspot → Product Detail → Variant → Add to Cart → Checkout → Courier Delivery → Price breakdown → Payment → Paid Order',
+    path: 'For You → Scene Post → Product hotspot → Product Detail → Variant → Add to Cart → Checkout → Courier Delivery → Price breakdown → Payment → Paid Order',
     screens: 11,
     color: 'var(--color-brand)',
   },
@@ -778,7 +810,7 @@ const DEMO_FLOWS = [
   {
     id: 'E',
     label: 'Seller Publishing',
-    path: 'Seller Console → Products → Create Product Post → Publish → Content → Create Shoppable Post → Tag Product → Add hotspot → Preview → Publish. Also: publish with zero products → Not FYP eligible status.',
+    path: 'Seller Console → Products → Create Product Post → Publish → Content → Create Scene Post → Tag Product → Add hotspot → Preview → Publish. Also: publish with zero products → Not FYP eligible status.',
     screens: 12,
     color: '#5B3FAF',
   },
@@ -821,7 +853,7 @@ const DEMO_FLOWS = [
   {
     id: 'K',
     label: 'Moderation',
-    path: 'Buyer Reports Shoppable Post → Operator Moderation Queue → Open Case → Restrict → remove from FYP → remove from Search → remove from Storefront',
+    path: 'Buyer Reports Scene Post → Operator Moderation Queue → Open Case → Restrict → remove from FYP → remove from Search → remove from Storefront',
     screens: 7,
     color: '#C2622D',
   },
@@ -843,7 +875,7 @@ const DEMO_FLOWS = [
 
 function DemoFlowsList() {
   return (
-    <GuideSection number="5" title="Prototype Demo Flows">
+    <GuideSection number="5" title="Prototype Demo Flows (SIM = internal simulation, not the current MVP)">
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(420px, 100%), 1fr))' }}>
         {DEMO_FLOWS.map(flow => (
           <div
@@ -867,6 +899,7 @@ function DemoFlowsList() {
                   <span className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
                     Flow {flow.id} — {flow.label}
                   </span>
+                  {SIMULATION_FLOW_IDS.includes(flow.id) && <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--color-warning-bg)', color: 'var(--color-text-primary)' }}>SIM</span>}
                   {flow.critical && (
                     <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#FDECEA', color: '#C2372D' }}>
                       Critical
@@ -899,7 +932,7 @@ const ROLE_ENTRIES = [
     role: 'Buyer',
     action: 'View as Buyer',
     persona: BUYER_NAME,
-    description: 'Browse For You, search, cart, checkout, orders, handoff, reviews, and claims.',
+    description: 'Browse For You, search, Stories, messaging, cart and checkout review. Orders, handoff and claims are internal-simulation only.',
     section: '05-buyer' as const,
     icon: '🛍️',
     bg: 'var(--color-brand-muted)',
