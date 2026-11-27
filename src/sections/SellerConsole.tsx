@@ -726,7 +726,10 @@ function Pill({ children, active, onClick }: { children: ReactNode; active?: boo
 
 function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   // The Seller's conversations at the story moment, marked while the Buyer awaits a reply.
-  const threads = sellerThreads(sellerId, at)
+  // FE-001: messages about an Order exist only in the internal simulation (Release 1 has no Orders); the thread itself stays.
+  const { simulation } = usePrototypeMode()
+  const visible = <T extends { context: MessageContext }>(list: readonly T[]): T[] => simulation ? [...list] : list.filter(m => !('order' in m.context))
+  const threads = sellerThreads(sellerId, at).filter(thread => visible(messagesAt(thread.id, at)).length > 0)
   const [selected, setSelected] = useState<ConversationId | undefined>(threads[0]?.id)
   // The reply's context is the composer's, never the conversation's. It starts on General / Seller in each conversation,
   // so one Buyer's Order is never carried into another Buyer's conversation (rule 12.6).
@@ -738,7 +741,7 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const staff = sessionStaffOn(sellerId, 'Seller Console')
   const selectId = useId()
   // A chatbot escalation is the Buyer's unmatched question to the Seller's chatbot, still awaiting the Seller's reply.
-  const escalationOf = (id?: ConversationId) => { const last = id && messagesAt(id, at).pop(); return last && last.from === 'buyer' && last.escalatedFromChatbot ? last : undefined }
+  const escalationOf = (id?: ConversationId) => { const last = id && visible(messagesAt(id, at)).pop(); return last && last.from === 'buyer' && last.escalatedFromChatbot ? last : undefined }
   const [escalated, setEscalated] = useState(!!escalationOf(selected))
   // On a phone the Inbox drills in: the list, then the chosen conversation with a way back (index.css; spec §4).
   const [phoneView, setPhoneView] = useState<'list' | 'conversation'>('list')
@@ -750,13 +753,13 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
     setReply('')
   }
   const name = (id: ConversationId) => shortName(BUYERS[CONVERSATIONS[id].buyer].name)
-  const choices = selected ? contextChoicesAt(selected, at) : []
+  const choices = (selected ? contextChoicesAt(selected, at) : []).filter(choice => simulation || !('order' in choice))
   const question = escalationOf(selected)
   // DEMO_DATA's messages so far, then this session's replies, in time order.
-  const messages = selected ? effectiveMessagesAt(selected, at, sent[selected]) : []
+  const messages = selected ? visible(effectiveMessagesAt(selected, at, sent[selected])) : []
   // Each row previews its conversation's newest message, a reply sent in this session included, so its text and chip come
   // from the same message. Latest first.
-  const rows = threads.flatMap(({ id }) => { const last = effectiveMessagesAt(id, at, sent[id]).pop(); return last ? [{ id, last }] : [] })
+  const rows = threads.flatMap(({ id }) => { const last = visible(effectiveMessagesAt(id, at, sent[id])).pop(); return last ? [{ id, last }] : [] })
     .sort((a, b) => byMessageTime(b.last, a.last))
   // A reply just sent comes into view; opening a conversation keeps its place.
   const list = useRef<HTMLDivElement>(null)
@@ -770,7 +773,7 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
       <div className="seller-inbox-list w-80 flex-shrink-0 border-r border-border bg-surface">
         <div className="border-b border-border p-4"><div className="font-display text-xl font-semibold">Inbox</div><div className="mt-3"><SearchInput placeholder="Search conversations" /></div></div>
         {threads.length === 0 && <p className="p-6 text-center text-sm text-text-muted">No conversations</p>}
-        {rows.map(({ id, last }) => <button key={id} onClick={() => open(id)} className={`flex w-full gap-3 border-b border-border p-4 text-left ${selected === id ? 'bg-brand-muted' : ''}`}><AvatarText name={name(id)} /><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="text-sm font-semibold">{name(id)}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="mt-1 block truncate text-xs text-text-muted">{last.text}</span><span className="mt-2 inline-flex rounded-full bg-surface-raised px-2 py-0.5 text-[10px] text-text-secondary">Talking about: {contextSubject(last.context)}</span></span>{awaitingSellerReplyAt(id, at) && <span role="img" aria-label="Needs reply" title="Needs reply" className="mt-1 h-2 w-2 rounded-full bg-brand" />}</button>)}
+        {rows.map(({ id, last }) => <button key={id} onClick={() => open(id)} className={`flex w-full gap-3 border-b border-border p-4 text-left ${selected === id ? 'bg-brand-muted' : ''}`}><AvatarText name={name(id)} /><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="text-sm font-semibold">{name(id)}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="mt-1 block truncate text-xs text-text-muted">{last.text}</span><span className="mt-2 inline-flex rounded-full bg-surface-raised px-2 py-0.5 text-[10px] text-text-secondary">Talking about: {contextSubject(last.context)}</span></span>{(simulation ? awaitingSellerReplyAt(id, at) : last.from === 'buyer') && <span role="img" aria-label="Needs reply" title="Needs reply" className="mt-1 h-2 w-2 rounded-full bg-brand" />}</button>)}
       </div>
       {selected && <div className="seller-inbox-thread flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-border bg-surface px-5 py-3"><div className="flex items-center gap-3"><button onClick={() => setPhoneView('list')} aria-label="Back to conversations" className="seller-inbox-back flex-shrink-0 items-center justify-center rounded-lg text-lg font-semibold text-brand-text">←</button><AvatarText name={name(selected)} /><span><span className="block text-sm font-semibold">{name(selected)}</span><span className="text-xs text-text-muted">Buyer–Seller relationship thread</span></span></div>{escalated && <StatusBadge status="open" customLabel="Chatbot escalated" />}</div>
@@ -780,7 +783,7 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
         </div>
         <div className="border-t border-border bg-surface p-4">
           {/* DEMO_DATA defines no preparation lead time, so no quick reply quotes one. */}
-          <div className="mb-3 flex gap-2 overflow-x-auto"><span className="text-xs font-semibold text-text-muted">Quick Replies</span>{['Courier assigned', 'Please check your Order'].map(value => <button key={value} onClick={() => setReply(value)} className="rounded-full bg-surface-raised px-3 py-1 text-xs text-text-secondary">{value}</button>)}</div>
+          <div className="mb-3 flex gap-2 overflow-x-auto"><span className="text-xs font-semibold text-text-muted">Quick Replies</span>{(simulation ? ['Courier assigned', 'Please check your Order'] : ['Thank you for your message', 'I will check and reply soon']).map(value => <button key={value} onClick={() => setReply(value)} className="rounded-full bg-surface-raised px-3 py-1 text-xs text-text-secondary">{value}</button>)}</div>
           {/* The reply's context: exactly this conversation's choices at the story moment (rules 12.5–12.6). */}
           <div className="mb-3 flex items-center gap-3">
             <label htmlFor={selectId} className="text-xs font-semibold text-text-secondary">Talking about</label>
@@ -796,7 +799,7 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
           <div className="mt-2 text-[10px] text-text-muted">Human Seller reply · Chat does not establish payment, fulfilment, handoff, or claim truth.</div>
         </div>
       </div>}
-      {!selected && <div className="flex flex-1 items-center justify-center bg-surface-raised p-8"><div className="max-w-sm text-center"><div className="font-display text-xl font-semibold">No Buyer conversations yet</div><p className="mt-1 text-sm text-text-muted">Conversations with Buyers about your Products, posts and Orders appear here.</p></div></div>}
+      {!selected && <div className="flex flex-1 items-center justify-center bg-surface-raised p-8"><div className="max-w-sm text-center"><div className="font-display text-xl font-semibold">No Buyer conversations yet</div><p className="mt-1 text-sm text-text-muted">Conversations with Buyers about your Products and Scene Posts appear here.</p></div></div>}
     </div>
   )
 }
@@ -1192,6 +1195,7 @@ function CouriersPanel({ sellerId, at, advanceTo, changes, onChange }: {
   sellerId: SellerId; at: Moment; advanceTo: (event: Moment | Timestamp) => void
   changes: CourierChanges; onChange: (key: CourierKey, change: CourierRelationshipChange) => void
 }) {
+  const { simulation } = usePrototypeMode() // FE-001: Courier Delivery compensation is a Checkout/paid-Order amount
   // The Seller's own Courier relationships at the story moment, with this session's changes (rules 6.2, 7.3; PR-008).
   // Each Courier shows completed for this Seller first and the total across Sellers second, as context (rules
   // 7.1–7.4), from the shared module, and nothing about other Sellers.
@@ -1238,14 +1242,15 @@ function CouriersPanel({ sellerId, at, advanceTo, changes, onChange }: {
       <ModuleHeader title="Couriers" description={`Private courier relationships for ${seller} only.`} trailing={<Button onClick={() => { openTab('invitations'); setAction('Invitation composer opened') }}>Invite Courier</Button>} />
       <div className="mb-3 flex flex-wrap gap-2">{COURIER_TABS.map(t => <Pill key={t.key} active={tab === t.key} onClick={() => openTab(t.key)}>{t.label} · {inTab(t.key).length}</Pill>)}</div>
       {/* The Seller's Courier Delivery terms: one amount for every Courier, used for future Checkouts only. */}
-      <section aria-label="Courier Delivery compensation" className="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-border bg-surface p-4">
+      {!simulation && <div className="mb-4"><Notice tone="info" title="Delivery compensation is not set in Release 1">Courier Delivery charges apply once ordering opens. Release 1 has no Orders, so there is nothing to compensate. Your Courier relationships and invitations below work as usual.</Notice></div>}
+      {simulation && <section aria-label="Courier Delivery compensation" className="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-border bg-surface p-4">
         <div className="min-w-0">
           <div className="text-xs font-semibold text-text-muted">Current Courier Delivery compensation</div>
           <div className="mt-1 font-display text-xl font-semibold">{terms === undefined ? 'Not set yet' : `${formatEtb(terms)} per Courier Delivery Order`}</div>
           <p className="mt-1 text-xs leading-relaxed text-text-secondary">The same for every Courier. It’s the Courier Delivery charge at Checkout, and paid Orders keep the amount they were paid with.{future !== undefined && ` Future Checkouts: ${formatEtb(future)} (this session).`}</p>
         </div>
         <div className="flex flex-wrap items-end gap-3"><div className="w-56"><TextInput label="Future Courier Delivery compensation (ETB)" value={compensation} onChange={event => setEdited(event.target.value)} hint="Applies only to future Checkout." /></div><Button variant="tertiary" onClick={() => { const amount = Math.round(Number(compensation) * 100); if (amount > 0) { setFuture(amount); setAction(`Future Courier Delivery compensation set to ${formatEtb(amount)}. Paid Orders keep the amount they were paid with.`) } }}>Update Future Compensation</Button></div>
-      </section>
+      </section>}
       {tab === 'approved' && approved.length > 0 && <p className="mb-4 text-xs text-text-secondary">{approved.filter(c => c.selectable).length} available for a Delivery Offer now · {approved.filter(c => c.availability === 'Busy').length} busy · {approved.filter(c => !c.selectable && c.availability !== 'Busy').length} unavailable or restricted. Listed by who can take a delivery now, then by name.</p>}
       {action && <div role="status" className="mb-4 rounded-xl bg-info-bg p-3 text-xs font-semibold text-info">{action}</div>}
       {!card && <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-text-muted">No Couriers in this list</div>}
@@ -1334,6 +1339,7 @@ function SettingsPanel({ sellerId, at, team, onTeamChange, onNavigate }: { selle
       <div className="grid grid-cols-[240px_1fr] gap-5">
         <div className="h-fit rounded-2xl border border-border bg-surface p-2">{tabs.map(([key, label]) => <button key={key} onClick={() => setTab(key)} aria-current={tab === key ? 'page' : undefined} className={`w-full rounded-lg px-3 py-2.5 text-left text-xs font-semibold ${tab === key ? 'bg-brand-muted text-brand-dark' : 'text-text-secondary'}`}>{label}</button>)}</div>
         <div className="min-w-0">
+          {!simulation && (tab === 'team' || tab === 'roles') && <div className="mb-4"><Notice tone="info" title="Order and Claim permissions have no effect in Release 1">Roles keep their Order, payment-status and Claim capabilities for when ordering opens. Release 1 has no Orders or Claims, so those areas are not in use.</Notice></div>}
           {tab === 'team' && <TeamSettings sellerId={sellerId} team={team} onChange={onTeamChange} onOpenRoles={() => setTab('roles')} />}
           {tab === 'roles' && <RolesSettings />}
           {tab === 'store' && <StoreSettingsSummary sellerId={sellerId} onNavigate={onNavigate} />}
