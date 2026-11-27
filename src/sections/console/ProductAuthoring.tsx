@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { SearchInput, Textarea, TextInput } from '../../components/ui/Input'
 import { ProductMediaEditor } from '../ProductMediaEditor'
-import { PRODUCTS, fulfilmentOptionsAt, sellerProductsAt, type Moment, type ProductId, type SellerId } from '../../demo-data'
+import { PRODUCTS, activeDiscount, fulfilmentOptionsAt, sellerProductsAt, type Moment, type ProductId, type SellerId } from '../../demo-data'
 import { TAXONOMY, attributesFor, findTaxonomy, type TaxonomyAttribute } from '../../demo-data/taxonomy'
 import { LOW_STOCK_AT, formatBirr, parseCount, parseMoney, productStock, publicationIssues, stockState, toThumbnail, useWorkspace, type Fulfilment, type WorkspaceState, type WsProduct, type WsVariant } from '../../seller-workspace'
 import { Card, Check, Notice, Page, SelectField, Thumb, focusField } from './kit'
@@ -63,8 +63,10 @@ function ProductList({ sellerId, at, notice, onOpen }: { sellerId: SellerId; at:
     return all.map(p => {
       const stock = p.seeded && !state.products[p.id] ? PRODUCTS[p.id as ProductId].stock : productStock(p)
       const prices = p.variants.map(v => parseMoney(v.price || p.price)).filter((n): n is number => n !== null)
-      const price = prices.length ? Math.min(...prices) : parseMoney(p.price)
-      return { p, stock, price, state: stockState(stock) }
+      // An unedited seeded Product with an active discount shows the price Buyers pay now, with the regular price beside it.
+      const discount = p.seeded && !state.products[p.id] ? activeDiscount(p.id as ProductId) : undefined
+      const price = discount ? discount.price : prices.length ? Math.min(...prices) : parseMoney(p.price)
+      return { p, stock, price, discount: discount ? { regular: PRODUCTS[p.id as ProductId].price, percent: discount.percent } : null, state: stockState(stock) }
     }).filter(r => r.p.name.toLowerCase().includes(query.toLowerCase()) && (filter === 'all' || (filter === 'out' ? r.stock === 0 && r.p.status === 'published' : r.p.status === filter)))
   }, [state, sellerId, at, query, filter])
   return (
@@ -78,12 +80,12 @@ function ProductList({ sellerId, at, notice, onOpen }: { sellerId: SellerId; at:
       </div>
       <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <ul>
-          {rows.map(({ p, stock, price, state: st }) => (
+          {rows.map(({ p, stock, price, discount, state: st }) => (
             <li key={p.id} className="border-t border-border first:border-t-0">
               <button type="button" onClick={() => onOpen(p.id)} className="flex w-full items-center gap-4 p-4 text-left hover:bg-surface-raised">
                 <Thumb src={p.photos[0]} label={p.name || 'Untitled'} className="h-14 w-14" />
                 <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-text-primary">{p.name || 'Untitled Product'}</span><span className="block font-mono text-[10px] text-text-muted">{p.id}{p.variants.length ? ` · ${p.variants.length} Variants` : ''}</span></span>
-                <span className="w-28 text-right text-sm font-semibold max-sm:hidden">{price !== null ? formatBirr(price) : 'No price'}</span>
+                <span className="w-28 text-right text-sm font-semibold max-sm:hidden">{price !== null ? formatBirr(price) : 'No price'}{discount && <span className="block text-[10px] font-normal text-text-muted"><s>{formatBirr(discount.regular)}</s> · {discount.percent}% off</span>}</span>
                 <span className={`w-28 text-right text-xs font-semibold max-sm:hidden ${st === 'Available' ? 'text-text-secondary' : 'text-warning'}`}>{st === 'Out of Stock' ? 'Out of stock' : `${stock} available`}{st === 'Low Stock' ? ' · low' : ''}</span>
                 <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${p.status === 'published' ? 'bg-success-bg text-text-primary' : 'bg-surface-raised text-text-muted'}`}>{p.status === 'published' ? 'Published' : 'Draft'}</span>
               </button>

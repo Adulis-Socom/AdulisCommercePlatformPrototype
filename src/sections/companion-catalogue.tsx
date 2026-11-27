@@ -1,4 +1,4 @@
-import { PRODUCTS, SELLERS, type Moment, type ProductId, type SellerId } from '../demo-data'
+import { PRODUCTS, SELLERS, currentPrice, type Moment, type ProductId, type SellerId } from '../demo-data'
 import { formatBirr, linkableProducts, productStock, stockState, useWorkspace } from '../seller-workspace'
 import { fromSeed } from './console/ProductAuthoring'
 import { priceLabel } from './buyer-authored'
@@ -25,7 +25,7 @@ export function CatalogueTab({ sellerId, at }: { sellerId: SellerId; at: Moment 
         {rows.map(row => {
           const authored = state.products[row.id]
           const hasVariants = !!authored?.variants.length
-          const price = authored ? priceLabel(authored) : formatBirr(PRODUCTS[row.id as ProductId].price)
+          const price = authored ? priceLabel(authored) : formatBirr(currentPrice(row.id as ProductId))
           const label = stockState(row.stock)
           const tone = label === 'Out of Stock' ? 'bg-danger-bg text-danger' : label === 'Low Stock' ? 'bg-warning-bg text-warning' : 'bg-success-bg text-success'
           return (
