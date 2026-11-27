@@ -138,8 +138,8 @@ function ReleaseScope() {
       </p>
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))' }}>
         {RELEASE_SCOPE.map(entry => (
-          <div key={entry.label} className="rounded-xl p-4 border" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', borderLeft: `4px solid ${entry.tone}` }}>
-            <div className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{entry.label}</div>
+          <div key={entry.label} className="rounded-xl p-4 border" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+            <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}><span aria-hidden="true" className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: entry.tone }} />{entry.label}</div>
             <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--color-text-secondary)', margin: 0 }}>{entry.items}</p>
           </div>
         ))}
