@@ -8,7 +8,7 @@ import {
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
   BUYERS, CLAIMS, CLAIM_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, GENERAL_CONTEXT, MARKET, ORDERS, ORDER_TIMELINES,
-  PRODUCTS, SELLERS, STAFF, SURFACE_DEFAULTS,
+  STAFF, SURFACE_DEFAULTS,
   awaitingSellerReplyAt, byMessageTime, claimStateAt, contextChoicesAt, contextKey, contextSubject, courierAvailabilityAt, courierCardAt, courierListOrder,
   effectiveMessagesAt, finalHandoffAt, formatAge, formatClock, formatClockShort, formatDayMonth, formatEtb, formatMonthShortYear, happenedBefore, initials,
   lineOptions, messagesAt, notificationTime, notificationsAt, orderCourierCompensation, ordersAt, orderStateAt, orderTotals, paidAt, preparationAt, readyStateFor,
@@ -16,6 +16,8 @@ import {
   type ClaimId, type ConversationId, type CourierCard, type CourierId, type MessageContext, type MessageRecord, type Moment, type NotificationRecord,
   type OrderId, type OrderState, type SellerId, type Timestamp,
 } from '../demo-data'
+import { useWorkspace } from '../seller-workspace'
+import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { CatalogueTab } from './companion-catalogue'
@@ -98,6 +100,7 @@ function alertFor(n: NotificationRecord): { tone: Tone; title: string; detail: s
 }
 
 export default function MobileSellerCompanion({ demoTarget }: { demoTarget?: string }) {
+  useWorkspace() // re-render when the Seller's edits change the effective Products and store identity (FIX-001)
   // The story moment of the guided-flow step (the 10:25 snapshot otherwise); it moves past each documented event the
   // Seller performs here. The Companion opens on the step's Seller (the default Seller otherwise), and the Seller
   // context selector (specification §23) switches between the primary showcase Sellers.

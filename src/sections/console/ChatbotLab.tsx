@@ -50,7 +50,7 @@ function factsOf(state: WorkspaceState, id: string, seller: SellerId, at: Moment
   const o = state.products[id]
   if (o) {
     const prices = o.variants.map(v => parseMoney(v.price || o.price)).filter((n): n is number => n !== null)
-    return { id, name: o.name, fromPrice: prices.length ? Math.min(...prices) : parseMoney(o.price), stock: productStock(o), options: o.variants.length ? o.options : [], description: o.description, attributes: [...Object.entries(o.attributes).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`), ...o.customAttributes.filter(a => a.name && a.value).map(a => `${a.name}: ${a.value}`)], fulfilment: o.fulfilment }
+    return { id, name: o.name, fromPrice: prices.length ? Math.min(...prices) : parseMoney(o.price), stock: productStock(o), options: o.options.length ? o.options : o.seeded ? PRODUCTS[id as ProductId].variants.map(v => ({ name: v.name ?? 'Option', values: [...v.options] })) : [], description: o.description, attributes: [...Object.entries(o.attributes).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`), ...o.customAttributes.filter(a => a.name && a.value).map(a => `${a.name}: ${a.value}`)], fulfilment: o.fulfilment }
   }
   const seed = PRODUCTS[id as ProductId]
   return { id, name: seed.name, fromPrice: seed.price, stock: seed.stock, options: seed.variants.map(v => ({ name: v.name ?? 'Option', values: [...v.options] })), description: seed.description ?? '', attributes: [...seed.attributes], fulfilment: [] }

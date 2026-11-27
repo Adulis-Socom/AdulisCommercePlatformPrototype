@@ -4,12 +4,13 @@ import { StoryProvider, useStory } from '../StoryClock'
 import { linkableProducts, productStock, sceneVisibility, stockState, useWorkspace } from '../seller-workspace'
 import { priceLabel } from './buyer-authored'
 import {
-  BUYERS, MARKET, ORDERS, PRODUCTS, REVIEWS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
+  BUYERS, MARKET, ORDERS, REVIEWS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   activeDiscount, currentPrice, describeFulfilment, formatClockShort, formatCompactCount, formatDate, formatEtb, formatMonthShortYear, formatMonthYear,
   fulfilmentOptionsAt, initials, isBuyerVisiblePostAt, onAdulisSince, productQualityAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt,
   sellerProductsAt, sellerServiceAt, shortName, showcaseSellers, trustAt, trustLabel,
   type Availability, type ProductId, type SellerId, type ShoppablePostId,
 } from '../demo-data'
+import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, isUnpublishedSeeded } from '../demo-data/live'
 
 /* ─────────────────────────────────────
    DATA — read from the canonical demo data (src/demo-data) at the story moment
@@ -72,7 +73,7 @@ function useStorefront() {
   const sellerId = story.seller ?? SURFACE_DEFAULTS.seller
   const seller = SELLERS[sellerId]
   const { state: workspace } = useWorkspace()
-  const seededProducts: Product[] = sellerProductsAt(sellerId, at).map((id, index) => {
+  const seededProducts: Product[] = sellerProductsAt(sellerId, at).filter(id => !isUnpublishedSeeded(id)).map((id, index) => {
     const p = PRODUCTS[id]
     const discount = activeDiscount(id)
     return {

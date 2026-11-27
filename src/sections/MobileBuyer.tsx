@@ -11,7 +11,7 @@ import { useStory, useStoryMoment } from '../StoryClock'
 import { AuthoredSceneCard, AuthoredScreen, AuthoredSearchResults, useAuthoredBuyer, type AuthoredView } from './buyer-authored'
 import {
   BUYERS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DELETION_CONSEQUENCES, DELETION_REASONS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
-  MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, REVIEW_IDS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
+  MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, REVIEWS, REVIEW_IDS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   accountDeletionPreviewAt, activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, claimStateAt, claimSubmitted, claimsForOrder,
   contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
   forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDate, formatDayMonth, formatEtb, formatMonthYear, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
@@ -23,6 +23,7 @@ import {
   type MessageRecord, type ModerationId, type Moment, type NotificationRecord, type OrderId, type OrderLine, type OrderState, type OrderTotals, type ProductId,
   type SellerId, type ShoppablePostId, type Timestamp,
 } from '../demo-data'
+import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, livePhoto } from '../demo-data/live'
 
 import { CHECKOUT_PREVIEW_NOTICE, SimulationGate, usePrototypeMode } from '../prototype-mode'
 
@@ -2496,7 +2497,7 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
       <Header title="Product" onBack={onBack} trailing={<><IconButton label="Share" onClick={onShare}>↗</IconButton><IconButton label="More options" onClick={onMore}>•••</IconButton></>} />
       <div className="flex-1 overflow-y-auto pb-24">
         <div className="relative">
-          <Placeholder label={product.name} className="h-80 w-full text-5xl" />
+          {livePhoto(productId) ? <img src={livePhoto(productId)} alt={product.name} className="h-80 w-full object-cover" /> : <Placeholder label={product.name} className="h-80 w-full text-5xl" />}
         </div>
         <div className="p-5">
           <div className="mt-1 font-display text-2xl font-semibold leading-tight">{product.name}</div>

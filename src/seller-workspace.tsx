@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react'
 import { PRODUCTS, SELLERS, sellerProductsAt, type Moment, type SellerId } from './demo-data'
+import { setLiveOverlay, type ProductOverlay, type SellerOverlay } from './demo-data/live'
 import { findTaxonomy } from './demo-data/taxonomy'
 import type { Knowledge } from './sections/console/chatbot-engine'
 
@@ -61,6 +62,9 @@ export function SellerWorkspaceProvider({ children }: { children: ReactNode }) {
   const [state, rawDispatch] = useReducer(reducer, undefined, load)
   useEffect(() => { try { sessionStorage.setItem(KEY, JSON.stringify(state)) } catch { /* quota: the workspace still works until reload */ } }, [state])
   // Ids come from a counter in the state, so they are stable and readable (PRD-NEW-001), never random.
+  // FIX-001: publish the effective seeded Product/Seller values before children render (idempotent; keyed on the state).
+  const overlay = useMemo(() => effectiveOverlay(state), [state])
+  setLiveOverlay(overlay.products, overlay.sellers)
   const value = useMemo(() => {
     const dispatch: Dispatch<Action> = rawDispatch
     const next = (kind: 'product' | 'scene' | 'story') => {
@@ -74,6 +78,29 @@ export function SellerWorkspaceProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 export const useWorkspace = () => useContext(Ctx)
+
+/** What the Seller changed on seeded Products and Sellers, in the shape demo-data/live.ts applies over the seeded records. */
+export function effectiveOverlay(state: WorkspaceState): { products: Record<string, ProductOverlay>; sellers: Record<string, SellerOverlay> } {
+  const products: Record<string, ProductOverlay> = {}
+  for (const p of Object.values(state.products)) {
+    if (!p.seeded) continue
+    const stock = productStock(p)
+    const prices = (p.variants.length ? p.variants.map(v => parseMoney(v.price || p.price)) : [parseMoney(p.price)]).filter((x): x is number => x !== null)
+    products[p.id] = {
+      published: p.status === 'published', name: p.name, description: p.description, price: prices.length ? Math.min(...prices) : null,
+      stock, availability: stockState(stock), locallyMade: p.locallyMade, photos: p.photos,
+      variants: p.options.length ? p.options.map(o => ({ name: o.name, options: o.values })) : undefined,
+      attributes: [...Object.entries(p.attributes).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`), ...p.customAttributes.filter(a => a.value).map(a => (a.name ? `${a.name}: ${a.value}` : a.value))],
+    }
+  }
+  const sellers: Record<string, SellerOverlay> = {}
+  for (const [id, s] of Object.entries(state.setup)) {
+    if (!s || s.blank) continue
+    const handle = s.handle.trim()
+    sellers[id] = { name: s.storeName.trim(), handle: handle && !handle.startsWith('@') ? `@${handle}` : handle, bio: s.about.trim(), collectionPlace: s.collection.on ? s.collection.place.trim() : '' }
+  }
+  return { products, sellers }
+}
 
 // ---------- Derived rules (no state of their own) ----------
 

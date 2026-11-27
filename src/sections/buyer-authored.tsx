@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from 'react'
-import { PRODUCTS, SELLERS, buyerVisibleSellers, initials, type Moment, type SellerId, type SellerStory, type SellerStoryGroup } from '../demo-data'
+import { buyerVisibleSellers, initials, type Moment, type SellerId, type SellerStory, type SellerStoryGroup } from '../demo-data'
+import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
 import { formatBirr, linkableProducts, parseMoney, productStock, sceneVisibility, stockState, storyPhase, useWorkspace, type WsProduct, type WsScene, type WorkspaceState } from '../seller-workspace'
 import { Button } from '../components/ui/Button'
 

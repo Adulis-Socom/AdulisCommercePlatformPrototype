@@ -1,4 +1,5 @@
-import { PRODUCTS, SELLERS, currentPrice, type Moment, type ProductId, type SellerId } from '../demo-data'
+import { currentPrice, type Moment, type ProductId, type SellerId } from '../demo-data'
+import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
 import { formatBirr, linkableProducts, productStock, stockState, useWorkspace } from '../seller-workspace'
 import { fromSeed } from './console/ProductAuthoring'
 import { priceLabel } from './buyer-authored'
