@@ -28,8 +28,10 @@ function score(query: string[], fields: [string, number][]): number {
   return total
 }
 
-export interface ProductFilters { availableOnly: boolean; category: string; attribute: { label: string; value: string } | null; locallyMade: boolean }
-export const NO_FILTERS: ProductFilters = { availableOnly: false, category: '', attribute: null, locallyMade: false }
+/** `attributes` holds at most one chosen value per attribute label; a Product must match every one. */
+export interface ProductFilters { availableOnly: boolean; category: string; attributes: { label: string; value: string }[]; locallyMade: boolean }
+export const NO_FILTERS: ProductFilters = { availableOnly: false, category: '', attributes: [], locallyMade: false }
+const sameValue = (a: string, b: string) => tokens(a).join(' ') === tokens(b).join(' ')
 
 export function searchProducts(docs: readonly ProductDoc[], query: string, f: ProductFilters = NO_FILTERS): ProductDoc[] {
   const q = tokens(query)
@@ -38,7 +40,7 @@ export function searchProducts(docs: readonly ProductDoc[], query: string, f: Pr
     .map(d => ({ d, s: score(q, [[d.name, 5], [d.sellerName, 3], [d.category, 2], [d.attributes.map(a => `${a.label} ${a.value}`).join(' '), 2], [d.details.join(' '), 2], [d.description, 1]]) }))
     .filter(r => r.s > 0)
     .filter(r => (!f.availableOnly || r.d.available) && (!f.category || r.d.category.startsWith(f.category)) && (!f.locallyMade || r.d.locallyMade)
-      && (!f.attribute || r.d.attributes.some(a => a.label === f.attribute!.label && tokens(a.value).join(' ') === tokens(f.attribute!.value).join(' '))))
+      && f.attributes.every(want => r.d.attributes.some(a => a.label === want.label && sameValue(a.value, want.value))))
     // currently available first, then by relevance, then by name (stable and explainable)
     .sort((a, b) => Number(b.d.available) - Number(a.d.available) || b.s - a.s || a.d.name.localeCompare(b.d.name))
     .map(r => r.d)
@@ -55,16 +57,20 @@ export function searchSellers(docs: readonly SellerDoc[], query: string): Seller
 }
 
 /** Category and attribute choices that actually apply to the matching Products (never a filter that would return nothing). */
-export function facets(matches: readonly ProductDoc[]): { categories: { name: string; count: number }[]; attributes: { label: string; value: string; count: number }[] } {
+export function facets(matches: readonly ProductDoc[]): { categories: { name: string; count: number }[]; attributeGroups: { label: string; values: { value: string; count: number }[] }[] } {
   const cats = new Map<string, number>()
   for (const d of matches) {
+    // Every level of the taxonomy path (Major › Category › Type), never cut short.
     const parts = d.category.split(' › ').filter(Boolean)
-    for (let i = 1; i <= Math.min(parts.length, 2); i++) { const key = parts.slice(0, i).join(' › '); cats.set(key, (cats.get(key) ?? 0) + 1) }
+    for (let i = 1; i <= parts.length; i++) { const key = parts.slice(0, i).join(' › '); cats.set(key, (cats.get(key) ?? 0) + 1) }
   }
   const attrs = new Map<string, { label: string; value: string; count: number }>()
   for (const d of matches) for (const a of d.attributes) { const key = `${a.label}\u0000${tokens(a.value).join(' ')}`; const cur = attrs.get(key); if (cur) cur.count++; else attrs.set(key, { label: a.label, value: a.value, count: 1 }) }
   return {
     categories: [...cats].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
-    attributes: [...attrs.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 30),
+    // Every attribute that applies to the matches, grouped by label (no cap): a Buyer can narrow by any of them.
+    attributeGroups: [...new Set([...attrs.values()].map(a => a.label))].sort((a, b) => a.localeCompare(b)).map(label => ({
+      label, values: [...attrs.values()].filter(a => a.label === label).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value)).map(({ value, count }) => ({ value, count })),
+    })),
   }
 }

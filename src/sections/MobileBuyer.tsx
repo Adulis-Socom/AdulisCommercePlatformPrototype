@@ -4,6 +4,7 @@ import { PhoneInput, SearchInput, Select, Textarea, TextInput } from '../compone
 import { BuyerChat } from './buyer-chat'
 import { useWorkspace } from '../seller-workspace'
 import { cartFulfilment, describeMethods, sellerMethods, type CartFulfilment } from '../fulfilment'
+import { MAX_COLLECTION_NAME, add as addToCollection, applyLegacySaves, clean as cleanName, create as createCollection, ensureDefault, isSaved as savedIn, normalize as normalizeCollections, remove as removeCollection, removeItem, rename as renameCollection, split as splitCollection, unsave, type BuyerCollection } from '../buyer-collections'
 import { Skeleton } from '../components/ui/Overlay'
 import { VerificationFailed } from '../components/ui/Handoff'
 import {
@@ -28,7 +29,7 @@ import {
   type MessageRecord, type ModerationId, type Moment, type NotificationRecord, type OrderId, type OrderLine, type OrderState, type OrderTotals, type ProductId,
   type Santim, type SellerId, type ShoppablePostId, type Timestamp,
 } from '../demo-data'
-import { LIVE_POSTS as SHOPPABLE_POSTS, LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, isUnpublishedSeeded, livePhoto, liveProductDetails, liveSceneMedia, liveScenePhoto, liveVariantRow } from '../demo-data/live'
+import { LIVE_POSTS as SHOPPABLE_POSTS, LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, isUnpublishedSeeded, livePhoto, livePhotos, liveProductDetails, liveSceneMedia, liveScenePhoto, liveVariantRow } from '../demo-data/live'
 
 import { CHECKOUT_PREVIEW_NOTICE, SimulationGate, usePrototypeMode } from '../prototype-mode'
 
@@ -316,6 +317,11 @@ function saveKeyOf(item: CollectionItem): SaveKey {
   return 'product' in item ? `product:${item.product}` : `post:${item.post}`
 }
 
+/** The seeded Collections of the Buyer (DEMO_DATA) as plain data: the starting point of the ordinary MVP session and of the simulation. */
+function seedCollections(): BuyerCollection[] {
+  return ensureDefault(COLLECTION_IDS.filter(id => COLLECTIONS[id].owner === BUYER).map(id => ({ id, name: COLLECTIONS[id].name, isDefault: !!COLLECTIONS[id].isDefault, items: COLLECTIONS[id].items.map(saveKeyOf) })))
+}
+
 function itemOf(key: SaveKey): CollectionItem {
   return key.startsWith('product:') ? { product: key.slice('product:'.length) as ProductId } : { post: key.slice('post:'.length) as ShoppablePostId }
 }
@@ -336,15 +342,20 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   // BUYER-FIX-01: the ordinary MVP Cart and Saves live in the workspace store and survive switching surfaces. The historical simulation and a
   // guided-flow step (which opens on demonstration carts and Saves) work on their own copies: they neither read nor overwrite the ordinary ones.
   const scope: 'mvp' | 'isolated' = simulation || demoTarget ? 'isolated' : 'mvp'
-  const [savedChanges, setSavedChangesRaw] = useState<Partial<Record<SaveKey, boolean>>>(() => (scope === 'mvp' ? (workspace.buyerSaved ?? {}) : {}) as Partial<Record<SaveKey, boolean>>)
+  const collectionsFor = (sc: 'mvp' | 'isolated'): BuyerCollection[] => (sc === 'mvp' ? normalizeCollections(workspace.buyerCollections) ?? applyLegacySaves(seedCollections(), workspace.buyerSaved) : seedCollections())
+  const [collections, setCollectionsRaw] = useState<BuyerCollection[]>(() => collectionsFor(scope))
   const savedTouched = useRef(false)
-  const setSavedChanges = (next: Partial<Record<SaveKey, boolean>> | ((c: Partial<Record<SaveKey, boolean>>) => Partial<Record<SaveKey, boolean>>)) => { savedTouched.current = true; setSavedChangesRaw(next) }
-  useEffect(() => { if (savedTouched.current && scope === 'mvp') workspaceDispatch({ type: 'saved', changes: savedChanges as Record<string, boolean> }) }, [savedChanges])
+  const setCollections = (next: BuyerCollection[]) => { savedTouched.current = true; setCollectionsRaw(next) }
+  useEffect(() => { if (savedTouched.current && scope === 'mvp') workspaceDispatch({ type: 'collections', collections }) }, [collections])
+  // Which sheet is open on top of the Buyer app: choose Collections for an item, name a new one, or manage one.
+  const [collectionSheet, setCollectionSheet] = useState<{ kind: 'save'; key: SaveKey } | { kind: 'create'; then?: SaveKey } | { kind: 'menu' | 'rename' | 'delete'; id: string } | null>(null)
   // Posts hidden from For You with Not Interested, for this session only (rule 3.9, specification §7). They're Maya's
   // personalization, so a guest's For You never applies them.
   const [hidden, setHidden] = useState<ShoppablePostId[]>([])
   const [discoverySheet, setDiscoverySheet] = useState<DiscoverySheet | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToastRaw] = useState<string | null>(null)
+  const [toastAction, setToastAction] = useState<{ label: string; run: () => void } | null>(null)
+  const setToast = (message: string | null) => { setToastAction(null); setToastRaw(message) }
   // Where an opened post or Product returns to, and each channel's scroll position, so discovery picks up where it was.
   const [postFrom, setPostFrom] = useState<Screen>('feed')
   const [productFrom, setProductFrom] = useState<Screen>('post')
@@ -393,7 +404,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   // The Seller profile's tab: Scenes when a Seller is opened (PR-002); kept while its Scenes, Products or chat are open.
   const [sellerTab, setSellerTab] = useState<SellerTab>(initialScreen === 'seller-shop' ? 'products' : 'scenes')
   const [orderId, setOrderId] = useState<OrderId>(focus?.order ?? SURFACE_DEFAULTS.order)
-  const [collectionId, setCollectionId] = useState<CollectionId>(COLLECTION_IDS.find(id => COLLECTIONS[id].owner === BUYER)!)
+  const [collectionId, setCollectionId] = useState<string>(() => (collections.find(c => c.isDefault) ?? collections[0]).id)
   const [chat, setChat] = useState<ChatEntry>({ seller: CONVERSATIONS[focus?.conversation ?? SURFACE_DEFAULTS.conversation].seller, context: GENERAL_CONTEXT, from: 'chats' })
   // The messages Maya sends in this session, per conversation, each with the context it was sent with (rule 12.3). They
   // are transient: DEMO_DATA never changes, and a reset remounts the app without them.
@@ -423,7 +434,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
     if (scopeRef.current === scope) return
     scopeRef.current = scope; cartTouched.current = false; savedTouched.current = false
     setCartRaw(scope === 'mvp' ? normalizeCart(workspace.buyerCart) : initial.cart)
-    setSavedChangesRaw((scope === 'mvp' ? workspace.buyerSaved ?? {} : {}) as Partial<Record<SaveKey, boolean>>)
+    setCollectionsRaw(collectionsFor(scope))
   }, [scope])
   const [cartSeller, setCartSeller] = useState<SellerId>(ORDERS[DEMO_CARTS[0]].seller)
   const [checkoutSeller, setCheckoutSeller] = useState<SellerId>(ORDERS[DEMO_CARTS[0]].seller)
@@ -629,14 +640,24 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
     setScreen(before.screen)
   }
   // Save adds to Maya's default Saved Collection (WO-004 requirement 11): its canonical items plus this session's changes.
-  const defaultCollection = COLLECTION_IDS.find(id => COLLECTIONS[id].owner === BUYER && COLLECTIONS[id].isDefault)!
-  const inSaved = (key: SaveKey) => savedChanges[key] ?? COLLECTIONS[defaultCollection].items.some(item => saveKeyOf(item) === key)
+  const defaultCollection = collections.find(c => c.isDefault) ?? collections[0]
+  const inSaved = (key: SaveKey) => savedIn(collections, key)
   const isSaved = (key: SaveKey) => signedIn && inSaved(key)
-  const setSavedTo = (key: SaveKey, value: boolean) => setSavedChanges(changes => { const next = { ...changes }; delete next[key]; next[key] = value; return next })
-  const save = (key: SaveKey) => { if (inSaved(key)) return setToast('Already in Saved'); setSavedTo(key, true); setToast('Added to Saved') }
+  // Save adds to the default Saved Collection at once and offers "Choose collection"; an item is never added twice to one Collection.
+  const save = (key: SaveKey) => {
+    if (inSaved(key)) return setToast('Already in Saved')
+    setCollections(addToCollection(collections, defaultCollection.id, key).list)
+    setToast('Added to Saved'); setToastAction({ label: 'Choose collection', run: () => setCollectionSheet({ kind: 'save', key }) })
+  }
+  const toggleIn = (id: string, key: SaveKey, on: boolean) => {
+    const target = collections.find(c => c.id === id)
+    if (on && target?.items.includes(key)) return setToast(`Already in ${target.name}`)
+    setCollections(on ? addToCollection(collections, id, key).list : removeItem(collections, id, key))
+  }
+  const afterCollectionChange = (r: { list: BuyerCollection[] } | { error: string }): string | null => { if ('error' in r) return r.error; setCollections(r.list); return null }
   const toggleSave = (key: SaveKey, from: Intent) => requireSignIn('Sign in to save', { ...from, then: 'save', save: key }, () => {
     if (!inSaved(key)) return save(key)
-    setSavedTo(key, false)
+    setCollections(unsave(collections, key))
     setToast('Removed from Saved')
   })
   // Not Interested hides the post from this session's For You only: no recommendation model, Seller or other channel changes.
@@ -695,9 +716,9 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const signOut = () => { toGuest(); setActiveTab('home'); setScreen('feed'); setToast('Signed out') }
   useEffect(() => {
     if (!toast) return
-    const timer = setTimeout(() => setToast(null), 3500)
+    const timer = setTimeout(() => { setToastRaw(null); setToastAction(null) }, toastAction ? 8000 : 3500)
     return () => clearTimeout(timer)
-  }, [toast])
+  }, [toast, toastAction])
   const signIn = (next: Intent = intent) => {
     setAuth('signed-in')
     if (next.tab) setActiveTab(next.tab)
@@ -861,8 +882,8 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onSeller={openSeller}
           />
         )}
-        {shown === 'saved' && <Saved changes={savedChanges} cartCount={cart.length} onCart={() => { if (carts[0]) setCartSeller(carts[0].seller); setScreen(carts.length > 1 || (carts.length === 0 && orphans.length > 0) ? 'multi-cart' : 'seller-cart') }} onCollection={id => { setCollectionId(id); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
-        {shown === 'collection' && <Collection collectionId={collectionId} changes={savedChanges} onBack={() => setScreen('saved')} onProduct={openProduct} onPost={openPost} />}
+        {shown === 'saved' && <Saved collections={collections} onNew={() => setCollectionSheet({ kind: 'create' })} cartCount={cart.length} onCart={() => { if (carts[0]) setCartSeller(carts[0].seller); setScreen(carts.length > 1 || (carts.length === 0 && orphans.length > 0) ? 'multi-cart' : 'seller-cart') }} onCollection={id => { setCollectionId(id); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
+        {shown === 'collection' && (() => { const current = collections.find(c => c.id === collectionId); return current ? <Collection key={current.id} collection={current} onBack={() => setScreen('saved')} onMore={() => setCollectionSheet({ kind: 'menu', id: current.id })} onRemove={key => { setCollections(removeItem(collections, current.id, key)); setToast(`Removed from ${current.name}`) }} onProduct={openProduct} onPost={openPost} /> : <><Header title="Collection" onBack={() => setScreen('saved')} /><p role="status" className="p-6 text-sm text-text-secondary">This Collection no longer exists.</p></> })()}
         {shown === 'seller-cart' && (
           <SellerCart
             seller={cartSeller}
@@ -1006,7 +1027,12 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {discoverySheet?.kind === 'share' && (discoverySheet.product
           ? <ShareSheet title={PRODUCTS[discoverySheet.product].name} sellerId={PRODUCTS[discoverySheet.product].seller} onClose={() => setDiscoverySheet(null)} />
           : <ShareSheet title={SHOPPABLE_POSTS[postId].title} sellerId={SHOPPABLE_POSTS[postId].seller} onClose={() => setDiscoverySheet(null)} />)}
-        <Toast message={toast} />
+        <Toast message={toast} action={toastAction?.label} onAction={() => { toastAction?.run(); setToastRaw(null); setToastAction(null) }} />
+        {collectionSheet?.kind === 'save' && <SaveSheet itemKey={collectionSheet.key} collections={collections} onToggle={(id, on) => toggleIn(id, collectionSheet.key, on)} onNew={() => setCollectionSheet({ kind: 'create', then: collectionSheet.key })} onClose={() => setCollectionSheet(null)} />}
+        {collectionSheet?.kind === 'create' && <CollectionNameSheet title="New collection" initial="" submitLabel="Create" onClose={() => setCollectionSheet(null)} onSubmit={name => { const r = createCollection(collections, name, collectionSheet.then ? [collectionSheet.then] : []); const problem = afterCollectionChange(r); if (!problem) setToast(`Created ${cleanName(name)}`); return problem }} />}
+        {collectionSheet?.kind === 'menu' && collections.find(c => c.id === collectionSheet.id) && <CollectionMenuSheet collection={collections.find(c => c.id === collectionSheet.id)!} onClose={() => setCollectionSheet(null)} onRename={() => setCollectionSheet({ kind: 'rename', id: collectionSheet.id })} onDelete={() => setCollectionSheet({ kind: 'delete', id: collectionSheet.id })} />}
+        {collectionSheet?.kind === 'rename' && collections.find(c => c.id === collectionSheet.id) && <CollectionNameSheet title="Rename collection" initial={collections.find(c => c.id === collectionSheet.id)!.name} submitLabel="Save name" onClose={() => setCollectionSheet(null)} onSubmit={name => afterCollectionChange(renameCollection(collections, collectionSheet.id, name))} />}
+        {collectionSheet?.kind === 'delete' && collections.find(c => c.id === collectionSheet.id) && <CollectionDeleteSheet collection={collections.find(c => c.id === collectionSheet.id)!} onClose={() => setCollectionSheet(null)} onDelete={() => { const name = collections.find(c => c.id === collectionSheet.id)!.name; const problem = afterCollectionChange(removeCollection(collections, collectionSheet.id)); if (!problem) { setToast(`Deleted ${name}`); setScreen('saved') } }} />}
         {addedToCart && (
           <AddToCartConfirmation
             {...addedToCart}
@@ -2055,6 +2081,73 @@ function ProductPostCard({ productId, at, ends, onOpen }: { productId: ProductId
  * regular price struck through and the saving, and the end date where set. Cart and Checkout charge the same current
  * price (WO-006 requirement 10).
  */
+/**
+ * The Product's photographs as the Seller added them (BUYER-FIX-02): previous/next (buttons and arrow keys), a "Photo n of m" status, thumbnails, and a zoom
+ * view inside the phone (zoom in/out, scroll to pan, Escape or Close to leave). One photo shows no navigation. The first photo keeps the Product's name as its alt text.
+ */
+function ProductGallery({ productId, name }: { productId: ProductId; name: string }) {
+  const photos = livePhotos(productId)
+  const [index, setIndex] = useState(0)
+  const [zoom, setZoom] = useState<number | null>(null)
+  const opener = useRef<HTMLButtonElement>(null)
+  const n = photos.length
+  const current = Math.min(index, Math.max(0, n - 1))
+  const go = (step: number) => setIndex((current + step + n) % n)
+  const alt = (i: number) => (i === 0 ? name : `${name}, photo ${i + 1} of ${n}`)
+  const close = () => { setZoom(null); opener.current?.focus() }
+  useEffect(() => {
+    if (zoom === null) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [zoom === null])
+  if (n === 0) return <Placeholder label={name} className="h-80 w-full text-5xl" />
+  return (
+    <>
+      <div role="group" aria-roledescription="carousel" aria-label={`${name} photos`} onKeyDown={e => { if (n > 1 && e.key === 'ArrowLeft') go(-1); if (n > 1 && e.key === 'ArrowRight') go(1) }}>
+        <div className="relative">
+          <button ref={opener} type="button" onClick={() => setZoom(1)} aria-label={`Zoom photo ${current + 1} of ${n}`} className="block w-full"><img src={photos[current]} alt={alt(current)} className="h-80 w-full object-cover" /></button>
+          {n > 1 && (
+            <>
+              <button type="button" onClick={() => go(-1)} aria-label="Previous photo" className="absolute left-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white">‹</button>
+              <button type="button" onClick={() => go(1)} aria-label="Next photo" className="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white">›</button>
+              <span role="status" aria-live="polite" className="absolute bottom-2 right-3 rounded-full bg-black/55 px-2 py-0.5 text-xs font-semibold text-white">Photo {current + 1} of {n}</span>
+            </>
+          )}
+        </div>
+        {n > 1 && (
+          <ul className="flex gap-2 overflow-x-auto px-5 pt-3" aria-label="Photo thumbnails">
+            {photos.map((src, i) => (
+              <li key={i}><button type="button" onClick={() => setIndex(i)} aria-label={`Show photo ${i + 1} of ${n}`} aria-current={i === current} className={`block h-14 w-14 overflow-hidden rounded-lg border-2 ${i === current ? 'border-brand' : 'border-transparent'}`}><img src={src} alt="" className="h-full w-full object-cover" /></button></li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {zoom !== null && (
+        <div role="dialog" aria-modal="true" aria-label={`${name}, photo zoom`} className="absolute inset-0 z-50 flex flex-col bg-black">
+          <div className="flex items-center justify-between gap-2 p-3 text-white">
+            <span role="status" aria-live="polite" className="text-sm font-semibold">Photo {current + 1} of {n} · {Math.round(zoom * 100)}%</span>
+            <span className="flex gap-2">
+              <button type="button" onClick={() => setZoom(z => Math.max(1, (z ?? 1) - 1))} disabled={zoom <= 1} aria-label="Zoom out" className="h-9 w-9 rounded-full bg-white/15 disabled:opacity-40">−</button>
+              <button type="button" onClick={() => setZoom(z => Math.min(3, (z ?? 1) + 1))} disabled={zoom >= 3} aria-label="Zoom in" className="h-9 w-9 rounded-full bg-white/15 disabled:opacity-40">+</button>
+              <button type="button" autoFocus onClick={close} aria-label="Close zoom" className="h-9 rounded-full bg-white/15 px-3 text-sm font-semibold">Close</button>
+            </span>
+          </div>
+          <div className="relative flex-1 overflow-auto" tabIndex={0} aria-label="Zoomed photo, scroll to move around">
+            <img src={photos[current]} alt={alt(current)} style={{ width: `${zoom * 100}%`, maxWidth: 'none', height: zoom === 1 ? '100%' : 'auto' }} className="object-contain" />
+          </div>
+          {n > 1 && (
+            <div className="flex items-center justify-between p-3 text-white">
+              <button type="button" onClick={() => go(-1)} aria-label="Previous photo in zoom" className="h-9 rounded-full bg-white/15 px-4 text-sm">‹ Previous</button>
+              <button type="button" onClick={() => go(1)} aria-label="Next photo in zoom" className="h-9 rounded-full bg-white/15 px-4 text-sm">Next ›</button>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
 function PriceTag({ productId, size = 'sm', ends, className = '' }: { productId: ProductId; size?: 'sm' | 'lg'; ends?: boolean; className?: string }) {
   const product = PRODUCTS[productId]
   const discount = activeDiscount(productId)
@@ -2555,10 +2648,10 @@ function ShareSheet({ title, sellerId, onClose }: { title: string; sellerId: Sel
 }
 
 /** A brief confirmation. The live region stays mounted so each new message is announced. */
-function Toast({ message }: { message: string | null }) {
+function Toast({ message, action, onAction }: { message: string | null; action?: string; onAction?: () => void }) {
   return (
     <div role="status" aria-live="polite" className="pointer-events-none absolute bottom-20 left-4 right-4 z-[60] flex justify-center">
-      {message && <div className="rounded-xl bg-ink px-4 py-3 text-center text-sm font-semibold text-white shadow-lg">{message}</div>}
+      {message && <div className="flex items-center gap-3 rounded-xl bg-ink px-4 py-3 text-center text-sm font-semibold text-white shadow-lg">{message}{action && <button type="button" onClick={onAction} className="pointer-events-auto min-h-8 rounded-lg bg-white/15 px-3 text-xs font-semibold underline">{action}</button>}</div>}
     </div>
   )
 }
@@ -2603,9 +2696,7 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
     <>
       <Header title="Product" onBack={onBack} trailing={<><IconButton label="Share" onClick={onShare}>↗</IconButton><IconButton label="More options" onClick={onMore}>•••</IconButton></>} />
       <div className="flex-1 overflow-y-auto pb-24">
-        <div className="relative">
-          {livePhoto(productId) ? <img src={livePhoto(productId)} alt={product.name} className="h-80 w-full object-cover" /> : <Placeholder label={product.name} className="h-80 w-full text-5xl" />}
-        </div>
+        <ProductGallery productId={productId} name={product.name} />
         <div className="p-5">
           <div className="mt-1 font-display text-2xl font-semibold leading-tight">{product.name}</div>
           <PriceTag productId={productId} size="lg" ends className="mt-2" />
@@ -2865,7 +2956,10 @@ function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, o
   const sellers = searchSellers(index.sellers, query)
   const none = !matched.length && !scenes.length && !sellers.length
   const facet = facets(matched)
-  const filtering = filters.availableOnly || filters.locallyMade || !!filters.category || !!filters.attribute
+  const filtering = filters.availableOnly || filters.locallyMade || !!filters.category || filters.attributes.length > 0
+  const [moreDetails, setMoreDetails] = useState(false)
+  const setAttribute = (label: string, value: string) => setFilters(f => ({ ...f, attributes: [...f.attributes.filter(a => a.label !== label), ...(value ? [{ label, value }] : [])] }))
+  const shownGroups = moreDetails ? facet.attributeGroups : facet.attributeGroups.slice(0, 3)
   const counts: Record<SearchTab, number> = { top: matched.length + scenes.length + sellers.length, products: matched.length, posts: scenes.length, sellers: sellers.length }
   return (
     <>
@@ -2899,13 +2993,18 @@ function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, o
                   <Choice active={filters.locallyMade} pressed={filters.locallyMade} onClick={() => setFilters(f => ({ ...f, locallyMade: !f.locallyMade }))}>{filters.locallyMade && <span aria-hidden="true">✓ </span>}Locally made</Choice>
                   {facet.categories.map(c => <Choice key={c.name} active={filters.category === c.name} pressed={filters.category === c.name} onClick={() => setFilters(f => ({ ...f, category: f.category === c.name ? '' : c.name }))}>{c.name} ({c.count})</Choice>)}
                 </div>
-                {facet.attributes.length > 0 && (
-                  <label className="mb-3 flex flex-col text-xs font-semibold text-text-muted">Detail
-                    <select value={filters.attribute ? `${filters.attribute.label}: ${filters.attribute.value}` : ''} onChange={e => { const hit = facet.attributes.find(a => `${a.label}: ${a.value}` === e.target.value); setFilters(f => ({ ...f, attribute: hit ? { label: hit.label, value: hit.value } : null })) }} className="mt-1 h-10 rounded-lg border border-border bg-surface px-2 text-sm font-normal text-text-primary">
-                      <option value="">Any detail</option>
-                      {facet.attributes.map(a => <option key={`${a.label}${a.value}`} value={`${a.label}: ${a.value}`}>{a.label}: {a.value} ({a.count})</option>)}
-                    </select>
-                  </label>
+                {facet.attributeGroups.length > 0 && (
+                  <div role="group" aria-label="Product details" className="mb-3 grid grid-cols-2 gap-2">
+                    {shownGroups.map(group => (
+                      <label key={group.label} className="flex flex-col text-xs font-semibold text-text-muted">{group.label}
+                        <select aria-label={group.label} value={filters.attributes.find(a => a.label === group.label)?.value ?? ''} onChange={e => setAttribute(group.label, e.target.value)} className="mt-1 h-10 rounded-lg border border-border bg-surface px-2 text-sm font-normal text-text-primary">
+                          <option value="">Any</option>
+                          {group.values.map(v => <option key={v.value} value={v.value}>{v.value} ({v.count})</option>)}
+                        </select>
+                      </label>
+                    ))}
+                    {facet.attributeGroups.length > 3 && <button type="button" aria-expanded={moreDetails} onClick={() => setMoreDetails(v => !v)} className="col-span-2 text-left text-xs font-semibold text-brand-text underline">{moreDetails ? 'Fewer details' : `More details (${facet.attributeGroups.length - 3})`}</button>}
+                  </div>
                 )}
                 {products.length ? <div className="flex flex-col gap-2">{products.map(d => <ProductRow key={d.id} productId={d.id as ProductId} onClick={() => onProduct(d.id as ProductId)} />)}</div> : (
                   <div role="status" className="rounded-xl bg-surface-raised p-4 text-sm text-text-secondary">
@@ -2953,38 +3052,104 @@ function ZeroSearch({ query, onClear }: { query: string; onClear: () => void }) 
 const productGone = (id: ProductId) => !(id in PRODUCTS) || isUnpublishedSeeded(id)
 const postGone = (id: ShoppablePostId) => !(id in SHOPPABLE_POSTS)
 
-function collectionContents(id: CollectionId, changes: Partial<Record<SaveKey, boolean>> = {}) {
-  const canonical = COLLECTIONS[id].items
-  const added = (Object.keys(changes) as SaveKey[]).filter(key => changes[key] && !canonical.some(item => saveKeyOf(item) === key)).map(itemOf)
-  const items = COLLECTIONS[id].isDefault ? [...canonical.filter(item => changes[saveKeyOf(item)] !== false), ...added] : canonical
-  const products = items.flatMap(item => ('product' in item ? [item.product] : []))
-  const posts = items.flatMap(item => ('post' in item ? [item.post] : []))
-  return { products, posts, unavailable: products.filter(p => productGone(p) || PRODUCTS[p].availability === 'Out of Stock').length + posts.filter(postGone).length }
+function collectionContents(c: BuyerCollection) {
+  const { products, posts } = splitCollection(c)
+  const productIds = products as ProductId[]
+  const postIds = posts as ShoppablePostId[]
+  return { products: productIds, posts: postIds, unavailable: productIds.filter(p => productGone(p) || PRODUCTS[p].availability === 'Out of Stock').length + postIds.filter(postGone).length }
 }
 
-function Saved({ changes, cartCount, onCart, onCollection, onProduct, onPost }: { changes: Partial<Record<SaveKey, boolean>>; cartCount: number; onCart: () => void; onCollection: (id: CollectionId) => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void }) {
-  const collections = COLLECTION_IDS.filter(id => COLLECTIONS[id].owner === BUYER)
-  // "Recently saved" shows the latest Product Post and whole Scene Post saved this session, otherwise the default
-  // Collection's first of each.
-  const recent = collectionContents(collections.find(id => COLLECTIONS[id].isDefault) ?? collections[0], changes)
-  const latest = (prefix: 'product:' | 'post:') => (Object.keys(changes) as SaveKey[]).filter(key => changes[key] && key.startsWith(prefix)).map(itemOf).pop()
-  const recentProduct = [(latest('product:') as { product: ProductId } | undefined)?.product, ...recent.products].find(p => p && !productGone(p))
-  const recentPost = [(latest('post:') as { post: ShoppablePostId } | undefined)?.post, ...recent.posts].find(p => p && !postGone(p))
+/** What a Save key is called on screen, even when its record is gone. */
+function saveTitleOf(key: string): string {
+  if (key.startsWith('product:')) { const id = key.slice('product:'.length) as ProductId; return productGone(id) ? 'Unavailable Product' : PRODUCTS[id].name }
+  const id = key.slice('post:'.length) as ShoppablePostId
+  return postGone(id) ? 'Unavailable Scene' : SHOPPABLE_POSTS[id].title
+}
+
+/** Choose which private Collections an item is in, or start a new one (BUYER-FIX-02). Changes apply at once; an item is never added twice to one Collection. */
+function SaveSheet({ itemKey, collections, onToggle, onNew, onClose }: { itemKey: string; collections: readonly BuyerCollection[]; onToggle: (id: string, on: boolean) => void; onNew: () => void; onClose: () => void }) {
+  return (
+    <BottomSheet title="Save to Collection" onClose={onClose}>
+      {dismiss => (
+        <>
+          <p className="mb-3 text-sm text-text-secondary">{saveTitleOf(itemKey)}</p>
+          <ul aria-label="Your Collections" className="divide-y divide-border">
+            {collections.map(c => (
+              <li key={c.id}>
+                <label className="flex min-h-11 items-center gap-3 py-2 text-sm">
+                  <input type="checkbox" checked={c.items.includes(itemKey)} onChange={e => onToggle(c.id, e.target.checked)} aria-label={`Save to ${c.name}`} className="h-5 w-5" />
+                  <span className="flex-1 font-semibold">{c.name}</span>
+                  <span className="text-xs text-text-muted">{c.items.length}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 flex flex-col gap-2"><Button variant="secondary" onClick={onNew}>New collection</Button><Button onClick={dismiss}>Done</Button></div>
+        </>
+      )}
+    </BottomSheet>
+  )
+}
+
+/** Name a Collection: create (optionally with the item being saved) or rename. The rules (trimmed, 1 to 40 characters, unique) live in buyer-collections. */
+function CollectionNameSheet({ title, initial, submitLabel, onSubmit, onClose }: { title: string; initial: string; submitLabel: string; onSubmit: (name: string) => string | null; onClose: () => void }) {
+  const [name, setName] = useState(initial)
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <BottomSheet title={title} onClose={onClose}>
+      {dismiss => (
+        <form onSubmit={e => { e.preventDefault(); const problem = onSubmit(name); if (problem) setError(problem); else dismiss() }}>
+          <TextInput label="Collection name" value={name} onChange={e => { setName(e.target.value); setError(null) }} maxLength={MAX_COLLECTION_NAME} error={error ?? undefined} autoFocus />
+          <div className="mt-4 flex gap-2"><Button type="submit">{submitLabel}</Button><Button type="button" variant="tertiary" onClick={dismiss}>Cancel</Button></div>
+        </form>
+      )}
+    </BottomSheet>
+  )
+}
+
+function CollectionMenuSheet({ collection, onRename, onDelete, onClose }: { collection: BuyerCollection; onRename: () => void; onDelete: () => void; onClose: () => void }) {
+  return (
+    <BottomSheet title={collection.name} onClose={onClose}>
+      {() => collection.isDefault
+        ? <p className="text-sm leading-relaxed text-text-secondary">Saved is your default Collection. It keeps its name and cannot be deleted. Remove items from it one by one.</p>
+        : <div className="flex flex-col gap-2"><Button variant="secondary" onClick={onRename}>Rename collection</Button><Button variant="secondary" onClick={onDelete}>Delete collection</Button></div>}
+    </BottomSheet>
+  )
+}
+
+function CollectionDeleteSheet({ collection, onDelete, onClose }: { collection: BuyerCollection; onDelete: () => void; onClose: () => void }) {
+  return (
+    <BottomSheet title={`Delete ${collection.name}?`} onClose={onClose}>
+      {dismiss => (
+        <>
+          <p className="text-sm leading-relaxed text-text-secondary">This deletes the Collection only. An item that is also in another Collection stays saved there; an item that is only here is no longer saved. Nothing else changes.</p>
+          <div className="mt-4 flex gap-2"><Button onClick={() => { onDelete(); dismiss() }}>Delete collection</Button><Button variant="tertiary" onClick={dismiss}>Cancel</Button></div>
+        </>
+      )}
+    </BottomSheet>
+  )
+}
+
+function Saved({ collections, cartCount, onCart, onCollection, onNew, onProduct, onPost }: { collections: readonly BuyerCollection[]; cartCount: number; onCart: () => void; onCollection: (id: string) => void; onNew: () => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void }) {
+  // "Recently saved" shows the latest Product and whole Scene saved in the default Collection that still exist.
+  const recent = collectionContents(collections.find(c => c.isDefault) ?? collections[0])
+  const recentProduct = [...recent.products].reverse().find(p => !productGone(p))
+  const recentPost = [...recent.posts].reverse().find(p => !postGone(p))
   return (
     <>
       <Header title="Saved" trailing={<button onClick={onCart} aria-label={`Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}`} className="min-h-9 rounded-full border border-border px-3 text-xs font-semibold">Cart{cartCount ? ` · ${cartCount}` : ''}</button>} />
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="mb-4 flex items-end justify-between"><div><div className="font-display text-2xl font-semibold">Your finds</div><div className="text-xs text-text-muted">Private to you</div></div><Button size="sm">New collection</Button></div>
-        {collections.map(id => {
-          const { products, posts } = collectionContents(id, changes)
+        <div className="mb-4 flex items-end justify-between"><div><div className="font-display text-2xl font-semibold">Your finds</div><div className="text-xs text-text-muted">Private to you</div></div><Button size="sm" onClick={onNew}>New collection</Button></div>
+        {collections.map(c => {
+          const { products, posts } = collectionContents(c)
           const tiles = [...products.map(p => (productGone(p) ? 'Unavailable' : PRODUCTS[p].name)), ...posts.map(p => (postGone(p) ? 'Unavailable' : SHOPPABLE_POSTS[p].title))]
           return (
-            <button key={id} onClick={() => onCollection(id)} className="mb-3 w-full rounded-2xl border border-border bg-surface p-3 text-left shadow-sm">
+            <button key={c.id} onClick={() => onCollection(c.id)} className="mb-3 w-full rounded-2xl border border-border bg-surface p-3 text-left shadow-sm">
               <div className="grid h-44 grid-cols-2 gap-1 overflow-hidden rounded-xl">
-                <Placeholder label={tiles[0]} className="h-full w-full text-2xl" />
-                <div className="grid gap-1"><Placeholder label={tiles[1]} className="h-full min-h-0 w-full" /><Placeholder label={tiles[2]} className="h-full min-h-0 w-full" /></div>
+                <Placeholder label={tiles[0] ?? 'Empty'} className="h-full w-full text-2xl" />
+                <div className="grid gap-1"><Placeholder label={tiles[1] ?? 'Empty'} className="h-full min-h-0 w-full" /><Placeholder label={tiles[2] ?? 'Empty'} className="h-full min-h-0 w-full" /></div>
               </div>
-              <div className="mt-3 flex items-center justify-between"><span><span className="block font-semibold">{COLLECTIONS[id].name}</span><span className="text-xs text-text-muted">{products.length} Product{products.length === 1 ? '' : 's'} · {posts.length} Scene{posts.length === 1 ? '' : 's'}</span></span><IconChevronRight size={16} /></div>
+              <div className="mt-3 flex items-center justify-between"><span><span className="block font-semibold">{c.name}</span><span className="text-xs text-text-muted">{products.length} Product{products.length === 1 ? '' : 's'} · {posts.length} Scene{posts.length === 1 ? '' : 's'}</span></span><IconChevronRight size={16} /></div>
             </button>
           )
         })}
@@ -2998,19 +3163,35 @@ function Saved({ changes, cartCount, onCart, onCollection, onProduct, onPost }: 
   )
 }
 
-function Collection({ collectionId, changes, onBack, onProduct, onPost }: { collectionId: CollectionId; changes: Partial<Record<SaveKey, boolean>>; onBack: () => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void }) {
-  const { products, posts, unavailable } = collectionContents(collectionId, changes)
+function Collection({ collection, onBack, onMore, onRemove, onProduct, onPost }: { collection: BuyerCollection; onBack: () => void; onMore: () => void; onRemove: (key: string) => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void }) {
+  const [show, setShow] = useState<'all' | 'products' | 'posts'>('all')
+  const { products, posts, unavailable } = collectionContents(collection)
   const total = products.length + posts.length
+  const remove = (key: string, name: string) => <button onClick={() => onRemove(key)} aria-label={`Remove ${name} from ${collection.name}`} className="mt-1 text-xs text-danger">Remove</button>
   return (
     <>
-      <Header title={COLLECTIONS[collectionId].name} onBack={onBack} trailing={<IconButton label="More">•••</IconButton>} />
+      <Header title={collection.name} onBack={onBack} trailing={<IconButton label="Collection options" onClick={onMore}>•••</IconButton>} />
       <div className="flex-1 overflow-y-auto p-4">
         <div className="text-sm text-text-muted">A private collection · {total} saved item{total === 1 ? '' : 's'}</div>
-        <div className="mt-4 flex gap-2"><Choice active>All {total}</Choice><Choice>Products {products.length}</Choice><Choice>Scenes {posts.length}</Choice></div>
-        <SectionLabel>Products</SectionLabel>
-        <div className="grid grid-cols-2 gap-2">{products.map(id => productGone(id) ? <div key={id} role="status" className="rounded-xl bg-surface-raised p-3 text-xs text-text-muted">Saved Product · no longer available</div> : <ProductCard id={id} key={id} name={PRODUCTS[id].name} price={PRODUCTS[id].availability === 'Out of Stock' ? availabilityText(id) : <InlinePrice productId={id} />} onClick={() => onProduct(id)} />)}</div>
-        <SectionLabel>Scenes</SectionLabel>
-        <div className="grid grid-cols-2 gap-2">{posts.map(id => postGone(id) ? <div key={id} role="status" className="rounded-xl bg-surface-raised p-3 text-xs text-text-muted">Saved Scene · no longer available</div> : <PostTile id={id} key={id} title={SHOPPABLE_POSTS[id].title} onClick={() => onPost(id)} label={`${SHOPPABLE_POSTS[id].tags.length} product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}`} />)}</div>
+        <div role="group" aria-label="Show" className="mt-4 flex gap-2">
+          <Choice active={show === 'all'} pressed={show === 'all'} onClick={() => setShow('all')}>All {total}</Choice>
+          <Choice active={show === 'products'} pressed={show === 'products'} onClick={() => setShow('products')}>Products {products.length}</Choice>
+          <Choice active={show === 'posts'} pressed={show === 'posts'} onClick={() => setShow('posts')}>Scenes {posts.length}</Choice>
+        </div>
+        {total === 0 && <p role="status" className="mt-6 rounded-xl bg-surface-raised p-4 text-sm text-text-secondary">Nothing saved here yet. Save a Product or Scene, then choose this Collection.</p>}
+        {show !== 'posts' && products.length > 0 && <>
+          <SectionLabel>Products</SectionLabel>
+          <div className="grid grid-cols-2 gap-2">{products.map(id => productGone(id)
+            ? <div key={id} className="rounded-xl bg-surface-raised p-3"><div role="status" className="text-xs text-text-muted">Saved Product · no longer available</div>{remove(`product:${id}`, 'unavailable Product')}</div>
+            : <div key={id}><ProductCard id={id} name={PRODUCTS[id].name} price={PRODUCTS[id].availability === 'Out of Stock' ? availabilityText(id) : <InlinePrice productId={id} />} onClick={() => onProduct(id)} />{remove(`product:${id}`, PRODUCTS[id].name)}</div>)}</div>
+        </>}
+        {show !== 'products' && posts.length > 0 && <>
+          <SectionLabel>Scenes</SectionLabel>
+          <div className="grid grid-cols-2 gap-2">{posts.map(id => postGone(id)
+            ? <div key={id} className="rounded-xl bg-surface-raised p-3"><div role="status" className="text-xs text-text-muted">Saved Scene · no longer available</div>{remove(`post:${id}`, 'unavailable Scene')}</div>
+            : <div key={id}><PostTile id={id} title={SHOPPABLE_POSTS[id].title} onClick={() => onPost(id)} label={`${SHOPPABLE_POSTS[id].tags.length} product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}`} />{remove(`post:${id}`, SHOPPABLE_POSTS[id].title)}</div>)}</div>
+        </>}
+        {total > 0 && ((show === 'products' && products.length === 0) || (show === 'posts' && posts.length === 0)) && <p role="status" className="mt-6 text-sm text-text-muted">No {show === 'products' ? 'Products' : 'Scenes'} in this Collection.</p>}
         {unavailable > 0 && <div className="mt-5 rounded-xl border border-warning/30 bg-warning-bg p-3"><div className="text-sm font-semibold text-warning">{unavailable} saved Product{unavailable === 1 ? ' is' : 's are'} unavailable</div><div className="mt-1 text-xs text-text-secondary">It remains in this Collection so you can find it again if it returns.</div></div>}
       </div>
     </>

@@ -103,6 +103,8 @@ export const LIVE_POSTS = proxy<ShoppablePostId, ShoppablePostRecord>(SHOPPABLE_
 export const LIVE_SELLERS = proxy<SellerId, SellerRecord>(SELLERS, liveSeller)
 /** The first photo the Seller added to a seeded Product, if any. */
 export const livePhoto = (id: ProductId) => authored.products[id]?.photos[0] ?? products[id]?.photos[0]
+/** Every photo the Seller added to a Product (authored or seeded), in the Seller's order. */
+export const livePhotos = (id: ProductId): readonly string[] => authored.products[id]?.photos ?? products[id]?.photos ?? []
 /** The Scene's own photo (authored Scenes), if any. */
 export const liveScenePhoto = (id: ShoppablePostId) => authored.scenes[id]?.image ?? undefined
 /** The exact price (santim) of the chosen options, from the Variants the Seller listed; null when the Product keeps no such row. */

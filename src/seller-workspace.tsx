@@ -7,6 +7,7 @@ import type { BotConfig } from './chatbot/config'
 import type { ChatMsg, Conversation } from './chatbot/chat'
 import type { Pending } from './chatbot/types'
 import type { BotFeedback } from './chatbot/feedback'
+import type { BuyerCollection } from './buyer-collections'
 
 /**
  * Seller workspace (SC-001..SC-006): what a Seller authors in the Seller Console during a session (store setup, Products,
@@ -57,6 +58,8 @@ export interface WorkspaceState {
   /** The Buyer's temporary Cart once the Buyer has edited it this session (so it survives switching surfaces); null until then. Never a record. */
   /** The Buyer's Saves and unsaves this session (keyed "product:ID" / "post:ID"), kept so they survive switching surfaces; null until the Buyer saves something. */
   buyerSaved: Record<string, boolean> | null
+  /** BUYER-FIX-02: the Buyer's private Collections once changed this session (default "Saved" plus custom ones); null = the seeded ones. Supersedes buyerSaved, which is still read from earlier sessions. */
+  buyerCollections: BuyerCollection[] | null
   buyerCart: { product: string; options: string[]; quantity: number; seen?: number; seller?: string; name?: string }[] | null
   /** Prototype hours since the session began; Story lifetimes read it, so expiry is deterministic and demonstrable. */
   clockHours: number
@@ -67,6 +70,7 @@ type Action =
   | { type: 'restrict'; scene: string; reason: string | null }
   | { type: 'bot'; seller: SellerId; config: BotConfig }
   | { type: 'saved'; changes: Record<string, boolean> }
+  | { type: 'collections'; collections: BuyerCollection[] }
   | { type: 'cart'; lines: { product: string; options: readonly string[]; quantity: number; seen?: number; seller?: string; name?: string }[] }
   | { type: 'feedback-add'; item: BotFeedback }
   | { type: 'feedback-review'; id: string; review: NonNullable<BotFeedback['review']> }
@@ -76,7 +80,7 @@ type Action =
   | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'knowledge'; seller: SellerId; entries: Knowledge[] } | { type: 'clock'; hours: number } | { type: 'reset' }
 
 const KEY = 'adulis.seller-workspace.v1'
-const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, botFeedback: [], buyerCart: null, buyerSaved: null, clockHours: 0 }
+const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, botFeedback: [], buyerCart: null, buyerSaved: null, buyerCollections: null, clockHours: 0 }
 
 function reducer(state: WorkspaceState, action: Action): WorkspaceState {
   switch (action.type) {
@@ -86,6 +90,7 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
     case 'remove': { const next = { ...state[action.collection] }; delete next[action.id]; return { ...state, [action.collection]: next } }
     case 'setup': return { ...state, setup: { ...state.setup, [action.seller]: action.setup } }
     case 'saved': return { ...state, buyerSaved: { ...action.changes } }
+    case 'collections': return { ...state, buyerCollections: action.collections.map(c => ({ ...c, items: [...c.items] })) }
     case 'cart': return { ...state, buyerCart: action.lines.map(l => ({ product: l.product, options: [...l.options], quantity: l.quantity, seen: l.seen, seller: l.seller, name: l.name })) }
     case 'feedback-add': return { ...state, botFeedback: [...state.botFeedback, action.item] }
     case 'feedback-review': return { ...state, botFeedback: state.botFeedback.map(f => (f.id === action.id ? { ...f, status: 'reviewed' as const, review: action.review } : f)) }
