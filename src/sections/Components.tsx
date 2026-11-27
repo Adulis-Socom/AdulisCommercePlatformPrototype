@@ -31,6 +31,7 @@ import {
   WorkQueueRow, ApprovalBlock, EvidenceBlock,
   type AuditEntryData, type TimelineEvent, type WorkQueueItem,
 } from '../components/ui/Operational'
+import { usePrototypeMode } from '../prototype-mode'
 import {
   AUDIT_LOG, BUYERS, CLAIMS, CLAIM_IDS, CONVERSATIONS, COURIERS, DECISIONS, DEFAULT_SNAPSHOT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET,
   MODERATION_CASES, OPERATORS, ORDERS, ORDER_TIMELINES, PRODUCTS, REVIEWS, SELLERS, SHOPPABLE_POSTS, SUPPORT_CASES, SURFACE_DEFAULTS,
@@ -160,8 +161,12 @@ function ShowSection({ title, children }: { title: string; children: React.React
 }
 
 function ShowHeader({ title }: { title: string }) {
+  const { simulation } = usePrototypeMode()
   return (
-    <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, margin: '0 0 32px', color: 'var(--color-text-primary)' }}>{title}</h1>
+    <>
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, margin: simulation ? '0 0 32px' : '0 0 12px', color: 'var(--color-text-primary)' }}>{title}</h1>
+      {!simulation && <p role="note" style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--color-info)', background: 'var(--color-info-bg)', borderRadius: 12, padding: 12, margin: '0 0 32px', maxWidth: 640 }}>Design-system reference. Some examples describe payment, Order, handoff or Claim states that Release 1 does not include. They belong to the internal simulation and are kept as the design record.</p>}
+    </>
   )
 }
 

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button } from '../components/ui/Button'
 import { SystemStatePanel, type SystemStateKind } from '../components/ui/Overlay'
 import { ORDERS, ORDER_IDS, PRODUCTS, SELLERS, SURFACE_DEFAULTS, formatEtb, orderTotals, sellerProductsAt } from '../demo-data'
+import { usePrototypeMode } from '../prototype-mode'
 
 type Surface = 'Buyer' | 'Courier' | 'Seller' | 'Operator' | 'Platform'
 
@@ -300,6 +301,7 @@ const SCENARIOS: Scenario[] = [
 ]
 
 export default function SystemStates() {
+  const { simulation } = usePrototypeMode()
   const [surface, setSurface] = useState<'All' | Surface>('All')
   const [resolved, setResolved] = useState<Record<string, boolean>>({})
   const scenarios = surface === 'All' ? SCENARIOS : SCENARIOS.filter(scenario => scenario.surface === surface)
@@ -312,6 +314,7 @@ export default function SystemStates() {
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-text-secondary">
           Representative non-happy paths across Adulis. Each state preserves the authority and boundary of the underlying business workflow.
         </p>
+        {!simulation && <p role="note" className="mt-3 max-w-3xl rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Design-system reference. Some states below describe payment, Order, handoff or Claim situations that Release 1 does not include. They belong to the internal simulation and are kept as the design record.</p>}
       </div>
 
       <div className="mb-5 flex flex-wrap gap-2" role="group" aria-label="Filter system states by surface">
