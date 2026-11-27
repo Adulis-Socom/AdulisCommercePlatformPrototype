@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react'
 import { PRODUCTS, SELLERS, sellerProductsAt, type Moment, type SellerId } from './demo-data'
 import { findTaxonomy } from './demo-data/taxonomy'
+import type { Knowledge } from './sections/console/chatbot-engine'
 
 /**
  * Seller workspace (SC-001..SC-006): what a Seller authors in the Seller Console during a session (store setup, Products,
@@ -26,16 +27,18 @@ export interface WsSetup {
 export interface WorkspaceState {
   products: Record<string, WsProduct>; scenes: Record<string, WsScene>; stories: Record<string, WsStory>
   setup: Partial<Record<SellerId, WsSetup>>
+  /** The Seller's approved chatbot answers once edited; absent means the DEMO_DATA answers. */
+  knowledge: Partial<Record<SellerId, Knowledge[]>>
   /** Prototype hours since the session began; Story lifetimes read it, so expiry is deterministic and demonstrable. */
   clockHours: number
 }
 type Action =
   | { type: 'product'; item: WsProduct } | { type: 'scene'; item: WsScene } | { type: 'story'; item: WsStory }
   | { type: 'remove'; collection: 'products' | 'scenes' | 'stories'; id: string }
-  | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'clock'; hours: number } | { type: 'reset' }
+  | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'knowledge'; seller: SellerId; entries: Knowledge[] } | { type: 'clock'; hours: number } | { type: 'reset' }
 
 const KEY = 'adulis.seller-workspace.v1'
-const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, clockHours: 0 }
+const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, clockHours: 0 }
 
 function reducer(state: WorkspaceState, action: Action): WorkspaceState {
   switch (action.type) {
@@ -44,6 +47,7 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
     case 'story': return { ...state, stories: { ...state.stories, [action.item.id]: action.item } }
     case 'remove': { const next = { ...state[action.collection] }; delete next[action.id]; return { ...state, [action.collection]: next } }
     case 'setup': return { ...state, setup: { ...state.setup, [action.seller]: action.setup } }
+    case 'knowledge': return { ...state, knowledge: { ...state.knowledge, [action.seller]: action.entries } }
     case 'clock': return { ...state, clockHours: Math.max(0, state.clockHours + action.hours) }
     case 'reset': return EMPTY
   }

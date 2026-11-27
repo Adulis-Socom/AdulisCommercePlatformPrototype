@@ -7,6 +7,8 @@ import { SearchInput, Textarea, TextInput } from '../components/ui/Input'
 import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
 import ProductAuthoring from './console/ProductAuthoring'
 import SellerSetup from './console/SellerSetup'
+import { defaultSetup, useWorkspace } from '../seller-workspace'
+import { ChatbotAnswers, ChatbotTest } from './console/ChatbotLab'
 import SceneAuthoring from './console/SceneAuthoring'
 import StoryAuthoring from './console/StoryAuthoring'
 import {
@@ -31,6 +33,7 @@ import {
 } from '../demo-data'
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
+import { Notice } from './console/kit'
 
 type NavKey = 'home' | 'setup' | 'orders' | 'products' | 'content' | 'inbox' | 'claims' | 'reviews' | 'trust' | 'insights' | 'store' | 'couriers' | 'automation' | 'settings'
 type HomeMode = 'pre-publication' | 'active'
@@ -213,7 +216,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
           {activeNav === 'store' && <StorePanel sellerId={sellerId} at={at} onOpenCouriers={() => navigate('couriers')} />}
           {activeNav === 'couriers' && <CouriersPanel sellerId={sellerId} at={at} advanceTo={advanceTo} changes={courierChanges} onChange={changeCourier} />}
           {activeNav === 'automation' && <AutomationPanel sellerId={sellerId} at={at} />}
-          {activeNav === 'settings' && <SettingsPanel sellerId={sellerId} at={at} team={teamWith(sellerId, teamChanges)} onTeamChange={(staff, change) => setTeamChanges(changes => ({ ...changes, [staff]: { ...changes[staff], ...change } }))} />}
+          {activeNav === 'settings' && <SettingsPanel sellerId={sellerId} at={at} onNavigate={navigate} team={teamWith(sellerId, teamChanges)} onTeamChange={(staff, change) => setTeamChanges(changes => ({ ...changes, [staff]: { ...changes[staff], ...change } }))} />}
         </div>
       </div>
     </div>
@@ -817,6 +820,7 @@ function rolesWith(label: string) {
 }
 
 function InsightsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+  const { simulation } = usePrototypeMode()
   const [tab, setTab] = useState<InsightsTab>('overview')
   // DEMO_DATA's 7-day figures; it records no week-on-week changes.
   const i = INSIGHTS_7D[sellerId]
@@ -826,6 +830,9 @@ function InsightsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
     ['Storefront visits', i.storefrontVisits.toLocaleString('en-US'), '—'], ['Claims', String(i.claims), '—'], ['Cancellation', `${i.cancellationRatePercent}%`, '—'],
     ['Response reliability', `${i.responseReliabilityPercent}%`, '—'], ['Fulfilment reliability', `${i.fulfilmentReliabilityPercent}%`, '—'],
   ] : []
+  // FE-001: Orders, GMV, Claims, cancellation and fulfilment figures need paid Orders, which Release 1 does not have.
+  const ORDER_METRICS = ['Paid Orders', 'Completed Orders', 'GMV', 'Claims', 'Cancellation', 'Fulfilment reliability']
+  const shownOverview = simulation ? overview : overview.filter(([label]) => !ORDER_METRICS.includes(label))
   const current = INSIGHTS_TABS.find(item => item.key === tab)!
   return (
     <div className="mx-auto max-w-7xl p-8">
@@ -833,12 +840,12 @@ function InsightsPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
       <div className="mb-5"><Segmented options={INSIGHTS_TABS.map(item => [item.key, item.label])} active={tab} onChange={value => setTab(value as InsightsTab)} /></div>
       {tab === 'overview' && (
         <>
-          <div className="grid grid-cols-4 gap-4">{overview.map(([label, value, change]) => <InsightCard key={label} label={label} value={value} change={change} />)}</div>
-          <div className="mt-5 grid grid-cols-[1.5fr_1fr] gap-5"><TrendPanel title="Paid Orders and GMV · 7 days" /><ReliabilityPanel sellerId={sellerId} /></div>
+          <div className="grid grid-cols-4 gap-4">{shownOverview.map(([label, value, change]) => <InsightCard key={label} label={label} value={value} change={change} />)}</div>
+          {simulation ? <div className="mt-5 grid grid-cols-[1.5fr_1fr] gap-5"><TrendPanel title="Paid Orders and GMV · 7 days" /><ReliabilityPanel sellerId={sellerId} /></div> : <div className="mt-5"><Notice tone="info" title="Order figures are not part of Release 1">Paid Orders, GMV, Claims and fulfilment reliability need paid Orders, which this release does not have. They are shown in the internal simulation only.</Notice></div>}
         </>
       )}
       {tab === 'scenes' && <ScenePerformanceView sellerId={sellerId} at={at} />}
-      {tab === 'products' && <ProductPerformanceView sellerId={sellerId} at={at} />}
+      {tab === 'products' && (simulation ? <ProductPerformanceView sellerId={sellerId} at={at} /> : <SimulationGate title="Product performance" compact>Product performance combines views with units sold and GMV, which need paid Orders. It is not part of Release 1.</SimulationGate>)}
       {tab === 'reputation' && <SellerReputationView sellerId={sellerId} at={at} />}
       <p className="mt-5 text-xs text-text-muted">Who sees this view: {rolesWith(current.capability)}. Every Insights view is read-only.</p>
       <div className="mt-3 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">Insights report observable outcomes only. Recommendation algorithms, ranking weights and internal eligibility calculations are not exposed.</div>
@@ -1291,27 +1298,15 @@ function CouriersPanel({ sellerId, at, advanceTo, changes, onChange }: {
 
 function AutomationPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const [tab, setTab] = useState<'overview' | 'answers' | 'testing' | 'insights'>('overview')
-  const [testAnswer, setTestAnswer] = useState(false)
-  const [answerSaved, setAnswerSaved] = useState(false)
   // The Seller's chatbot as DEMO_DATA configures it: its answers by topic, and the questions it couldn't match by the
   // story moment. DEMO_DATA records no usage totals or rates.
-  const chatbot = CHATBOTS[sellerId]
-  const answers = chatbot?.answers ?? []
   const unmatched = CONVERSATION_IDS.filter(id => CONVERSATIONS[id].seller === sellerId).flatMap(id => messagesAt(id, at).filter(m => m.escalatedFromChatbot))
-  const first = answers[0]
-  // DEMO_DATA records no chatbot for this Seller: the empty state (specification §56).
-  if (!chatbot) return (
-    <div className="mx-auto max-w-7xl p-8">
-      <ModuleHeader title="Chatbot Automation" description="Manage automated answers and human escalation." />
-      <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center"><div className="font-display text-xl font-semibold">No chatbot set up</div><p className="mt-1 max-w-sm text-sm text-text-muted">{SELLERS[sellerId].name} has no configured chatbot answers.</p></div>
-    </div>
-  )
   return (
     <div className="mx-auto max-w-7xl p-8">
-      <ModuleHeader title="Chatbot Automation" description="Manage automated answers and human escalation." trailing={<Segmented options={[['overview', 'Overview'], ['answers', 'Answers'], ['testing', 'Testing'], ['insights', 'Insights']]} active={tab} onChange={value => setTab(value as typeof tab)} />} />
+      <ModuleHeader title="Chatbot Automation" description="Manage automated answers and human escalation." trailing={<Segmented options={[['overview', 'Overview'], ['answers', 'Answers'], ['testing', 'Test'], ['insights', 'Insights']]} active={tab} onChange={value => setTab(value as typeof tab)} />} />
       {tab === 'overview' && <div className="grid grid-cols-4 gap-4"><InsightCard label="Questions answered" value="—" change="—" /><InsightCard label="Resolution rate" value="—" change="—" /><InsightCard label="Human escalations" value="—" change="—" /><InsightCard label="Unmatched questions" value="—" change="—" /><div className="col-span-4 rounded-2xl border border-border bg-surface p-5"><div className="font-display text-lg font-semibold">Escalation health</div><p className="mt-2 text-sm text-text-secondary">Questions about payment disputes, claims, custom promises, or unmatched topics escalate to a human Seller. Automation does not modify commerce records.</p></div></div>}
-      {tab === 'answers' && <div className="grid grid-cols-[1fr_1fr] gap-5"><DetailCard title="Saved answers">{answers.map(a => <AnswerRow key={a.topic} question={a.topic} answer={a.answer} />)}</DetailCard><DetailCard title="Edit answer"><TextInput label="Customer question" defaultValue={first?.topic ?? ''} /><div className="mt-4"><Textarea label="Approved answer" defaultValue={first?.answer ?? ''} rows={5} /></div><Button onClick={() => setAnswerSaved(true)} style={{ marginTop: 16 }}>{answerSaved ? 'Answer Saved' : 'Save Answer'}</Button></DetailCard></div>}
-      {tab === 'testing' && <div className="grid grid-cols-[1fr_1fr] gap-5"><DetailCard title="Test a buyer question"><TextInput label="Question" defaultValue={first?.topic ?? ''} /><Button onClick={() => setTestAnswer(true)} style={{ marginTop: 16 }}>Run Test</Button></DetailCard><DetailCard title="Assistant response">{testAnswer && first ? <div><div className="rounded-xl bg-surface-raised p-4 text-sm">{first.answer}</div><div className="mt-3 flex items-center justify-between"><span className="text-xs text-text-muted">Matched: {first.topic} answer</span><StatusBadge status="active" customLabel="Answered" /></div></div> : <div className="py-12 text-center text-sm text-text-muted">Run a test to preview the buyer-facing answer.</div>}</DetailCard></div>}
+      {tab === 'answers' && <ChatbotAnswers sellerId={sellerId} />}
+      {tab === 'testing' && <ChatbotTest sellerId={sellerId} at={at} />}
       {tab === 'insights' && <div className="grid grid-cols-3 gap-4"><InsightCard label="Top topic" value="—" change="—" /><InsightCard label="Highest escalation" value="—" change="—" /><InsightCard label="Answer gap" value="—" change="—" /><div className="col-span-3"><DetailCard title="Unmatched questions">{unmatched.map(m => <AnswerRow key={m.at} question={m.text} answer="No approved answer · add or escalate" />)}</DetailCard></div></div>}
     </div>
   )
@@ -1328,9 +1323,11 @@ function teamWith(sellerId: SellerId, changes: TeamChanges): TeamMember[] {
 // Settings show DEMO_DATA's prototype states for the Seller (specification §38), and the Seller team's six canonical
 // roles (PR-007). The Owner is the primary member; no security policies, team emails or provider facts beyond DEMO_DATA
 // are shown.
-function SettingsPanel({ sellerId, at, team, onTeamChange }: { sellerId: SellerId; at: Moment; team: readonly TeamMember[]; onTeamChange: (staff: StaffId, change: TeamChanges[StaffId]) => void }) {
+function SettingsPanel({ sellerId, at, team, onTeamChange, onNavigate }: { sellerId: SellerId; at: Moment; onNavigate: (key: NavKey) => void; team: readonly TeamMember[]; onTeamChange: (staff: StaffId, change: TeamChanges[StaffId]) => void }) {
+  const { simulation } = usePrototypeMode()
   const [tab, setTab] = useState('team')
-  const tabs = [['team', 'Team'], ['roles', 'Roles & Permissions'], ['sessions', 'Sessions'], ['security', 'Security'], ['ownership', 'Ownership'], ['lifecycle', 'Account lifecycle'], ['notifications', 'Notifications'], ['provider', 'Provider status']]
+  // FE-001 / SC-007: the payment-provider status belongs to the simulation; the MVP adds store, Courier and subscription pages (read-only).
+  const tabs = [['team', 'Team'], ['roles', 'Roles & Permissions'], ['store', 'Store profile'], ['courier-links', 'Courier relationships'], ['subscription', 'Subscription'], ['sessions', 'Sessions'], ['security', 'Security'], ['ownership', 'Ownership'], ['lifecycle', 'Account lifecycle'], ['notifications', 'Notifications'], ...(simulation ? [['provider', 'Provider status']] : [])]
   return (
     <div className="mx-auto max-w-7xl p-8">
       <ModuleHeader title="Settings" description="People, access, security and account administration." />
@@ -1339,12 +1336,15 @@ function SettingsPanel({ sellerId, at, team, onTeamChange }: { sellerId: SellerI
         <div className="min-w-0">
           {tab === 'team' && <TeamSettings sellerId={sellerId} team={team} onChange={onTeamChange} onOpenRoles={() => setTab('roles')} />}
           {tab === 'roles' && <RolesSettings />}
+          {tab === 'store' && <StoreSettingsSummary sellerId={sellerId} onNavigate={onNavigate} />}
+          {tab === 'courier-links' && <CourierLinksSettings onNavigate={onNavigate} />}
+          {tab === 'subscription' && <SubscriptionSettings />}
           {tab === 'sessions' && <SessionsSettings sellerId={sellerId} />}
           {tab === 'security' && <SecuritySettings />}
           {tab === 'ownership' && <OwnershipSettings sellerId={sellerId} />}
           {tab === 'lifecycle' && <LifecycleSettings sellerId={sellerId} at={at} />}
           {tab === 'notifications' && <NotificationSettings />}
-          {tab === 'provider' && <ProviderSettings sellerId={sellerId} />}
+          {tab === 'provider' && simulation && <ProviderSettings sellerId={sellerId} />}
         </div>
       </div>
     </div>
@@ -1576,8 +1576,9 @@ function OwnerOnlyBadge() {
 }
 
 function NotificationSettings() {
-  // Every Seller notification type in specification §54 is on by default (DEMO_DATA).
-  return <DetailCard title="Notifications"><div className="mb-2 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">{SELLER_SETTINGS.notifications}.</div><SettingToggle title="New Paid Orders" detail="Immediate Console and Seller Companion alert." defaultChecked /><SettingToggle title="Claims and deadlines" detail="Urgent alerts for claim actions." defaultChecked /><SettingToggle title="Courier updates" detail="Offer, assignment and verified handoff events." defaultChecked /><SettingToggle title="Inventory risks" detail="Low-stock and unavailable Products." defaultChecked /><SettingToggle title="Unanswered messages" detail="Buyer conversations awaiting a human reply." defaultChecked /><SettingToggle title="Trust changes" detail="Changes to your store's Trust level." defaultChecked /></DetailCard>
+  // Every Seller notification type in specification §54 is on by default (DEMO_DATA). Order, Claim and delivery alerts exist only in the simulation.
+  const { simulation } = usePrototypeMode()
+  return <DetailCard title="Notifications"><div className="mb-2 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">{SELLER_SETTINGS.notifications}.</div>{simulation && <><SettingToggle title="New Paid Orders" detail="Immediate Console and Seller Companion alert." defaultChecked /><SettingToggle title="Claims and deadlines" detail="Urgent alerts for claim actions." defaultChecked /><SettingToggle title="Courier updates" detail="Offer, assignment and verified handoff events." defaultChecked /></>}<SettingToggle title="Inventory risks" detail="Low-stock and unavailable Products." defaultChecked /><SettingToggle title="Unanswered messages" detail="Buyer conversations awaiting a human reply." defaultChecked /><SettingToggle title="Trust changes" detail="Changes to your store's Trust level." defaultChecked /></DetailCard>
 }
 
 function ProviderSettings({ sellerId }: { sellerId: SellerId }) {
@@ -1757,4 +1758,21 @@ function ContentHub({ sellerId, at }: { sellerId: SellerId; at: Moment; demoTarg
       </div>
     </div>
   )
+}
+
+/** SC-007: a read-only summary of the store profile and coverage; editing happens in Store setup. */
+function StoreSettingsSummary({ sellerId, onNavigate }: { sellerId: SellerId; onNavigate: (key: NavKey) => void }) {
+  const { state } = useWorkspace()
+  const setup = state.setup[sellerId] ?? defaultSetup(sellerId)
+  const rows: [string, string][] = [['Store name', setup.storeName || '—'], ['Handle', setup.handle || '—'], ['Market', 'Ethiopia'], ['Areas you serve', setup.coverage.join(', ') || 'None chosen'], ['Fulfilment', [setup.collection.on && 'Buyer Collection', setup.sellerDelivery.on && 'Seller Delivery', setup.courier && 'Courier Delivery'].filter(Boolean).join(', ') || 'None turned on']]
+  return <DetailCard title="Store profile" trailing={<Button size="sm" onClick={() => onNavigate('setup')}>Edit in Store setup</Button>}><InfoGrid rows={rows} /><p className="mt-3 text-xs text-text-muted">Country-wide activation does not promise courier service to every address: coverage is yours to set.</p></DetailCard>
+}
+
+function CourierLinksSettings({ onNavigate }: { onNavigate: (key: NavKey) => void }) {
+  return <DetailCard title="Courier relationships" trailing={<Button size="sm" onClick={() => onNavigate('couriers')}>Open Couriers</Button>}><p className="text-sm leading-relaxed text-text-secondary">Invite Couriers, review applications and see each relationship’s status in Couriers. A Courier is never assigned automatically, and no delivery runs in this release.</p></DetailCard>
+}
+
+/** Subscription is presentation only (governing decision): nothing can be bought, changed or paid here. */
+function SubscriptionSettings() {
+  return <DetailCard title="Subscription" trailing={<StatusBadge status="pending" customLabel="Read-only" />}><InfoGrid rows={[['Plan', 'Not set in the demonstration data'], ['Status', 'Managed by Adulis'], ['Billing', 'Not available in this release']]} /><div className="mt-3 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">This page only shows your plan. There is no plan purchase, upgrade or payment in this prototype, and no billing details are collected.</div></DetailCard>
 }
