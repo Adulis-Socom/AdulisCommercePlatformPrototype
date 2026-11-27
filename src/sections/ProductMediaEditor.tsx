@@ -9,8 +9,9 @@ import { Button } from '../components/ui/Button'
  */
 
 const ADAPTER = 'http://127.0.0.1:8765'
-// The adapter enforces its own allowlist; this only labels the choices. A model is added here once it is admitted there.
-const MODELS = [{ id: 'u2netp', label: 'U2-Net-P (lightweight)' }]
+// `admitted` mirrors the status in tools/bg-removal/models.json. The adapter enforces it on its own (403); this flag only
+// keeps the UI honest and avoids contacting the adapter for a model that cannot run. Set it true only when models.json does.
+const MODELS = [{ id: 'u2netp', label: 'U2-Net-P (lightweight)', admitted: false }]
 const ACCEPT = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_BYTES = 10 * 1024 * 1024
 const MAX_ITEMS = 5
@@ -25,7 +26,7 @@ type Session =
   | { status: 'processing' }
   | { status: 'done'; result: Photo & { meta: Meta } }
   | { status: 'error'; message: string }
-type Adapter = 'checking' | 'offline' | 'ready'
+type Adapter = 'checking' | 'offline' | 'ready' | 'unavailable'
 type Backdrop = 'checker' | 'white' | 'dark'
 
 const BACKDROPS: { id: Backdrop; label: string; style: CSSProperties }[] = [
@@ -78,14 +79,19 @@ export function ProductMediaEditor({ placeholders, onCover }: { placeholders: nu
 
   const editing = drafts.find(draft => draft.id === editingId && draft.original)
 
+  const modelAdmitted = MODELS.find(entry => entry.id === model)?.admitted === true
+  const unavailable = !modelAdmitted || adapter === 'unavailable'
+
   const checkAdapter = useCallback(async () => {
+    if (!modelAdmitted) { setAdapter('unavailable'); return } // no request is made for a model that may not run
     setAdapter('checking')
     try {
       const response = await fetch(`${ADAPTER}/health`, { signal: AbortSignal.timeout(3000) })
       const body = await response.json()
-      setAdapter(response.ok && body.models?.some((entry: { id: string; ready: boolean }) => entry.id === model && entry.ready) ? 'ready' : 'offline')
+      const entry = response.ok ? (body.models as { id: string; ready: boolean; status?: string }[] | undefined)?.find(item => item.id === model) : undefined
+      setAdapter(entry && entry.status !== undefined && entry.status !== 'admitted' ? 'unavailable' : entry?.ready ? 'ready' : 'offline')
     } catch { setAdapter('offline') }
-  }, [model])
+  }, [model, modelAdmitted])
   useEffect(() => { if (editing) void checkAdapter() }, [editing?.id, checkAdapter])
 
   useEffect(() => {
@@ -214,21 +220,22 @@ export function ProductMediaEditor({ placeholders, onCover }: { placeholders: nu
           <div className="mb-3 flex flex-wrap items-end gap-3">
             <label className="text-xs font-semibold text-text-secondary">Model
               <select value={model} disabled={busy} onChange={event => { setModel(event.target.value); reset() }} className="mt-1 block h-10 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-text-primary">
-                {MODELS.map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+                {MODELS.map(entry => <option key={entry.id} value={entry.id}>{entry.label}{entry.admitted ? '' : ' (unavailable)'}</option>)}
               </select>
             </label>
             <label className="min-w-48 flex-1 text-xs font-semibold text-text-secondary">Adapter token
-              <input value={token} disabled={busy} onChange={event => { setToken(event.target.value); storeToken(event.target.value) }} placeholder="Paste the token the adapter printed" autoComplete="off" spellCheck={false} className="mt-1 block h-10 w-full rounded-lg border border-border bg-surface px-3 font-mono text-xs text-text-primary" />
+              <input value={token} disabled={busy || unavailable} onChange={event => { setToken(event.target.value); storeToken(event.target.value) }} placeholder="Paste the token the adapter printed" autoComplete="off" spellCheck={false} className="mt-1 block h-10 w-full rounded-lg border border-border bg-surface px-3 font-mono text-xs text-text-primary" />
             </label>
             {busy
               ? <Button variant="secondary" onClick={() => reset('Cancelled. Your original photo is unchanged.')}>Cancel</Button>
-              : <Button onClick={start} disabled={adapter !== 'ready' || !token.trim()}>{session.status === 'done' || session.status === 'error' ? 'Retry' : 'Remove background'}</Button>}
+              : <Button onClick={start} disabled={unavailable || adapter !== 'ready' || !token.trim()}>{session.status === 'done' || session.status === 'error' ? 'Retry' : 'Remove background'}</Button>}
           </div>
 
-          <p role="status" className={`mb-3 text-xs ${adapter === 'ready' ? 'text-success' : 'text-text-muted'}`}>
-            {adapter === 'checking' && 'Checking for the local adapter…'}
-            {adapter === 'ready' && 'Local adapter connected.'}
-            {adapter === 'offline' && <>The local adapter is not running. Start it (see tools/bg-removal/README.md), then <button type="button" onClick={checkAdapter} className="font-semibold text-brand-text underline">check again</button>. The rest of the Product Editor works without it.</>}
+          <p role="status" className={`mb-3 text-xs ${adapter === 'ready' && !unavailable ? 'text-success' : 'text-text-muted'}`}>
+            {unavailable && <><span className="font-semibold text-text-primary">This model is unavailable.</span> Adulis has not confirmed permission to use this exact model file, so background removal is switched off and nothing is run or sent anywhere. Your photo is unchanged, and you can keep adding, replacing and previewing photos as usual.</>}
+            {!unavailable && adapter === 'checking' && 'Checking for the local adapter…'}
+            {!unavailable && adapter === 'ready' && 'Local adapter connected.'}
+            {!unavailable && adapter === 'offline' && <>The local adapter is not running. Start it (see tools/bg-removal/README.md), then <button type="button" onClick={checkAdapter} className="font-semibold text-brand-text underline">check again</button>. The rest of the Product Editor works without it.</>}
           </p>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -248,7 +255,7 @@ export function ProductMediaEditor({ placeholders, onCover }: { placeholders: nu
                 {session.status !== 'done' && editing.showing === 'edited' && editing.edited && <img src={editing.edited.url} alt={`Current draft with background removed: ${editing.name}`} className="max-h-full max-w-full object-contain" />}
                 {session.status !== 'done' && !(editing.showing === 'edited' && editing.edited) && (
                   <div role="status" className="px-6 text-center text-xs font-medium text-text-secondary" style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 12 }}>
-                    {busy ? <>Removing the background… <span className="font-mono">{(elapsed / 1000).toFixed(1)} s</span></> : session.status === 'error' ? <span className="text-danger">{session.message}</span> : session.note ?? 'Run “Remove background” to see the result here.'}
+                    {busy ? <>Removing the background… <span className="font-mono">{(elapsed / 1000).toFixed(1)} s</span></> : session.status === 'error' ? <span className="text-danger">{session.message}</span> : session.note ?? (unavailable ? 'Background removal is unavailable, so there is no result to show.' : 'Run “Remove background” to see the result here.')}
                   </div>
                 )}
               </div>

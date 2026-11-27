@@ -5,7 +5,8 @@ One request/response endpoint around rembg:
   GET  /health                                                                              ->  JSON status
 
 Safeguards: binds 127.0.0.1 only; Host and Origin allowlists; per-run token; no URLs or paths accepted;
-models limited to models.json with SHA-256 verified before loading; decoded-image checks; one inference at a time.
+models limited to models.json AND status "admitted" (unresolved checkpoints are refused with 403 before any load), with
+SHA-256 verified before loading; decoded-image checks; one inference at a time.
 """
 import hashlib
 import hmac
@@ -80,10 +81,20 @@ def sha256_of(path):
     return digest.hexdigest()
 
 
+def is_admitted(entry):
+    """Fail closed: only an exact status of "admitted" may run. No environment or request override exists."""
+    return entry.get("status") == "admitted"
+
+
 def load_session(model):
-    """The cached session for an allowlisted model, loaded after its checkpoint's SHA-256 matches the manifest."""
+    """The cached session for an admitted model, loaded after its checkpoint's SHA-256 matches the manifest.
+
+    The only place a session is created or reused, so the admission check here covers every inference path."""
     if model not in MANIFEST:
         raise Refused(400, "Model is not on the allowlist.")
+    if not is_admitted(MANIFEST[model]):
+        _sessions.pop(model, None)
+        raise Refused(403, "Model unavailable: permission for this checkpoint is unresolved, so it is not loaded or run.")
     if model in _sessions:
         return _sessions[model], 0.0
     entry = MANIFEST[model]
@@ -201,7 +212,8 @@ class Handler(BaseHTTPRequestHandler):
             origin = self._guard()
             if urlsplit(self.path).path != "/health":
                 raise Refused(404, "Not found.")
-            models = [{"id": key, "label": entry["label"], "ready": (HERE / "models" / entry["file"]).is_file()} for key, entry in MANIFEST.items()]
+            models = [{"id": key, "label": entry["label"], "status": entry.get("status", "unresolved"),
+                       "ready": is_admitted(entry) and (HERE / "models" / entry["file"]).is_file()} for key, entry in MANIFEST.items()]
             self._send(200, json.dumps({"ok": True, "busy": _busy.locked(), "models": models}).encode(), origin=origin)
         except Refused as refusal:
             self._error(refusal, origin)

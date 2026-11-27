@@ -1,6 +1,8 @@
 """Actual-inference smoke test: starts the adapter, sends one real photograph through POST /remove, and writes evidence.
 
 Usage: .venv\\Scripts\\python smoke.py <output folder>
+HELD: this runs inference, which the adapter now refuses (403) while u2netp is "unresolved" in models.json. The earlier
+evidence from PROTO-BGR-BATCH-001 stays as recorded; do not re-run this until a checkpoint is admitted.
 The photograph is scikit-image's bundled 'coffee' sample (CC0, Rachel Michetti); no Seller image is used.
 """
 import hashlib

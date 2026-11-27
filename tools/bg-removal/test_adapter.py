@@ -1,7 +1,8 @@
 """Adapter safeguard tests. Run: .venv\\Scripts\\python -m unittest test_adapter -v
 
-These hit a real adapter process over HTTP. Only test_actual_inference_* runs the model; the rest are refusals that
-must happen before any inference (no model is loaded for them).
+These hit a real adapter process over HTTP. No test runs a model unless a checkpoint is "admitted" in models.json
+(none is: u2netp is unresolved), so test_actual_inference_* is skipped; every other test is a refusal that must happen
+before any inference (no model is loaded for them).
 """
 import http.client
 import io
@@ -141,35 +142,83 @@ class AdapterTest(unittest.TestCase):
         finally:
             adapter._busy.release()
 
-    @unittest.skipUnless((HERE / "models" / "models" / "u2netp" / "u2netp.onnx").is_file(), "checkpoint not downloaded (run setup_models.py)")
-    def test_actual_inference_returns_a_real_alpha_png(self):
-        from PIL import Image
-        from skimage import data
-        source = io.BytesIO()
-        Image.fromarray(data.coffee()).save(source, format="JPEG", quality=90)
-        status, body, headers = self.post(source.getvalue())
-        self.assertEqual(status, 200)
-        result = Image.open(io.BytesIO(body))
-        self.assertEqual((result.mode, result.size), ("RGBA", (600, 400)))
-        alpha = result.getchannel("A").histogram()
-        self.assertGreater(sum(alpha[:9]), 10000)     # real transparent background
-        self.assertGreater(sum(alpha[247:]), 10000)   # real opaque subject
-        self.assertEqual(headers["X-Model"], "u2netp")
-        self.assertEqual(headers["Access-Control-Allow-Origin"], ORIGIN)
+    def test_unresolved_checkpoint_is_refused_over_http_and_never_loaded(self):
+        # BGR-002-FIX: u2netp is "unresolved", so a valid request is refused 403 with no inference.
+        status, data, _ = self.post(png(), model="u2netp")
+        self.assertEqual(status, 403)
+        self.assertIn("unavailable", json.loads(data)["error"])
+        status, data, _ = self.get("/health")
+        entry = json.loads(data)["models"][0]
+        self.assertEqual((entry["id"], entry["status"], entry["ready"]), ("u2netp", "unresolved", False))
 
-    def test_corrupt_checkpoint_is_not_loaded(self):
+    def test_only_an_admitted_status_may_load_and_there_is_no_bypass(self):
         import adapter
         entry = adapter.MANIFEST["u2netp"]
-        original = entry["sha256"]
+        original = dict(entry)
+        for status in ("unresolved", "restricted", "ADMITTED", "", None, "missing"):
+            if status == "missing":
+                entry.pop("status", None)
+            else:
+                entry["status"] = status
+            adapter._sessions["u2netp"] = object()  # even a cached session must not be reused
+            with self.assertRaises(adapter.Refused) as caught:
+                adapter.load_session("u2netp")
+            self.assertEqual((caught.exception.status, "u2netp" in adapter._sessions), (403, False), status)
+        # Environment variables do not change the decision.
+        os.environ.update(ADAPTER_ADMIT_ALL="1", ADAPTER_ALLOW_UNRESOLVED="1", MODEL_CHECKSUM_DISABLED="1")
+        try:
+            entry["status"] = "unresolved"
+            with self.assertRaises(adapter.Refused) as caught:
+                adapter.load_session("u2netp")
+            self.assertEqual(caught.exception.status, 403)
+        finally:
+            for name in ("ADAPTER_ADMIT_ALL", "ADAPTER_ALLOW_UNRESOLVED", "MODEL_CHECKSUM_DISABLED"):
+                os.environ.pop(name, None)
+            entry.clear()
+            entry.update(original)
+        self.assertNotIn("rembg", sys.modules)  # the refusals above never reached the library
+
+    def test_manifest_keeps_the_research_fields_for_unresolved_u2netp(self):
+        import adapter
+        entry = adapter.MANIFEST["u2netp"]
+        self.assertEqual(entry["status"], "unresolved")
+        for field in ("url", "sha256", "bytes", "owner", "licence", "rembg_md5", "statusNote"):
+            self.assertTrue(entry.get(field), field)
+
+    def test_corrupt_checkpoint_is_not_loaded(self):
+        # Admission is simulated in memory only, with a wrong hash, so this can never reach the library or run a model.
+        import adapter
+        entry = adapter.MANIFEST["u2netp"]
+        original = dict(entry)
         adapter._sessions.pop("u2netp", None)
-        entry["sha256"] = "0" * 64
+        entry.update(status="admitted", sha256="0" * 64)
         try:
             with self.assertRaises(adapter.Refused) as caught:
                 adapter.load_session("u2netp")
             self.assertEqual(caught.exception.status, 500)
             self.assertIn("SHA-256", caught.exception.message)
         finally:
-            entry["sha256"] = original
+            entry.clear()
+            entry.update(original)
+
+    @unittest.skipUnless(any(e.get("status") == "admitted" for e in json.loads((HERE / "models.json").read_text())["models"].values()),
+                         "no admitted checkpoint: inference is intentionally not run")
+    def test_actual_inference_returns_a_real_alpha_png(self):
+        from PIL import Image
+        from skimage import data
+        manifest = json.loads((HERE / "models.json").read_text())["models"]
+        model = next(key for key, e in manifest.items() if e.get("status") == "admitted")
+        source = io.BytesIO()
+        Image.fromarray(data.coffee()).save(source, format="JPEG", quality=90)
+        status, body, headers = self.post(source.getvalue(), model=model)
+        self.assertEqual(status, 200)
+        result = Image.open(io.BytesIO(body))
+        self.assertEqual((result.mode, result.size), ("RGBA", (600, 400)))
+        alpha = result.getchannel("A").histogram()
+        self.assertGreater(sum(alpha[:9]), 10000)     # real transparent background
+        self.assertGreater(sum(alpha[247:]), 10000)   # real opaque subject
+        self.assertEqual(headers["X-Model"], model)
+        self.assertEqual(headers["Access-Control-Allow-Origin"], ORIGIN)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,10 @@
 {
-  "comment": "Allowlist of background-removal checkpoints the local adapter may load. Experiment only: not an approved production model policy. Add a model only after its weight terms are reviewed (see Deliverables/Prototype/PROTO-BGR-BATCH-001/model-license-comparison.md).",
+  "comment": "Checkpoint manifest for the local background-removal adapter. A checkpoint may be loaded or executed ONLY when its status is exactly \"admitted\"; any other value, or a missing status, is refused (fail closed). There is no environment-variable or flag bypass. A model becomes \"admitted\" only through a reviewed commit that records written permission for the exact checkpoint file (see Deliverables/Prototype/PROTO-BGR-BATCH-001/END_OF_BATCH_REPORT.md section 3). Experiment only: not an approved production model policy.",
   "models": {
     "u2netp": {
       "label": "U2-Net-P (lightweight)",
+      "status": "unresolved",
+      "statusNote": "Permission for this exact ONNX file (third-party-hosted conversion) is unconfirmed for evaluation, commercial and redistribution use; DUTS-TR training-data terms not reviewed. Inference ran once before this was classified (PROTO-BGR-BATCH-001); it is now blocked.",
       "file": "models/u2netp/u2netp.onnx",
       "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
       "bytes": 4574861,

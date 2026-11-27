@@ -5,7 +5,7 @@ with real `rembg` inference. It is a research tool for the prototype, not part o
 
 - Runs only on this computer (`127.0.0.1:8765`). Photos are never sent to an online service.
 - The prototype works normally without it; the Media panel then says the adapter is not running.
-- One admitted model: `u2netp` (see `models.json`). Models not in that file cannot run.
+- **No model is currently admitted.** `u2netp` is in `models.json` with `"status": "unresolved"` (permission for that exact checkpoint is unconfirmed), so the adapter refuses it with 403 and the Media panel says "This model is unavailable". Only a status of exactly `"admitted"` can load; there is no environment-variable or flag override. Models not in the file cannot run either.
 - The limits (10 MB, 16 megapixels, 60 s, one image at a time) are experiment defaults, not product policy.
 
 ## One-time setup (Windows, Python 3.11 to 3.13)
@@ -40,9 +40,9 @@ cd tools\bg-removal
 .venv\Scripts\python smoke.py <output folder>
 ```
 
-`test_adapter` starts a real adapter. Everything in it is a refusal that must happen before inference, except
-`test_actual_inference_returns_a_real_alpha_png`, which runs the model. `smoke.py` runs one real photograph
-through the HTTP endpoint and writes the evidence files.
+`test_adapter` starts a real adapter. Everything in it is a refusal that must happen before inference;
+`test_actual_inference_returns_a_real_alpha_png` runs a model only if one is admitted (none is, so it is skipped).
+`smoke.py` runs real inference and is on hold for the same reason.
 
 ## What the adapter checks
 
