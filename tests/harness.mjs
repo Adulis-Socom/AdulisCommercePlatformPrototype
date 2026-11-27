@@ -10,13 +10,14 @@ export async function suite(name, viewport, fn) {
   const browser = await chromium.launch({ channel: 'msedge', headless: true })
   const page = await (await browser.newContext({ viewport })).newPage()
   const errors = []
+  const requests = []
   const expectedErrors = []
-  await page.route('**/*', r => (ALLOWED.has(new URL(r.request().url()).hostname) ? r.continue() : r.abort()))
+  await page.route('**/*', r => { const u = new URL(r.request().url()); requests.push(u.host); return ALLOWED.has(u.hostname) ? r.continue() : r.abort() })
   page.on('pageerror', e => errors.push(String(e)))
   page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()) })
   let pass = 0, fail = 0, crashed = false
   const t = {
-    page,
+    page, requests, errors,
     /** Declare a console error the test provokes on purpose; an unlisted error fails the suite. */
     expectError: pattern => expectedErrors.push(pattern),
     open: async (path = '') => { await page.goto(BASE + path, { waitUntil: 'networkidle' }); await page.waitForTimeout(300) },
@@ -25,6 +26,14 @@ export async function suite(name, viewport, fn) {
     ck(label, ok, detail) {
       console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${!ok && detail !== undefined ? ' — ' + JSON.stringify(detail).slice(0, 400) : ''}`)
       ok ? pass++ : fail++
+    },
+    /**
+     * A limitation that is documented and not yet built. It passes while the gap exists; when the gap closes it FAILS, so the
+     * assertion is promoted to a real check instead of silently accepting absence forever.
+     */
+    knownGap(label, stillPresent, detail) {
+      console.log(`${stillPresent ? 'KNOWN-GAP' : 'FAIL'} ${label}${stillPresent ? '' : ' — the gap is closed: replace this with a real check'}${detail !== undefined ? ' — ' + JSON.stringify(detail).slice(0, 200) : ''}`)
+      stillPresent ? pass++ : fail++
     },
     /** Assert `actual === expected` and show both on failure. */
     eq: (label, actual, expected) => t.ck(label, Object.is(actual, expected), { actual, expected }),

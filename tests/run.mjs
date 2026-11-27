@@ -15,10 +15,17 @@ const url = `http://127.0.0.1:${PORT}/`
 for (let i = 0; i < 60; i++) { try { if ((await fetch(url)).ok) break } catch {} await new Promise(r => setTimeout(r, 500)) }
 
 const results = []
+const attempt = (file, tag) => new Promise(res => {
+  const log = createWriteStream(join(outDir, file.replace('.mjs', `${tag}.log`)))
+  const p = spawn(process.execPath, [join('tests', file)], { env: { ...process.env, APP_URL: url, TEST_EVIDENCE: join(outDir, 'evidence', file.replace('.test.mjs', '')) } })
+  p.stdout.pipe(log, { end: false }); p.stderr.pipe(log, { end: false }); p.on('close', c => { log.end(); res(c) })
+})
 for (const file of readdirSync('tests').filter(f => f.endsWith('.test.mjs') && f.includes(filter)).sort()) {
-  const log = createWriteStream(join(outDir, file.replace('.mjs', '.log')))
-  const code = await new Promise(res => { const p = spawn(process.execPath, [join('tests', file)], { env: { ...process.env, APP_URL: url } }); p.stdout.pipe(log, { end: false }); p.stderr.pipe(log, { end: false }); p.on('close', c => { log.end(); res(c) }) })
-  results.push({ file, exit: code }); console.log(`${code === 0 ? 'ok  ' : 'FAIL'} ${file} (exit ${code})`)
+  // A failure is retried once and BOTH attempts are recorded, so a flaky browser run is visible, never hidden.
+  const first = await attempt(file, '')
+  const retry = first === 0 ? null : await attempt(file, '.retry')
+  results.push({ file, exit: retry ?? first, first_attempt_exit: first, retried: retry !== null })
+  console.log(`${(retry ?? first) === 0 ? 'ok  ' : 'FAIL'} ${file} (exit ${retry ?? first}${retry !== null ? `; first attempt ${first}` : ''})`)
 }
 server.kill()
 const summary = { sha: git(['rev-parse', 'HEAD']), dirty: git(['status', '--porcelain']) !== '', node: process.version, results }

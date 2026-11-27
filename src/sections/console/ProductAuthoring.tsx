@@ -142,8 +142,12 @@ function ProductEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: M
   const issues = publicationIssues(p)
   const errors = attempted ? issues : nameError && p.name.trim().length < 2 ? [{ field: 'name', message: 'Add a Product name to save a draft.' }] : []
 
+  // A value counts only while the chosen category defines that attribute and lists that value; the rest is dropped on save.
+  const fits = (k: string, v: string) => Array.isArray(defs) && !!defs.find(d => d.name === k)?.values.includes(v)
+  const stale = defs === 'loading' ? [] : Object.entries(p.attributes).filter(([k, v]) => v && !fits(k, v))
   const persist = (status: WsProduct['status'], message: string) => {
-    const saved: WsProduct = { ...p, id: p.id || next('product'), status, updated: Date.now() }
+    const attributes = defs === 'loading' ? p.attributes : Object.fromEntries(Object.entries(p.attributes).filter(([k, v]) => v && fits(k, v)))
+    const saved: WsProduct = { ...p, attributes, id: p.id || next('product'), status, updated: Date.now() }
     dispatch({ type: 'product', item: saved })
     setP(saved); baseline.current = comparable(saved); setAttempted(false); setNameError(false); setBanner(message)
   }
@@ -190,9 +194,9 @@ function ProductEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: M
             <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
               <div className="col-span-2 max-sm:col-span-1"><TextInput id="pf-name" label="Product name" value={p.name} error={err('name')} onChange={event => set({ name: event.target.value })} placeholder="e.g. Habesha Kemis" maxLength={80} /></div>
               <div className="col-span-2 max-sm:col-span-1"><Textarea id="pf-description" label="Description" value={p.description} onChange={event => set({ description: event.target.value })} rows={4} maxLength={1000} hint={`${p.description.length} / 1000. Describe only what is true of this Product.`} placeholder="Describe this Product" /></div>
-              <SelectField id="pf-category" label="Category" value={majorId} placeholder="Choose a category" error={err('category')} onChange={v => set({ category: v || null, attributes: {} })} options={TAXONOMY.map(m => ({ value: m.id, label: m.name }))} />
-              {majorId && <SelectField label="Subcategory" value={category?.id ?? ''} placeholder="Choose" onChange={v => set({ category: v || majorId, attributes: {} })} options={(TAXONOMY.find(m => m.id === majorId)?.categories ?? []).map(c => ({ value: c.id, label: c.name }))} />}
-              {category && category.subcategories.length > 0 && <SelectField label="Type" value={taxonomy?.sub?.id ?? ''} placeholder="Choose a type" onChange={v => set({ category: v || category.id, attributes: {} })} options={category.subcategories.map(s => ({ value: s.id, label: s.name }))} />}
+              <SelectField id="pf-category" label="Category" value={majorId} placeholder="Choose a category" error={err('category')} onChange={v => set({ category: v || null })} options={TAXONOMY.map(m => ({ value: m.id, label: m.name }))} />
+              {majorId && <SelectField label="Subcategory" value={category?.id ?? ''} placeholder="Choose" onChange={v => set({ category: v || majorId })} options={(TAXONOMY.find(m => m.id === majorId)?.categories ?? []).map(c => ({ value: c.id, label: c.name }))} />}
+              {category && category.subcategories.length > 0 && <SelectField label="Type" value={taxonomy?.sub?.id ?? ''} placeholder="Choose a type" onChange={v => set({ category: v || category.id })} options={category.subcategories.map(s => ({ value: s.id, label: s.name }))} />}
             </div>
             {gapNote && <div className="mt-3"><Notice tone="warning" title="Taxonomy incomplete for this category">{gapNote}</Notice></div>}
             <div className="mt-3"><Check label="Locally made in Ethiopia" checked={p.locallyMade} onChange={on => set({ locallyMade: on })} detail="Shown to Buyers only when you set it yourself." /></div>
@@ -201,9 +205,10 @@ function ProductEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: M
             {defs === 'loading' && <p role="status" className="text-sm text-text-muted">Loading attributes…</p>}
             {Array.isArray(defs) && (
               <div className="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
-                {(defs as readonly TaxonomyAttribute[]).map(def => <SelectField key={def.name} label={def.name} value={p.attributes[def.name] ?? ''} placeholder="Not set" onChange={v => set({ attributes: { ...p.attributes, [def.name]: v } })} options={def.values.map(v => ({ value: v, label: v }))} />)}
+                {(defs as readonly TaxonomyAttribute[]).map(def => <AttributeField key={def.name} def={def} value={p.attributes[def.name] ?? ''} onChange={v => set({ attributes: { ...p.attributes, [def.name]: v } })} />)}
               </div>
             )}
+            {stale.length > 0 && <div className="mt-3"><Notice tone="warning" role="status" title="Some values do not fit this category">{stale.map(([k, v]) => `${k}: ${v}`).join('; ')}. They are kept while you edit, so choosing the previous category brings them back, and they are removed when you save.</Notice></div>}
             {(!p.category || !taxonomy?.category) && <p className="text-sm text-text-muted">Choose a category to see its attributes.</p>}
             {(noAttrs || (taxonomy?.category && !taxonomy.sub && !taxonomy.category.subcategories.length)) && <Notice tone="warning" title="No attribute definitions yet">Nothing has been submitted for this category, so use the generic details below.</Notice>}
             {(noAttrs || (taxonomy?.category && !category?.subcategories.length) || (!taxonomy?.category && p.seeded)) && (
@@ -269,6 +274,20 @@ function ProductEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: M
         {preview && <ProductPreview p={p} stock={stock} />}
       </div>
     </Page>
+  )
+}
+
+/** One taxonomy attribute: its allowed values, with a search box when the list is long. Nothing is inferred to be required. */
+function AttributeField({ def, value, onChange }: { def: TaxonomyAttribute; value: string; onChange: (v: string) => void }) {
+  const [query, setQuery] = useState('')
+  const long = def.values.length > 12
+  const q = query.trim().toLowerCase()
+  const shown = long && q ? def.values.filter(v => v === value || v.toLowerCase().includes(q)) : def.values
+  return (
+    <div>
+      {long && <TextInput label={`Search ${def.name}`} value={query} onChange={event => setQuery(event.target.value)} placeholder={`${def.values.length} values`} hint={q ? `${shown.filter(v => v !== value || v.toLowerCase().includes(q)).length} match` : undefined} />}
+      <SelectField label={def.name} value={value} placeholder="Not set" onChange={onChange} options={shown.map(v => ({ value: v, label: v }))} />
+    </div>
   )
 }
 
