@@ -3,6 +3,9 @@ import { MARKET, PRODUCTS, SELLERS, buyerVisibleSellers, sellerProductsAt, type 
 import { setLiveOverlay, type ProductOverlay, type SellerOverlay } from './demo-data/live'
 import { findTaxonomy } from './demo-data/taxonomy'
 import type { Knowledge } from './sections/console/chatbot-engine'
+import type { BotConfig } from './chatbot/config'
+import type { ChatMsg, Conversation } from './chatbot/chat'
+import type { Pending } from './chatbot/types'
 
 /**
  * Seller workspace (SC-001..SC-006): what a Seller authors in the Seller Console during a session (store setup, Products,
@@ -39,6 +42,10 @@ export interface WorkspaceState {
   setup: Partial<Record<SellerId, WsSetup>>
   /** The Seller's approved chatbot answers once edited; absent means the DEMO_DATA answers. */
   knowledge: Partial<Record<SellerId, Knowledge[]>>
+  /** BOT-004: structured chatbot policy and knowledge per Seller (absent = nothing configured). */
+  bot: Partial<Record<SellerId, BotConfig>>
+  /** BOT-006: conversations keyed by Buyer|Seller|Market, shared by the Buyer app and the Seller Inbox. */
+  chats: Record<string, Conversation>
   /** Prototype hours since the session began; Story lifetimes read it, so expiry is deterministic and demonstrable. */
   clockHours: number
 }
@@ -46,10 +53,14 @@ type Action =
   | { type: 'product'; item: WsProduct } | { type: 'scene'; item: WsScene } | { type: 'story'; item: WsStory }
   | { type: 'remove'; collection: 'products' | 'scenes' | 'stories'; id: string }
   | { type: 'restrict'; scene: string; reason: string | null }
+  | { type: 'bot'; seller: SellerId; config: BotConfig }
+  | { type: 'chat-exchange'; conversation: Conversation; messages: ChatMsg[]; pending: Pending | null; escalate?: string; waiting?: boolean }
+  | { type: 'chat-seller'; key: string; message: ChatMsg }
+  | { type: 'chat-mode'; key: string; mode: Conversation['mode'] }
   | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'knowledge'; seller: SellerId; entries: Knowledge[] } | { type: 'clock'; hours: number } | { type: 'reset' }
 
 const KEY = 'adulis.seller-workspace.v1'
-const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, clockHours: 0 }
+const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, clockHours: 0 }
 
 function reducer(state: WorkspaceState, action: Action): WorkspaceState {
   switch (action.type) {
@@ -58,6 +69,17 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
     case 'story': return { ...state, stories: { ...state.stories, [action.item.id]: action.item } }
     case 'remove': { const next = { ...state[action.collection] }; delete next[action.id]; return { ...state, [action.collection]: next } }
     case 'setup': return { ...state, setup: { ...state.setup, [action.seller]: action.setup } }
+    case 'bot': return { ...state, bot: { ...state.bot, [action.seller]: action.config } }
+    case 'chat-exchange': {
+      const base = state.chats[action.conversation.key] ?? action.conversation
+      const messages = base.messages.map(m => (action.escalate && m.id === action.escalate ? { ...m, escalated: true } : m)).concat(action.messages)
+      return { ...state, chats: { ...state.chats, [base.key]: { ...base, messages, pending: action.pending, waiting: action.escalate ? true : action.waiting ?? base.waiting, seq: base.seq + action.messages.length } } }
+    }
+    case 'chat-seller': {
+      const c = state.chats[action.key]
+      return c ? { ...state, chats: { ...state.chats, [c.key]: { ...c, messages: [...c.messages, action.message], mode: 'human_takeover', waiting: false, pending: null, seq: c.seq + 1 } } } : state
+    }
+    case 'chat-mode': { const c = state.chats[action.key]; return c ? { ...state, chats: { ...state.chats, [c.key]: { ...c, mode: action.mode, waiting: action.mode === 'bot' ? c.waiting : false } } } : state }
     case 'knowledge': return { ...state, knowledge: { ...state.knowledge, [action.seller]: action.entries } }
     case 'restrict': { const scene = state.scenes[action.scene]; return scene ? { ...state, scenes: { ...state.scenes, [scene.id]: { ...scene, restricted: action.reason ? { reason: action.reason } : null } } } : state }
     case 'clock': return moveClock(state, action.hours)

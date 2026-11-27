@@ -1,6 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../components/ui/Button'
 import { PhoneInput, SearchInput, Select, Textarea, TextInput } from '../components/ui/Input'
+import { BuyerChat } from './buyer-chat'
+import { useWorkspace } from '../seller-workspace'
 import { Skeleton } from '../components/ui/Overlay'
 import { VerificationFailed } from '../components/ui/Handoff'
 import {
@@ -823,8 +825,10 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'claim-form' && <ClaimForm claimId={claimId} issue={claimIssue} onBack={() => setScreen('claim-start')} onSubmit={() => { if (claimId) advanceTo(claimSubmitted(claimId)); setScreen('claim-status') }} />}
         {shown === 'claim-status' && <ClaimStatus orderId={orderId} claimId={claimId} at={at} onDone={() => setScreen('order-detail')} />}
         {shown === 'chats' && <ChatList at={at} sent={sentMessages} onBack={() => setScreen(chatsFrom)} onConversation={seller => openConversation({ seller, context: GENERAL_CONTEXT, from: 'chats' })} />}
-        {shown === 'conversation' && <Conversation sellerId={chat.seller} startContext={chat.context} at={at} sent={sentMessages} onSend={(conversation, message) => setSentMessages(all => ({ ...all, [conversation]: [...(all[conversation] ?? []), { ...message, sequence: Object.values(all).reduce((n, list) => n + (list?.length ?? 0), 0) + 1 }] }))} onBack={() => setScreen(chat.from)} />}
-        {shown === 'chatbot' && <Chatbot productId={productId} onBack={() => setScreen('product')} onEscalate={advanceTo} />}
+        {(shown === 'conversation' || shown === 'chatbot') && <Conversation sellerId={chat.seller} startContext={chat.context} at={at} sent={sentMessages}
+          onProduct={id => (id in PRODUCTS ? openProduct(id as ProductId) : openAuthored({ kind: 'product', id }))}
+          onCart={() => { setCartSeller(chat.seller); setScreen('seller-cart') }}
+          onBack={() => setScreen(shown === 'chatbot' ? 'product' : chat.from)} />}
         {shown === 'notifications' && <Notifications at={at} onBack={() => setScreen(notificationsFrom)} onOrder={openOrder} />}
         {shown === 'you' && <YouProfile at={at} name={displayName} area={savedArea} follows={follows} purchased={purchased.length} onSeller={openSeller} onMenu={() => setAccountMenu(true)} onPurchased={() => setScreen('purchased-products')} />}
         {shown === 'purchased-products' && (
@@ -3442,6 +3446,7 @@ function ClaimStatus({ orderId, claimId, at, onDone }: { orderId: OrderId; claim
 function ChatList({ at, sent, onBack, onConversation }: { at: Moment; sent: Partial<Record<ConversationId, readonly MessageRecord[]>>; onBack: () => void; onConversation: (seller: SellerId) => void }) {
   // The Buyer's conversations with messages by the story moment, latest first. Each previews its newest message: one
   // Maya sent in this session, if she has, otherwise DEMO_DATA's last. DEMO_DATA records no read state.
+  const { state: { chats } } = useWorkspace()
   const threads = CONVERSATION_IDS.filter(id => CONVERSATIONS[id].buyer === BUYER)
     .flatMap(id => { const last = effectiveMessagesAt(id, at, sent[id]).pop(); return last ? [{ id, last }] : [] })
     .sort((a, b) => byMessageTime(b.last, a.last))
@@ -3450,6 +3455,11 @@ function ChatList({ at, sent, onBack, onConversation }: { at: Moment; sent: Part
       <Header title="Messages" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
         <SectionLabel>Buyer–Seller threads</SectionLabel>
+        {Object.values(chats).filter(c => c.buyerId === BUYER && !threads.some(t => CONVERSATIONS[t.id].seller === c.sellerId)).map(c => {
+          const seller = SELLERS[c.sellerId as SellerId].name
+          const last = c.messages[c.messages.length - 1]
+          return <button key={c.key} onClick={() => onConversation(c.sellerId as SellerId)} className="flex w-full items-center gap-3 border-b border-border py-4 text-left"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials(seller)}</span><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="font-semibold">{seller}</span></span><span className="block truncate text-xs text-text-secondary">{last?.text}</span></span></button>
+        })}
         {threads.map(({ id, last }) => {
           const seller = SELLERS[CONVERSATIONS[id].seller].name
           return <button key={id} onClick={() => onConversation(CONVERSATIONS[id].seller)} className="flex w-full items-center gap-3 border-b border-border py-4 text-left"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials(seller)}</span><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="font-semibold">{seller}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="block truncate text-xs text-text-muted">{last.text}</span></span></button>
@@ -3460,63 +3470,24 @@ function ChatList({ at, sent, onBack, onConversation }: { at: Moment; sent: Part
 }
 
 /**
- * Maya's one conversation with the Seller (rule 12.1). Every message shows the context it was sent with (specification
- * §22). The composer's context is this screen's state, never the conversation's, and changing it changes no message
- * (rule 12.3).
+ * Maya's one conversation with the Seller per Market (rule 12.1), answered first by the Seller's scripted assistant and then, if she asks,
+ * by a person (BOT-006). The seeded history comes first; this session's messages follow, each stamped with the subject it was sent with.
  */
-function Conversation({ sellerId, startContext, at, sent, onSend, onBack }: {
+function Conversation({ sellerId, startContext, at, sent, onProduct, onCart, onBack }: {
   sellerId: SellerId; startContext: MessageContext; at: Moment; sent: Partial<Record<ConversationId, readonly MessageRecord[]>>
-  onSend: (conversation: ConversationId, message: MessageRecord) => void; onBack: () => void
+  onProduct: (productId: string) => void; onCart: () => void; onBack: () => void
 }) {
-  // Maya has no conversation with some Sellers (DEMO_DATA › Conversations), and the prototype starts none.
   const conversation = conversationBetween(BUYER, sellerId)
-  // The composer starts on the entry point's record when the selector offers it (rules 12.5–12.6), else on General / Seller.
-  const [context, setContext] = useState<MessageContext>(() => (conversation && isContextChoiceAt(conversation, startContext, at) ? startContext : GENERAL_CONTEXT))
-  const [text, setText] = useState('')
-  const [choosing, setChoosing] = useState(false)
   const seller = SELLERS[sellerId].name
-  // DEMO_DATA's messages so far, then this session's, in time order.
   const messages = conversation ? effectiveMessagesAt(conversation, at, sent[conversation]) : []
-  const send = () => {
-    const body = text.trim()
-    if (!conversation || !body) return
-    onSend(conversation, { at: at.at, from: 'buyer', context, text: body })
-    setText('')
-  }
-  // A message just sent comes into view; opening the conversation keeps its place.
-  const list = useRef<HTMLDivElement>(null)
-  const shown = useRef(messages.length)
-  useEffect(() => {
-    if (messages.length > shown.current) list.current?.scrollTo({ top: list.current.scrollHeight })
-    shown.current = messages.length
-  }, [messages.length])
+  const startProductId = 'product' in startContext ? startContext.product : undefined
+  const startSceneId = 'post' in startContext ? startContext.post : undefined
   return (
     <>
       <Header title={seller} onBack={onBack} />
       <div className="border-b border-border bg-warning-bg px-4 py-2 text-[10px] leading-relaxed text-text-secondary">Chat helps coordination, but messages do not change payment, order, fulfilment or handoff truth.</div>
-      {conversation ? <>
-        <div ref={list} role="list" aria-label="Messages" className="flex-1 overflow-y-auto bg-surface-raised p-4">
-          {messages.map((m, index) => <ChatMessage key={index} message={m} spaced={index > 0} />)}
-        </div>
-        <div className="border-t border-border bg-surface p-3 pb-5">
-          <button onClick={() => setChoosing(true)} aria-haspopup="dialog" aria-label={`Talking about: ${buyerContextSubject(context)}. Change`} className="mb-2 inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand bg-brand-muted px-3 py-1 text-left text-xs font-semibold text-brand-dark">
-            <span>Talking about: {buyerContextSubject(context)}</span>
-            <IconChevronDown size={12} />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="flex-1"><TextInput aria-label="Message" value={text} onChange={e => setText(e.target.value)} placeholder={'general' in context ? `Message ${seller}` : `Message about ${buyerContextSubject(context)}`} /></div>
-            <Button size="md" onClick={send}>Send</Button>
-          </div>
-        </div>
-        {choosing && <ContextSheet choices={contextChoicesAt(conversation, at)} selected={context} onSelect={setContext} onClose={() => setChoosing(false)} />}
-      </> : (
-        <div className="flex-1 bg-surface-raised p-4">
-          <div className="rounded-xl bg-surface p-4 text-sm leading-relaxed text-text-secondary">
-            <span className="mb-1 block font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Prototype</span>
-            {shortName(BUYERS[BUYER].name)} has no conversation with {seller} in the demo data, so the prototype doesn't start one.
-          </div>
-        </div>
-      )}
+      <BuyerChat sellerId={sellerId} at={at} startProductId={startProductId} startSceneId={startSceneId} onOpenProduct={onProduct} onOpenCart={onCart}
+        history={messages.length ? messages.map((m, index) => <ChatMessage key={index} message={m} spaced={index > 0} />) : null} />
     </>
   )
 }

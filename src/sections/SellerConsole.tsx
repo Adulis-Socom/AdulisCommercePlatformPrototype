@@ -8,7 +8,9 @@ import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
 import ProductAuthoring from './console/ProductAuthoring'
 import SellerSetup from './console/SellerSetup'
 import { defaultSetup, useWorkspace } from '../seller-workspace'
-import { ChatbotAnswers, ChatbotTest } from './console/ChatbotLab'
+import { ChatbotAnswers } from './console/ChatbotLab'
+import { ChatbotTestLab } from './console/ChatbotTestLab'
+import { BotSetup } from './console/BotSetup'
 import SceneAuthoring from './console/SceneAuthoring'
 import StoryAuthoring from './console/StoryAuthoring'
 import {
@@ -34,6 +36,7 @@ import {
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { Notice } from './console/kit'
+import { LiveInbox } from './console/LiveInbox'
 
 type NavKey = 'home' | 'setup' | 'orders' | 'products' | 'content' | 'inbox' | 'claims' | 'reviews' | 'trust' | 'insights' | 'store' | 'couriers' | 'automation' | 'settings'
 type HomeMode = 'pre-publication' | 'active'
@@ -769,6 +772,8 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
     shown.current = { conversation: selected, count: messages.length }
   }, [selected, messages.length])
   return (
+    <>
+    <LiveInbox sellerId={sellerId} author={staff ? shortName(STAFF[staff].name) : SELLERS[sellerId].name} />
     <div className="seller-inbox flex h-full min-h-[680px]" data-phone-view={phoneView}>
       <div className="seller-inbox-list w-80 flex-shrink-0 border-r border-border bg-surface">
         <div className="border-b border-border p-4"><div className="font-display text-xl font-semibold">Inbox</div><div className="mt-3"><SearchInput placeholder="Search conversations" /></div></div>
@@ -801,6 +806,7 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
       </div>}
       {!selected && <div className="flex flex-1 items-center justify-center bg-surface-raised p-8"><div className="max-w-sm text-center"><div className="font-display text-xl font-semibold">No Buyer conversations yet</div><p className="mt-1 text-sm text-text-muted">Conversations with Buyers about your Products and Scene Posts appear here.</p></div></div>}
     </div>
+    </>
   )
 }
 
@@ -1302,16 +1308,17 @@ function CouriersPanel({ sellerId, at, advanceTo, changes, onChange }: {
 }
 
 function AutomationPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
-  const [tab, setTab] = useState<'overview' | 'answers' | 'testing' | 'insights'>('overview')
+  const [tab, setTab] = useState<'overview' | 'knowledge' | 'answers' | 'testing' | 'insights'>('overview')
   // The Seller's chatbot as DEMO_DATA configures it: its answers by topic, and the questions it couldn't match by the
   // story moment. DEMO_DATA records no usage totals or rates.
   const unmatched = CONVERSATION_IDS.filter(id => CONVERSATIONS[id].seller === sellerId).flatMap(id => messagesAt(id, at).filter(m => m.escalatedFromChatbot))
   return (
     <div className="mx-auto max-w-7xl p-8">
-      <ModuleHeader title="Chatbot Automation" description="Manage automated answers and human escalation." trailing={<Segmented options={[['overview', 'Overview'], ['answers', 'Answers'], ['testing', 'Test'], ['insights', 'Insights']]} active={tab} onChange={value => setTab(value as typeof tab)} />} />
+      <ModuleHeader title="Chatbot Automation" description="Manage automated answers and human escalation." trailing={<Segmented options={[['overview', 'Overview'], ['knowledge', 'Policies'], ['answers', 'Answers'], ['testing', 'Test'], ['insights', 'Insights']]} active={tab} onChange={value => setTab(value as typeof tab)} />} />
       {tab === 'overview' && <div className="grid grid-cols-4 gap-4"><InsightCard label="Questions answered" value="—" change="—" /><InsightCard label="Resolution rate" value="—" change="—" /><InsightCard label="Human escalations" value="—" change="—" /><InsightCard label="Unmatched questions" value="—" change="—" /><div className="col-span-4 rounded-2xl border border-border bg-surface p-5"><div className="font-display text-lg font-semibold">Escalation health</div><p className="mt-2 text-sm text-text-secondary">Questions about payment disputes, claims, custom promises, or unmatched topics escalate to a human Seller. Automation does not modify commerce records.</p></div></div>}
       {tab === 'answers' && <ChatbotAnswers sellerId={sellerId} />}
-      {tab === 'testing' && <ChatbotTest sellerId={sellerId} at={at} />}
+      {tab === 'knowledge' && <BotSetup sellerId={sellerId} at={at} />}
+      {tab === 'testing' && <ChatbotTestLab sellerId={sellerId} at={at} />}
       {tab === 'insights' && <div className="grid grid-cols-3 gap-4"><InsightCard label="Top topic" value="—" change="—" /><InsightCard label="Highest escalation" value="—" change="—" /><InsightCard label="Answer gap" value="—" change="—" /><div className="col-span-3"><DetailCard title="Unmatched questions">{unmatched.map(m => <AnswerRow key={m.at} question={m.text} answer="No approved answer · add or escalate" />)}</DetailCard></div></div>}
     </div>
   )

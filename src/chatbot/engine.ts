@@ -171,7 +171,7 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
         quickReplies: [...chosen.sort((a, b) => CHIP_ORDER.indexOf(a) - CHIP_ORDER.indexOf(b)).map(i => ({ id: `intent:${i}`, label: CHIP_LABEL[i] ?? INTENT_LABEL[i] })), TALK] })
     }
     const labelsOf = (x: ProductFacts) => [...new Set([...x.attributes.map(a => a.label), ...x.taxonomyLabels])]
-    const gap = !!p && p.taxonomyLabels.length === 0 && p.attributes.length === 0
+    const gap = !!p && p.taxonomyLabels.length === 0 && p.attributes.length === 0 && p.listedDetails.length === 0
     const intent: IntentId = (distinct[0] ?? (ATTRIBUTE_WORDS.test(t) || (p && pickLabel(t, labelsOf(p), p.categoryId)) || gap ? 'P04' : null)) as IntentId
     if (!intent) {
       run.trace.push('no rule matched')
@@ -339,6 +339,8 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
             run.slot('care', value, labelled ? `Taxonomy attribute: ${labelled.label}` : 'Product knowledge: care')
             return say('T-ATTR', { attribute_label: labelled?.label ?? 'Care', attribute_value: value, product_or_variant: 'this item' }, { kind: 'answer', intent, dialogue: dlg('C-06'), reason: 'CARE_LISTED' })
           }
+          const careLine = prod.listedDetails.find(d => /\b(wash|care|clean|iron|dry|tumble)\b/i.test(d))
+          if (careLine) { run.slot('care', careLine, 'Product record: Seller detail line (unlabelled)'); return say('T-DETAILS-LISTED', { product: prod.name, details: careLine }, { kind: 'answer', intent, dialogue: dlg('C-06'), reason: 'UNLABELLED_CARE_LINE' }) }
           const supp = supplementary(t, seller, run, prod)
           if (supp) return say('T-SUPPLEMENTARY', { seller_answer: supp.answer }, { kind: 'answer', intent, dialogue: dlg('C-06'), reason: 'SUPPLEMENTARY_CARE' })
           run.missing.push('care')
@@ -382,7 +384,14 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
         if (prod.knowledge.condition?.trim()) return attrAnswer('Condition', prod.knowledge.condition.trim())
         return unknown('CONDITION_NOT_LISTED', 'T-ATTR-UNKNOWN', dlg())
       }
-      case 'P04': return answerAttribute(t, prod)
+      case 'P04': {
+        if (chip === 'product-details') {
+          if (prod.description.trim()) { run.slot('description', prod.description, 'Product record: description'); return say('T-DESCRIPTION', { product: prod.name, description: prod.description.trim() }, { kind: 'answer', intent, dialogue: ['C-01'], reason: 'PRODUCT_DESCRIPTION' }) }
+          if (prod.listedDetails.length) return say('T-DETAILS-LISTED', { product: prod.name, details: prod.listedDetails.join('; ') }, { kind: 'answer', intent, dialogue: ['C-01'], reason: 'UNLABELLED_DETAILS' })
+          return unknown('NO_DESCRIPTION', 'T-ATTR-UNKNOWN', ['C-01'])
+        }
+        return answerAttribute(t, prod)
+      }
     }
     return offer('T-UNKNOWN-OFFER', {}, { intent, reason: 'UNHANDLED' })
 
@@ -418,7 +427,7 @@ export function respond(input: BotInput, state: ChatState, world: World): BotRes
         run.missing.push(label)
         return offer('T-ATTR-UNKNOWN', {}, { intent: 'P04', reason: 'ATTRIBUTE_NOT_LISTED', dialogue: dlg(), ...VIEW_PRODUCT(pr.id) })
       }
-      if (pr.listedDetails.length && !pr.attributes.length) {
+      if (pr.listedDetails.length && !pr.attributes.length && ATTRIBUTE_WORDS.test(question)) {
         run.slot('details', pr.listedDetails.join('; '), 'Product record: Seller detail lines (unlabelled)')
         return say('T-DETAILS-LISTED', { product: pr.name, details: pr.listedDetails.join('; ') }, { kind: 'answer', intent: 'P04', reason: 'UNLABELLED_DETAILS', dialogue: dlg() })
       }

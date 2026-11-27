@@ -17,6 +17,7 @@ import {
   type OrderId, type OrderState, type SellerId, type Timestamp,
 } from '../demo-data'
 import { useWorkspace } from '../seller-workspace'
+import { LiveInbox } from './console/LiveInbox'
 import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
@@ -710,11 +711,16 @@ function InboxTab({ sellerId, at, sent, onConversation, onClaim }: {
   const rows = threads.flatMap(({ id }) => { const last = visibleMessages(effectiveMessagesAt(id, at, sent[id]), simulation).pop(); return last ? [{ id, last }] : [] })
     .sort((a, b) => byMessageTime(b.last, a.last))
   const claims = simulation ? openClaims(sellerId, at) : []
-  if (threads.length === 0 && claims.length === 0) return (
+  const { state: workspace } = useWorkspace()
+  const staffId = sessionStaffOn(sellerId, 'Seller Companion')
+  const live = <LiveInbox compact sellerId={sellerId} author={staffId ? shortName(STAFF[staffId].name) : SELLERS[sellerId].name} />
+  const hasLive = Object.values(workspace.chats).some(c => c.sellerId === sellerId)
+  if (threads.length === 0 && claims.length === 0 && !hasLive) return (
     <div className="px-6 py-16 text-center"><div className="font-display text-lg font-semibold">Inbox is empty</div><p className="mt-1 text-sm text-text-muted">Buyer conversations and Claims that need your response appear here.</p></div>
   )
   return (
     <div>
+      {live}
       {rows.map(({ id, last }) => {
         const buyer = BUYERS[CONVERSATIONS[id].buyer].name
         return <button key={id} onClick={() => onConversation(id)} className="flex w-full items-center gap-3 border-b border-border p-4 text-left"><Avatar initials={initials(buyer)} /><span className="min-w-0 flex-1"><span className="flex justify-between"><span className="font-semibold">{shortName(buyer)}</span><span className="text-[10px] text-text-muted">{formatAge(last.at, at.at)}</span></span><span className="block truncate text-xs text-text-muted">{last.text}</span><span className="mt-1 inline-block rounded-full bg-brand-muted px-2 py-0.5 text-[10px] text-brand-dark">Talking about: {contextSubject(last.context)}</span></span>{awaitingSellerReplyAt(id, at) && <span role="img" aria-label="Needs reply" title="Needs reply" className="h-2 w-2 rounded-full bg-brand" />}</button>
