@@ -3,6 +3,7 @@ import { buyerVisibleSellers, initials, type Moment, type SellerId, type SellerS
 import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
 import { formatBirr, hotspotNumber, linkableProducts, productPrices, productStock, variantPrice, sceneVisibility, stockState, storyPhase, useWorkspace, type WsProduct, type WsScene, type WorkspaceState } from '../seller-workspace'
 import { Button } from '../components/ui/Button'
+import { findTaxonomy } from '../demo-data/taxonomy'
 
 /**
  * MB-001 / MB-003: what a Seller authored in the Seller Console (src/seller-workspace.tsx) as the Buyer sees it. Read-only and
@@ -58,7 +59,7 @@ export function useAuthoredBuyer(at: Moment) {
     }
     // Published authored Products (out-of-stock ones stay viewable, labelled) for Search.
     const products = Object.values(state.products).filter(p => !p.seeded && p.status === 'published' && visible.includes(p.seller))
-      .map(p => ({ id: p.id, name: p.name, price: priceLabel(p), state: stockState(productStock(p)), seller: p.seller }))
+      .map(p => ({ id: p.id, name: p.name, price: priceLabel(p), state: stockState(productStock(p)), seller: p.seller, category: taxonomyOf(p)?.label ?? '', facts: [...Object.values(p.attributes), ...p.customAttributes.map(a => a.value)].filter(Boolean).join(' ').toLowerCase() }))
     return { state, scenes, products, mergeStoryGroups }
   }, [state, at])
 }
@@ -94,14 +95,15 @@ export function AuthoredSceneCard({ scene, onExplore, onSeller }: { scene: Autho
 export function AuthoredSearchResults({ query, content, onOpen }: { query: string; content: ReturnType<typeof useAuthoredBuyer>; onOpen: (v: AuthoredView) => void }) {
   const q = query.trim().toLowerCase()
   if (!q) return null
-  const products = content.products.filter(p => p.name.toLowerCase().includes(q))
+  // Name, taxonomy path and attribute values (for example "Charms & Beads" or "cotton") all match.
+  const products = content.products.filter(p => `${p.name} ${p.category} ${p.facts}`.toLowerCase().includes(q))
   const scenes = content.scenes.filter(s => s.caption.toLowerCase().includes(q))
   if (!products.length && !scenes.length) return null
   return (
     <section aria-label="Results from Sellers' new content" className="mb-4 rounded-xl border border-border bg-surface p-3">
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">New from Sellers</h2>
       <ul className="flex flex-col gap-2">
-        {products.map(p => <li key={p.id}><button onClick={() => onOpen({ kind: 'product', id: p.id })} className="flex w-full items-center justify-between rounded-lg bg-surface-raised p-3 text-left text-sm"><span><span className="block font-semibold text-text-primary">{p.name}</span><span className="text-xs text-text-secondary">{SELLERS[p.seller].name} · {p.price}</span></span><span className="text-xs font-semibold text-text-muted">{p.state}</span></button></li>)}
+        {products.map(p => <li key={p.id}><button onClick={() => onOpen({ kind: 'product', id: p.id })} className="flex w-full items-center justify-between rounded-lg bg-surface-raised p-3 text-left text-sm"><span><span className="block font-semibold text-text-primary">{p.name}</span><span className="text-xs text-text-secondary">{SELLERS[p.seller].name} · {p.price}{p.category && ` · ${p.category}`}</span></span><span className="text-xs font-semibold text-text-muted">{p.state}</span></button></li>)}
         {scenes.map(s => <li key={s.id}><button onClick={() => onOpen({ kind: 'scene', id: s.id })} className="flex w-full items-center justify-between rounded-lg bg-surface-raised p-3 text-left text-sm"><span><span className="block font-semibold text-text-primary">{s.caption}</span><span className="text-xs text-text-secondary">Scene · {SELLERS[s.seller].name}</span></span><span aria-hidden="true">›</span></button></li>)}
       </ul>
     </section>
@@ -124,6 +126,12 @@ function Unavailable({ title, onBack, children }: { title: string; onBack: () =>
       <div role="status" className="m-6 rounded-2xl border border-border bg-surface p-6 text-center"><div className="font-display text-lg font-semibold text-text-primary">Not available right now</div><p className="mt-1 text-sm text-text-secondary">{children}</p></div>
     </div>
   )
+}
+
+/** The taxonomy path a Seller chose ("Fashion › Jewellery › Charms & Beads"), and whether its attribute definitions were ever submitted. */
+export function taxonomyOf(p: Pick<WsProduct, 'category'>): { label: string; defined: boolean } | null {
+  const t = findTaxonomy(p.category)
+  return t?.category ? { label: t.label, defined: !!t.sub?.attributes } : null
 }
 
 export function priceLabel(p: WsProduct): string {
@@ -199,9 +207,11 @@ export function AuthoredScreen({ view, state, at, onBack, onOpen, onSeededProduc
               })}</ul>
             </section>
           )}
-          {(Object.keys(product.attributes).length > 0 || product.customAttributes.length > 0) && (
+          {(taxonomyOf(product) || Object.keys(product.attributes).length > 0 || product.customAttributes.length > 0) && (
             <section aria-label="Details" className="mt-4">
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">Details</h2>
+              {taxonomyOf(product) && <p className="mb-1 text-sm text-text-secondary">{taxonomyOf(product)!.label}</p>}
+              {taxonomyOf(product) && !taxonomyOf(product)!.defined && <p role="status" className="mb-2 text-xs text-text-muted">Details for this category are not defined yet. Ask the Seller for anything you need to know.</p>}
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
                 {[...Object.entries(product.attributes), ...product.customAttributes.map(a => [a.name, a.value] as [string, string])].filter(([, value]) => value).map(([name, value]) => <div key={name} className="contents"><dt className="text-text-muted">{name}</dt><dd className="text-text-primary">{value}</dd></div>)}
               </dl>

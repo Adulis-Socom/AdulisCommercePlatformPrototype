@@ -2,7 +2,7 @@ import { currentPrice, type Moment, type ProductId, type SellerId } from '../dem
 import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
 import { formatBirr, linkableProducts, productStock, stockState, useWorkspace } from '../seller-workspace'
 import { fromSeed } from './console/ProductAuthoring'
-import { priceLabel } from './buyer-authored'
+import { priceLabel, taxonomyOf } from './buyer-authored'
 
 /**
  * MC-001: the Seller Companion's lightweight catalogue (current MVP). Every Product the Seller can sell with its stock state and a
@@ -31,7 +31,7 @@ export function CatalogueTab({ sellerId, at }: { sellerId: SellerId; at: Moment 
           const tone = label === 'Out of Stock' ? 'bg-danger-bg text-danger' : label === 'Low Stock' ? 'bg-warning-bg text-warning' : 'bg-success-bg text-success'
           return (
             <li key={row.id} className="rounded-xl border border-border bg-surface p-3">
-              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate text-sm font-semibold text-text-primary">{row.name}</div><div className="text-xs text-text-secondary">{price}</div></div><span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone}`}>{label}</span></div>
+              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate text-sm font-semibold text-text-primary">{row.name}</div><div className="text-xs text-text-secondary">{price}{authored && taxonomyOf(authored) && ` · ${taxonomyOf(authored)!.label}`}</div></div><span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone}`}>{label}</span></div>
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-xs text-text-muted">{hasVariants ? `${productStock(authored)} in stock across options` : `${row.stock} in stock`}</span>
                 {hasVariants

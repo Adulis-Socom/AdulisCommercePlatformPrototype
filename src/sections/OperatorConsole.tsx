@@ -20,12 +20,14 @@ import {
 } from '../demo-data'
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
+import { TAXONOMY, TAXONOMY_GAPS, findTaxonomy } from '../demo-data/taxonomy'
+import { useWorkspace } from '../seller-workspace'
 
 type NavKey =
   | 'overview'
   | 'work-queue' | 'wq-support' | 'wq-moderation' | 'wq-claims' | 'wq-verification' | 'wq-trust-appeals' | 'wq-handoff'
   | 'search-global' | 'search-sellers' | 'search-accounts'
-  | 'gov-config' | 'gov-access' | 'gov-approvals' | 'gov-audit' | 'gov-health'
+  | 'gov-config' | 'gov-taxonomy' | 'gov-access' | 'gov-approvals' | 'gov-audit' | 'gov-health'
 
 type QueueFilter = 'All' | 'Support' | 'Moderation' | 'Claims' | 'Verification / Recovery' | 'Trust Appeals' | 'Manual Handoff'
 type FounderActor = 'CEO' | 'COO/CTO'
@@ -58,6 +60,7 @@ const NAV_STRUCTURE: { group?: string; items: NavItem[] }[] = [
     group: 'FOUNDER GOVERNANCE',
     items: [
       { key: 'gov-config', label: 'Configuration', icon: <IconGlobe size={14} /> },
+      { key: 'gov-taxonomy', label: 'Taxonomy review', icon: <IconClipboard size={14} /> },
       { key: 'gov-access', label: 'Operator Access', icon: <IconKey size={14} /> },
       { key: 'gov-approvals', label: 'Founder Decisions', icon: <IconCheck size={14} /> },
       { key: 'gov-audit', label: 'Audit', icon: <IconClipboard size={14} /> },
@@ -225,6 +228,7 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
           {activeNav === 'search-sellers' && <SearchPanel at={at} mode="seller" />}
           {activeNav === 'search-accounts' && <SearchPanel at={at} mode="account" />}
           {activeNav === 'gov-config' && <ConfigurationPanel />}
+          {activeNav === 'gov-taxonomy' && <TaxonomyReviewPanel />}
           {activeNav === 'gov-access' && <OperatorAccessPanel at={at} live={live} session={session} setSession={setSession} />}
           {activeNav === 'gov-approvals' && (simulation ? <FounderDecisionsPanel at={at} /> : <div className="mx-auto my-8 max-w-lg rounded-2xl border border-border bg-surface"><SimulationGate title="Founder Decisions" compact>The demonstration decision is a payment Claim on a paid Order, which Release 1 does not have. The dual-Founder approval workflow is shown in the internal simulation.</SimulationGate></div>)}
           {activeNav === 'gov-audit' && <AuditPanel at={at} />}
@@ -1089,6 +1093,40 @@ function ConfigurationPanel() {
         <DarkPanel title="Provider status">{simulation && <><ConfigRow label="Payment provider" value="—" /><ConfigRow label="Callback reconciliation" value="—" /></>}<ConfigRow label="Notifications" value="—" /><ConfigRow label="Media processing" value="—" /></DarkPanel>
         <DarkPanel title="Policy versions"><ConfigRow label="Seller Admission" value="—" /><ConfigRow label="Content Accuracy" value="—" /><ConfigRow label="Seller Trust" value={[...new Set(keys(TRUST_APPEALS).map(id => TRUST_APPEALS[id].policyVersion))].join(', ') || '—'} /><ConfigRow label="Claims" value="—" /><ProposeButton onClick={() => setProposal('Decision Proposal created for policy version activation.')}>Propose Policy Activation</ProposeButton></DarkPanel>
       </div>
+    </div>
+  )
+}
+
+/** TAX-003: read-only review of the submitted taxonomy (status: submitted, unratified) and of what Sellers' Products use of it. */
+function TaxonomyReviewPanel() {
+  const { state } = useWorkspace()
+  const rows = TAXONOMY.flatMap(major => major.categories.map(category => ({ major: major.name, category: category.name, subs: category.subcategories.length, defined: category.subcategories.filter(s => s.attributes).length, listed: category.hasSubcategoryList })))
+  const missingLeaves = TAXONOMY.flatMap(major => major.categories.flatMap(category => category.subcategories.filter(s => !s.attributes).map(s => `${major.name} › ${category.name} › ${s.name}`)))
+  const incompleteCategories = rows.filter(r => !r.listed).length
+  const used = Object.values(state.products).filter(p => p.category).map(p => ({ p, t: findTaxonomy(p.category) }))
+  const usingGaps = used.filter(({ t }) => !t?.sub || !t.sub.attributes)
+  return (
+    <div className="mx-auto max-w-7xl p-8">
+      <OperatorHeader title="Taxonomy review" description={`Status: ${TAXONOMY_GAPS.status}. Read-only. Attribute columns are allowed-value lists; nothing here marks an attribute required, searchable or Variant-defining.`} />
+      <div className="grid grid-cols-4 gap-4">
+        <OperatorMetric label="Major categories" value={String(TAXONOMY.length)} detail="Fashion, Cosmetics, Electronics" tone="warning" />
+        <OperatorMetric label="Categories" value={String(rows.length)} detail={`${incompleteCategories} without a subcategory list`} tone="warning" />
+        <OperatorMetric label="Leaf definitions" value={String(rows.reduce((n, r) => n + r.defined, 0))} detail={`${missingLeaves.length} subcategories without a workbook`} tone="warning" />
+        <OperatorMetric label="Products using a gap" value={String(usingGaps.length)} detail="From Seller sessions" tone={usingGaps.length ? 'danger' : 'warning'} />
+      </div>
+      <div className="mt-5 grid grid-cols-2 gap-5">
+        <DarkPanel title="Follow-ups for CMO / CSO review">
+          {missingLeaves.map(label => <ConfigRow key={label} label="Missing workbook" value={label} />)}
+          <ConfigRow label="Categories with names only" value={String(incompleteCategories)} />
+          <p className="mt-3 text-xs" style={{ color: MUTED }}>Buyers see an incomplete-definition state for these, and chatbot answers use only universal facts and the Seller's configured guidance.</p>
+        </DarkPanel>
+        <DarkPanel title="Seller Products using incomplete taxonomy">
+          {usingGaps.length === 0 ? <p className="text-xs" style={{ color: MUTED }}>None in this session.</p> : usingGaps.map(({ p, t }) => <ConfigRow key={p.id} label={p.name || p.id} value={t?.label ?? p.category ?? ''} />)}
+        </DarkPanel>
+      </div>
+      <div className="mt-5"><DarkPanel title="Coverage by category">
+        <div className="max-h-96 overflow-y-auto">{rows.map(r => <ConfigRow key={r.major + r.category} label={`${r.major} › ${r.category}`} value={r.listed ? `${r.defined} of ${r.subs} defined` : 'name only'} />)}</div>
+      </DarkPanel></div>
     </div>
   )
 }

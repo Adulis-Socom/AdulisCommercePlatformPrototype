@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AdulisLogo } from '../App'
 import { StoryProvider, useStory } from '../StoryClock'
 import { linkableProducts, productStock, sceneVisibility, stockState, useWorkspace } from '../seller-workspace'
-import { priceLabel } from './buyer-authored'
+import { priceLabel, taxonomyOf } from './buyer-authored'
 import {
   BUYERS, MARKET, ORDERS, REVIEWS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   activeDiscount, currentPrice, describeFulfilment, formatClockShort, formatCompactCount, formatDate, formatEtb, formatMonthShortYear, formatMonthYear,
@@ -92,7 +92,7 @@ function useStorefront() {
     id: p.id as ProductId, name: p.name, price: priceLabel(p), availability: stockState(productStock(p)), quality: null, locallyMade: p.locallyMade,
     imgBg: cover(p.photos[0], TILE_BACKGROUNDS[index % TILE_BACKGROUNDS.length]), imgLabel: p.photos[0] ? '' : initials(p.name), description: p.description,
     variants: p.options.map(o => ({ label: o.name, options: o.values })),
-    attributes: [...Object.entries(p.attributes).filter(([, v]) => v).map(([label, value]) => ({ label, value })), ...p.customAttributes.filter(a => a.value).map(a => ({ label: a.name || '—', value: a.value }))],
+    attributes: [...(taxonomyOf(p) ? [{ label: 'Category', value: taxonomyOf(p)!.label }] : []), ...Object.entries(p.attributes).filter(([, v]) => v).map(([label, value]) => ({ label, value })), ...p.customAttributes.filter(a => a.value).map(a => ({ label: a.name || '—', value: a.value }))],
   }))
   const products: Product[] = [...authoredProducts, ...seededProducts]
   const live = new Set(linkableProducts(workspace, sellerId, at).map(p => p.id))
