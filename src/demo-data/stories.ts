@@ -2,7 +2,9 @@
 // and opened in a lightweight viewer. The structure is meant to be populated from the full Seller, Product and Scene
 // dataset (PR-009). Until then it holds a few prototype fixtures for the showcase Sellers. They are not DEMO_DATA
 // records: no canonical record refers to them, and they change nothing else.
-import { buyerVisibleSellers } from './derived.ts'
+import { buyerVisibleSellers, isBuyerVisiblePostAt, isPurchasableAt } from './derived.ts'
+import { MARKETPLACE_STORIES } from './base.ts'
+import { isLegacy } from '../marketplace/registry.ts'
 import type { ProductId } from './records/products.ts'
 import type { ShoppablePostId } from './records/posts.ts'
 import type { SellerId } from './records/sellers.ts'
@@ -40,16 +42,19 @@ export interface SellerStoryGroup {
 }
 
 // Prototype fixtures: one Story for each showcase Seller on the story day, each linked to that Seller's own records.
-export const PROTOTYPE_STORIES: readonly SellerStory[] = [
+const LEGACY_STORIES: readonly SellerStory[] = [
   { id: 'STY-AA-01', seller: 'SEL-ADDIS-ATELIER', kind: 'discount', text: 'A light dress for warm afternoons, now on discount.', posted: '2026-10-02T08:30:00+03:00', expires: '2026-10-03T08:30:00+03:00', product: 'PRD-AA-004' },
   { id: 'STY-NG-01', seller: 'SEL-NURA-GLOW', kind: 'update', text: 'New in our Scenes: the three-step morning routine, from cleanse to protect.', posted: '2026-10-02T09:40:00+03:00', expires: '2026-10-03T09:40:00+03:00', post: 'SHP-NG-001' },
   { id: 'STY-VH-01', seller: 'SEL-VOLT-HOUSE', kind: 'promotion', text: 'Wireless earbuds, checked before they ship. Collect them at our Megenagna shop.', posted: '2026-10-02T07:45:00+03:00', expires: '2026-10-03T07:45:00+03:00', product: 'PRD-VH-001' },
 ]
 
-/** The Stories live at `at`: posted before it and not yet expired, from Sellers Buyers can see. */
+export const PROTOTYPE_STORIES: readonly SellerStory[] = isLegacy ? LEGACY_STORIES : MARKETPLACE_STORIES
+
+/** The Stories live at `at`: posted before it and not yet expired, from Sellers Buyers can see, while the Product or Scene they link to is publicly available (fail closed). */
 export function storiesAt(at: Moment): SellerStory[] {
   const sellers = buyerVisibleSellers()
-  return PROTOTYPE_STORIES.filter(story => sellers.includes(story.seller) && happenedBefore(story.posted, at) && !happenedBefore(story.expires, at))
+  const linkOk = (story: SellerStory) => (!story.product || isPurchasableAt(story.product, at)) && (!story.post || isBuyerVisiblePostAt(story.post, at))
+  return PROTOTYPE_STORIES.filter(story => sellers.includes(story.seller) && happenedBefore(story.posted, at) && !happenedBefore(story.expires, at) && linkOk(story))
 }
 
 /** Home's Stories row at `at`: each Seller with live Stories once, the most recently updated Seller first. */

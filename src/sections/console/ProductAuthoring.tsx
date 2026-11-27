@@ -3,7 +3,7 @@ import { Button } from '../../components/ui/Button'
 import { SearchInput, Textarea, TextInput } from '../../components/ui/Input'
 import { ProductMediaEditor } from '../ProductMediaEditor'
 import { PRODUCTS, activeDiscount, fulfilmentOptionsAt, sellerProductsAt, type Moment, type ProductId, type SellerId } from '../../demo-data'
-import { LIVE_PRODUCTS } from '../../demo-data/live'
+import { LIVE_PRODUCTS, liveProductDetails } from '../../demo-data/live'
 import { TAXONOMY, attributesFor, findTaxonomy, type TaxonomyAttribute } from '../../demo-data/taxonomy'
 import { LOW_STOCK_AT, MAX_VARIANTS, formatBirr, parseCount, parseMoney, productPrices, variantValues, productStock, publicationIssues, stockState, toThumbnail, useWorkspace, type Fulfilment, type WorkspaceState, type WsProduct, type WsVariant } from '../../seller-workspace'
 import { Card, Check, Notice, Page, SelectField, Thumb, focusField } from './kit'
@@ -27,7 +27,7 @@ export function fromSeed(id: ProductId, seller: SellerId, state: WorkspaceState,
   const o = state.products[id]
   if (o) return o
   const seed = PRODUCTS[id]
-  return { id, seller, seeded: true, status: 'published', name: seed.name, description: seed.description ?? '', category: null, attributes: {}, customAttributes: seed.attributes.map(a => ({ name: '', value: a })), options: [], variants: [], price: String(seed.price / 100), stock: String(seed.stock), photos: [], fulfilment: offered(state, seller, at), locallyMade: seed.locallyMade, updated: 0 }
+  return { id, seller, seeded: true, status: seed.publication === 'Draft' ? 'draft' : 'published', name: seed.name, description: seed.description ?? '', category: liveProductDetails(id)?.category ?? null, attributes: {}, customAttributes: seed.attributes.map(a => ({ name: '', value: a })), options: [], variants: [], price: String(seed.price / 100), stock: String(seed.stock), photos: [], fulfilment: offered(state, seller, at), locallyMade: seed.locallyMade, updated: 0 }
 }
 
 /** How many combinations the usable options make. */

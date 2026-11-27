@@ -8,7 +8,7 @@ import {
 import { AdulisLogo } from '../App'
 import { useStory } from '../StoryClock'
 import {
-  BUYERS, CLAIMS, CLAIM_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DECISIONS, HANDOFF_REVIEWS, MARKET, MODERATION_CASES, ORDERS,
+  BUYERS, BUYER_IDS, SURFACE_DEFAULTS, CLAIMS, CLAIM_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DECISIONS, HANDOFF_REVIEWS, MARKET, MODERATION_CASES, ORDERS,
   ORDER_IDS, OPERATORS, PRODUCTS, SELLERS, SELLER_IDS, SHOPPABLE_POSTS, SHOPPABLE_POST_IDS, SOLO_COVERAGE, SOLO_COVERAGE_MAX_DAYS, STAFF,
   SUPPORT_CASES, TRUST_APPEALS, VERIFICATION_CASES,
   addMinutes, auditLogAt, claimStateAt, claimSubmitted, endOfDay, formatAge, formatClock, formatDate, formatDayMonth, formatDuration, formatEtb,
@@ -580,9 +580,9 @@ interface SearchResult { type: SearchEntity; ref: string; title: string; detail:
 
 /** Every searchable canonical record at the story moment: Buyer accounts, Sellers, Orders, Claims and Scene Posts. */
 function searchRecords(at: Moment): SearchResult[] {
-  const post = (id: (typeof SHOPPABLE_POST_IDS)[number]) => (SHOPPABLE_POSTS[id].publication === 'Draft' ? 'Draft' : restrictionAt(id, at) ? 'Restricted' : 'Published')
+  const post = (id: (typeof SHOPPABLE_POST_IDS)[number]) => (SHOPPABLE_POSTS[id].publication !== 'Published' ? SHOPPABLE_POSTS[id].publication : restrictionAt(id, at) || SHOPPABLE_POSTS[id].restricted ? 'Restricted' : 'Published')
   return [
-    ...keys(BUYERS).map(id => ({ type: 'Account' as const, ref: id, title: BUYERS[id].name, detail: `Buyer account · ${MARKET.city}`, restricted: true })),
+    ...BUYER_IDS.map(id => ({ type: 'Account' as const, ref: id, title: BUYERS[id].name, detail: `Buyer account · ${MARKET.city}`, restricted: true })),
     ...SELLER_IDS.map(id => ({ type: 'Seller' as const, ref: id, title: SELLERS[id].name, detail: `${SELLERS[id].handle} · ${trustLabel(trustAt(id, at))}${SELLERS[id].storeOpen ? ' · Store open' : ''}`, restricted: true })),
     ...ORDER_IDS.filter(id => orderStateAt(id, at) !== null).map(id => ({ type: 'Order' as const, ref: id, title: `${SELLERS[ORDERS[id].seller].name} → ${shortName(BUYERS[ORDERS[id].buyer].name)}`, detail: `${orderStateAt(id, at)} · ${MARKET.id}`, restricted: false })),
     ...CLAIM_IDS.filter(id => claimStateAt(id, at) !== null).map(id => ({ type: 'Claim' as const, ref: id, title: CLAIMS[id].issue, detail: `${claimStateAt(id, at)} · ${CLAIMS[id].order}`, restricted: false })),
@@ -591,7 +591,7 @@ function searchRecords(at: Moment): SearchResult[] {
 }
 
 function SearchPanel({ at, mode }: { at: Moment; mode: 'global' | 'seller' | 'account' }) {
-  const [query, setQuery] = useState(mode === 'seller' ? 'addis' : mode === 'account' ? 'Maya' : '')
+  const [query, setQuery] = useState(mode === 'seller' ? SELLERS[SURFACE_DEFAULTS.seller].name.split(' ')[0].toLowerCase() : mode === 'account' ? 'Maya' : '')
   const [type, setType] = useState(mode === 'global' ? 'All' : mode === 'seller' ? 'Seller' : 'Account')
   const [accessTarget, setAccessTarget] = useState<string | null>(null)
   const [accessGranted, setAccessGranted] = useState<string[]>([])

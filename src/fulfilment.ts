@@ -74,7 +74,7 @@ export function cartFulfilment(state: WorkspaceState, seller: SellerId, products
   })
   const none = methods.length ? null
     : !base.methods.length ? `${excluded.length ? excluded.map(e => e.reason).join(' ') : 'This Seller has no fulfilment method set up.'}`
-    : `The Products in this cart have no fulfilment method in common (${excluded.map(e => e.reason).join(' ')}). Remove one to continue.`
+    : `The Products in this cart have no fulfilment method in common. ${excluded.map(e => e.reason).join(' ')} Remove one to continue.`
   return { methods, excluded, none }
 }
 

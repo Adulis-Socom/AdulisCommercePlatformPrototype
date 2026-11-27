@@ -19,6 +19,10 @@ export interface ShoppablePostRecord {
   /** For records created during the demo. */
   readonly created?: Moment
   readonly createdBy?: StaffId
+  /** Marketplace dataset only: false = the tags are an explicit list with no photo and no coordinates (never inferred); a "photo pending" placeholder stands in. */
+  readonly positioned?: boolean
+  /** Marketplace dataset only: an independent moderation restriction from the source; stock never lifts it. */
+  readonly restricted?: { readonly reason: string }
 }
 
 const POST_RECORDS = {

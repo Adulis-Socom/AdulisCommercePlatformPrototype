@@ -3,7 +3,8 @@
 // access is the union of those roles' capabilities, so no combination ever adds OWNER authority. Capabilities are
 // grouped by business area and described by responsibility, not by permission codes or counts. This is a prototype
 // model: no authorization backend or persistence.
-import { STAFF, type StaffId, type SellerId } from './records/sellers.ts'
+import type { StaffId, SellerId } from './records/sellers.ts'
+import { STAFF } from './base.ts'
 
 export type SellerRole = 'OWNER' | 'ADMIN' | 'SALES_SUPPORT' | 'INVENTORY' | 'ANALYST' | 'CAMPAIGN_MANAGER'
 /** The roles a team membership can be given. OWNER never is: it comes from owning the Seller. */
@@ -190,7 +191,7 @@ export function sellerTeam(seller: SellerId): TeamMember[] {
       const { name, role } = STAFF[id]
       return role === 'Owner'
         ? { staff: id, name, owner: true, roles: [], status: 'Active' as const }
-        : { staff: id, name, owner: false, roles: TEAM_ROLES_OF[role], status: 'Active' as const }
+        : { staff: id, name, owner: false, roles: (STAFF[id].roles as readonly TeamRole[] | undefined) ?? TEAM_ROLES_OF[role], status: 'Active' as const }
     })
     .sort((a, b) => Number(b.owner) - Number(a.owner))
 }

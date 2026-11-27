@@ -23,6 +23,7 @@
   "mb004.test.mjs": 1,
   "mc001.test.mjs": 1,
   "mc002.test.mjs": 1,
+  "marketplace-boot.test.mjs": { "runs": 3, "dataset": "marketplace" },
   "media-editor.test.mjs": 1,
   "op.test.mjs": 1,
   "price-consistency.test.mjs": 1,

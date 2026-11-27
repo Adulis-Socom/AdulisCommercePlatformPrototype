@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatc
 import { DEFAULT_SNAPSHOT, MARKET, PRODUCTS, SELLERS, buyerVisibleSellers, sellerProductsAt, type Moment, type ProductId, type Santim, type SellerId } from './demo-data'
 import { setLiveOverlay, type AuthoredLive, type AuthoredProductLive, type AuthoredSceneLive, type ProductOverlay, type SellerOverlay } from './demo-data/live'
 import { findTaxonomy } from './demo-data/taxonomy'
+import { datasetKey } from './marketplace/registry'
 import type { Knowledge } from './sections/console/chatbot-engine'
 import type { BotConfig } from './chatbot/config'
 import type { ChatMsg, Conversation } from './chatbot/chat'
@@ -79,7 +80,7 @@ type Action =
   | { type: 'chat-mode'; key: string; mode: Conversation['mode'] }
   | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'knowledge'; seller: SellerId; entries: Knowledge[] } | { type: 'clock'; hours: number } | { type: 'reset' }
 
-const KEY = 'adulis.seller-workspace.v1'
+const KEY = datasetKey('adulis.seller-workspace.v1') // legacy keeps its key; the marketplace dataset has its own session
 const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, botFeedback: [], buyerCart: null, buyerSaved: null, buyerCollections: null, clockHours: 0 }
 
 function reducer(state: WorkspaceState, action: Action): WorkspaceState {

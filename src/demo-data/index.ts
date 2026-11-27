@@ -12,6 +12,8 @@ export * from './money.ts'
 export * from './display.ts'
 export * from './records/market.ts'
 export * from './records/sellers.ts'
+// The ACTIVE dataset's base maps and id lists shadow the seeded ones exported by the record modules (explicit exports win over `export *`).
+export { BUYERS, BUYER_IDS, COLLECTIONS, COLLECTION_IDS, CONVERSATIONS, CONVERSATION_IDS, FOLLOWING_ORDER, FOR_YOU_ORDER, NEARBY_PROXIMITY, PRODUCTS, PRODUCT_IDS, SELLERS, SELLER_IDS, SELLER_SESSIONS, SHOPPABLE_POSTS, SHOPPABLE_POST_IDS, STAFF } from './base.ts'
 export * from './records/products.ts'
 export * from './records/posts.ts'
 export * from './records/buyers.ts'

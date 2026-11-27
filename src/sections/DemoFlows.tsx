@@ -1,4 +1,6 @@
 import { Button } from '../components/ui/Button'
+import { isLegacy } from '../marketplace/registry'
+import { CATALOGUE } from '../marketplace/import'
 import { BUYERS, COURIERS, DEMO_CARTS, ORDERS, PRODUCTS, SELLERS, STAFF, SURFACE_DEFAULTS, firstName, formatEtb, orderTotals, paymentAttempts, shortName, stageFor, type OrderId } from '../demo-data'
 
 export type FlowId = 'MASTER' | 'MVP' | 'CR' | 'A' | 'B' | 'C' | 'D' | 'E' | 'E2' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M'
@@ -110,7 +112,24 @@ export const FLOW_DEFINITIONS: FlowDefinition[] = [
   { id: 'M', simulation: true, title: 'Buyer Collection Final Handoff', summary: 'Ready for Collection → Seller displays Collection QR → Buyer scans → Verified → Completed', surfaces: ['Buyer', 'Seller Companion', 'Buyer'], stages: [{ section: '05-buyer', target: 'order-detail', title: 'M1 · Ready for Collection', instruction: `${COLLECTION} is Ready for Collection from ${COLLECTION_SELLER.name} in ${COLLECTION_SELLER.area}. No Collection QR exists yet: the Seller displays it only when ${COLLECTOR} is there.` }, { section: '06-seller-companion', target: 'collection-qr', title: 'M2 · Seller Displays Collection QR', instruction: `${COLLECTOR} and ${PRESENTER} meet at the ${COLLECTION_SELLER.buyerCollection?.place}. ${PRESENTER} displays the Collection QR for ${COLLECTION}: the Seller presents, ${COLLECTOR} scans.` }, { section: '05-buyer', target: 'qr-scanner', title: 'M2 · Buyer Scans Collection QR', instruction: `Open the camera, scan ${COLLECTION_SELLER.name}’s Collection QR, and complete verification. Only the verified scan completes ${COLLECTION}.` }, { section: '05-buyer', target: 'completed', title: 'M3 · Verified and Completed', instruction: `The Collection Handoff is verified and ${COLLECTION} is Completed. ${COLLECTOR} is eligible to review it; no Review is written.` }] },
 ]
 
+/** Marketplace dataset: the guided flows are historical fixtures (Addis Atelier, Nura Glow, Volt House and their Orders), so none is offered here. */
+function MarketplaceDemoNote() {
+  return (
+    <div className="mx-auto max-w-3xl p-8 max-sm:px-4 max-sm:py-6">
+      <div className="font-mono text-xs font-semibold uppercase tracking-widest text-brand-text">Presentation starting point</div>
+      <h1 className="mt-2 font-display text-4xl font-semibold">ADULIS MASTER DEMO</h1>
+      <p className="mt-2 text-sm leading-relaxed text-text-secondary">Marketplace dataset: {CATALOGUE.sellers.length} fictional Sellers, {CATALOGUE.products.length} Products and {CATALOGUE.scenes.length} Scenes, with Maya (BY-01) as the primary Buyer and Aster &amp; Thread (DS-01) as the primary Seller. Open any surface from the sidebar.</p>
+      <div role="note" className="mt-6 rounded-2xl border border-warning bg-warning-bg p-5">
+        <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-text-muted">Guided flows are not offered on this dataset</div>
+        <p className="mt-2 text-sm leading-relaxed text-text-primary">The guided demo flows were built on the historical seeded dataset and its Orders. They run in the legacy regression environment, which is this same prototype opened with <span className="font-mono">?dataset=legacy</span>.</p>
+        <a href="?dataset=legacy" className="mt-3 inline-block rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-brand-text">Open the legacy regression environment</a>
+      </div>
+    </div>
+  )
+}
+
 export default function DemoFlows({ onStart }: { onStart: (id: FlowId) => void }) {
+  if (!isLegacy) return <MarketplaceDemoNote />
   const masterDemo = FLOW_DEFINITIONS.find(flow => flow.id === 'MVP')!
   const supportingFlows = FLOW_DEFINITIONS.filter(flow => !flow.simulation && flow.id !== 'MVP')
   const simulationFlows = FLOW_DEFINITIONS.filter(flow => flow.simulation)

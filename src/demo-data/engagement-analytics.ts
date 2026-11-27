@@ -7,7 +7,8 @@
 import { DEFAULT_SNAPSHOT, happenedBefore, type Moment } from './time.ts'
 import { CONTENT_PERFORMANCE_7D, INSIGHTS_7D, type SellerInsights } from './records/insights.ts'
 import { PRODUCT_PERFORMANCE_7D, type ProductId } from './records/products.ts'
-import { SHOPPABLE_POSTS, type ShoppablePostId } from './records/posts.ts'
+import type { ShoppablePostId } from './records/posts.ts'
+import { SHOPPABLE_POSTS } from './base.ts'
 import { ORDERS, ORDER_IDS, type OrderId } from './records/orders.ts'
 import type { SellerId } from './records/sellers.ts'
 import type { TrustLevel } from './types.ts'
@@ -79,7 +80,7 @@ export type SceneStatus = 'Public' | 'No Products tagged' | 'Private' | 'Restric
 
 export function sceneStatusAt(scene: ShoppablePostId, at: Moment = DEFAULT_SNAPSHOT): SceneStatus {
   if (!isPublishedAt(scene, at)) return 'Draft'
-  if (restrictionAt(scene, at)) return 'Restricted'
+  if (restrictionAt(scene, at) || SHOPPABLE_POSTS[scene].restricted) return 'Restricted'
   if (isPrivateByAvailabilityAt(scene, at)) return 'Private'
   return SHOPPABLE_POSTS[scene].tags.length ? 'Public' : 'No Products tagged'
 }

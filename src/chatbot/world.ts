@@ -1,6 +1,6 @@
 // The engine's view of the shared EFFECTIVE data (BOT-003, FIX-001): seeded DEMO_DATA with the Seller's overrides applied, authored Products
 // and Scenes, the Seller's Store setup and the chatbot configuration. Nothing is copied or re-entered; every call reads current state.
-import { LIVE_PRODUCTS, LIVE_SELLERS } from '../demo-data/live'
+import { LIVE_PRODUCTS, LIVE_SELLERS, liveProductDetails } from '../demo-data/live'
 import {
   CHATBOTS, DEFAULT_SNAPSHOT, MARKET, PRODUCTS, SHOPPABLE_POSTS, buyerVisibleProductsAt, currentPrice, isBuyerVisiblePostAt,
   sellerPostsAt, type Moment, type ProductId, type SellerId, type ShoppablePostId,
@@ -49,14 +49,16 @@ export function productFacts(state: WorkspaceState, labels: LeafLabels | null, a
   if (seeded ? LIVE_PRODUCTS[id].seller !== sellerId : !own || own.seller !== sellerId || own.seeded) return null
   const rec = id in LIVE_PRODUCTS ? LIVE_PRODUCTS[id as ProductId] : null
   const prices = own ? productPrices(own) : []
+  const baseRows = seeded ? liveProductDetails(id)?.rows : undefined
   const price = rec ? currentPrice(id as ProductId) : prices.length ? Math.min(...prices) : own ? parseMoney(own.price) : null
   const tax = own?.category ? (labels?.[own.category] ?? []) : []
   const options = own && own.options.length ? own.options.map(o => ({ name: o.name, values: [...o.values] })) : (rec?.variants ?? []).map(v => ({ name: v.name ?? 'Option', values: [...v.options] }))
   return {
     id, sellerId, name: rec?.name ?? own!.name, description: rec?.description ?? own?.description ?? '',
-    categoryId: own?.category ?? null, categoryPath: own?.category ?? '', taxonomyLabels: tax,
+    // A marketplace Product the Seller has not edited carries its taxonomy id and exact Variant rows from the dataset (liveProductDetails); legacy seeded Products have none.
+    categoryId: own?.category ?? (seeded ? liveProductDetails(id)?.category : null) ?? null, categoryPath: own?.category ?? (seeded ? liveProductDetails(id)?.category : null) ?? '', taxonomyLabels: tax,
     attributes: own ? [...Object.entries(own.attributes).filter(([, v]) => v.trim()).map(([label, value]) => ({ label, value })), ...own.customAttributes.filter(a => a.name.trim() && a.value.trim()).map(a => ({ label: a.name, value: a.value }))] : [],
-    listedDetails: !seeded ? [] : own ? own.customAttributes.filter(a => !a.name.trim() && a.value.trim()).map(a => a.value) : [...(rec?.attributes ?? [])], options, variants: own ? variantRows(own) : null,
+    listedDetails: !seeded ? [] : own ? own.customAttributes.filter(a => !a.name.trim() && a.value.trim()).map(a => a.value) : [...(rec?.attributes ?? [])], options, variants: own ? variantRows(own) : baseRows ? [...baseRows] : null,
     price: price !== null && Number.isFinite(price) ? price : null, regularPrice: seeded && rec ? rec.price : null,
     stock: rec ? rec.stock : own ? productStock(own) : 0,
     fulfilment: cartFulfilment(state, sellerId as SellerId, [{ id, name: rec?.name ?? own?.name ?? id }], at).methods.map(m => m.mode), knowledge,

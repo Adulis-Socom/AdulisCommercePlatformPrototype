@@ -31,6 +31,8 @@ export interface SellerRecord {
   /** Fictional neighbourhood-level pin, about 1 km precision; never a street address. */
   readonly mapPin?: { readonly lat: number; readonly lon: number }
   readonly paymentProvider?: { readonly status: 'Ready'; readonly confirmed?: CalendarDate }
+  /** Marketplace dataset only (absent = ACTIVE): a DRAFT or SUSPENDED Seller is publicly hidden but stays inspectable in Seller and Operator surfaces. */
+  readonly lifecycle?: 'ACTIVE' | 'DRAFT' | 'SUSPENDED'
 }
 
 const SELLER_RECORDS = {
@@ -112,6 +114,8 @@ export interface StaffRecord {
   readonly name: string
   /** Each Seller's Owner is its primary member. Roles use their default permission sets; none is itemised. */
   readonly role: 'Owner' | 'Operations'
+  /** Marketplace dataset only: the member's canonical team roles from the source (replaces the 'Operations' default mapping). */
+  readonly roles?: readonly string[]
 }
 
 const STAFF_RECORDS = {

@@ -21,7 +21,7 @@ const count = (log, re) => [...log.matchAll(re)].reduce((a, m) => a + Number(m[1
 function inspect(file, code) {
   const log = readFileSync(join(outDir, file.replace('.mjs', code.tag + '.log')), 'utf8')
   const ends = (log.match(/^SUITE-END /gm) || []).length
-  const want = EXPECTED[file]
+  const want = typeof EXPECTED[file] === 'object' ? EXPECTED[file].runs : EXPECTED[file]
   return { exit: code.exit, runs: ends, expected_runs: want ?? null, passed: count(log, /^SUITE-END .*?: (\d+) passed/gm), failed: count(log, /^SUITE-END .*?, (\d+) failed/gm), known_gaps: count(log, /^SUITE-END .*?, (\d+) known gaps/gm),
     problem: want === undefined ? 'not listed in tests/suites.json' : ends !== want ? `completed ${ends} of ${want} expected runs` : null }
 }

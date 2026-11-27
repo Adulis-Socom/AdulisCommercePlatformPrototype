@@ -9,7 +9,7 @@ import {
   BUYERS, MARKET, ORDERS, REVIEWS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
   activeDiscount, currentPrice, describeFulfilment, formatClockShort, formatCompactCount, formatDate, formatEtb, formatMonthShortYear, formatMonthYear,
   fulfilmentOptionsAt, initials, isBuyerVisiblePostAt, onAdulisSince, productQualityAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt,
-  sellerProductsAt, sellerServiceAt, shortName, showcaseSellers, trustAt, trustLabel,
+  sellerProductsAt, sellerServiceAt, shortName, buyerVisibleSellers, trustAt, trustLabel,
   type Availability, type ProductId, type SellerId, type ShoppablePostId,
 } from '../demo-data'
 import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, isUnpublishedSeeded } from '../demo-data/live'
@@ -198,7 +198,7 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
       <div className="storefront-toolbar" style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.08em' }}>PROTOTYPE · STOREFRONT SELLER</span>
         <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
-          {showcaseSellers().map(id => (
+          {buyerVisibleSellers().map(id => (
             <button key={id} onClick={() => setSellerId(id)} aria-pressed={sellerId === id} style={pillStyle(sellerId === id)}>
               {SELLERS[id].name}
             </button>

@@ -4,6 +4,9 @@
 
 @import 'tailwindcss';
 @import './theme/theme-tokens.css';
+/* The generated marketplace JSON and the reference documents hold no class names: keep them out of source detection (docs and data words must not become CSS rules). */
+@source not "./marketplace/data";
+@source not "../docs/references";
 
 /* The colours are emitted as variables, and utilities read them through var(), so Theme Lab (src/theme/) can restate
    them at runtime. These values are Baseline Light, the approved design. */

@@ -2,9 +2,17 @@
 // pnpm-lock.yaml. A failed check, an unexpected page/console error or a crash makes the process exit non-zero.
 import { chromium } from 'playwright-core'
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { basename } from 'node:path'
 
 export const BASE = process.env.APP_URL || 'http://127.0.0.1:8443/'
 const ALLOWED = new Set(['127.0.0.1', 'localhost', 'fonts.googleapis.com', 'fonts.gstatic.com', 'images.unsplash.com'])
+
+// DEMO-001: the app boots on the marketplace dataset by default. The 36 earlier suites were written against the historical seeded ids, so every suite
+// opens `?dataset=legacy` unless tests/suites.json marks it `{ "runs": n, "dataset": "marketplace" }` (TEST_DATASET overrides, for one-off runs).
+const listed = (() => { try { return JSON.parse(readFileSync(new URL('./suites.json', import.meta.url), 'utf8'))[basename(process.argv[1] ?? '')] } catch { return undefined } })()
+export const DATASET = process.env.TEST_DATASET || (typeof listed === 'object' && listed?.dataset) || 'legacy'
+const withDataset = path => (DATASET === 'legacy' ? `${path}${path.includes('?') ? '&' : '?'}dataset=legacy` : path)
 
 const git = a => spawnSync('git', a, { encoding: 'utf8' }).stdout.trim()
 export const TESTED_SHA = git(['rev-parse', 'HEAD'])
@@ -28,7 +36,7 @@ export function suite(name, viewport, fn) {
 
 async function runOne(name, viewport, fn) {
   const label = `${name} @${viewport.width}x${viewport.height}`
-  console.log(`SUITE-START ${label} commit ${TESTED_SHA.slice(0, 12)}${TESTED_DIRTY ? ' (dirty tree)' : ''} base ${BASE}`)
+  console.log(`SUITE-START ${label} commit ${TESTED_SHA.slice(0, 12)}${TESTED_DIRTY ? ' (dirty tree)' : ''} base ${BASE} dataset ${DATASET}`)
   const browser = await chromium.launch({ channel: 'msedge', headless: true })
   const page = await (await browser.newContext({ viewport })).newPage()
   const errors = []
@@ -42,7 +50,7 @@ async function runOne(name, viewport, fn) {
     page, requests, errors,
     /** Declare a console error the test provokes on purpose; an unlisted error fails the suite. */
     expectError: pattern => expectedErrors.push(pattern),
-    open: async (path = '') => { await page.goto(BASE + path, { waitUntil: 'networkidle' }); await page.waitForTimeout(300) },
+    open: async (path = '') => { await page.goto(BASE + withDataset(path), { waitUntil: 'networkidle' }); await page.waitForTimeout(300) },
     section: async label => { await page.getByRole('button', { name: label }).first().click(); await page.waitForTimeout(350) },
     settle: (ms = 250) => page.waitForTimeout(ms),
     ck(label, ok, detail) {

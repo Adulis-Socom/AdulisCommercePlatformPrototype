@@ -3,12 +3,10 @@
 // those changes applied. Public surfaces (Buyer, Storefront, Companion) and the derived visibility rules read these, so one
 // edit reaches all of them. Historical Orders, Claims and Reviews keep reading the seeded records.
 import type { Santim } from './money.ts'
-import { PRODUCTS, PRODUCT_IDS } from './records/products.ts'
 import type { ProductId, ProductRecord, VariantGroup } from './records/products.ts'
-import { SHOPPABLE_POSTS, SHOPPABLE_POST_IDS } from './records/posts.ts'
 import type { ShoppablePostId, ShoppablePostRecord } from './records/posts.ts'
-import { SELLERS } from './records/sellers.ts'
 import type { SellerId, SellerRecord } from './records/sellers.ts'
+import { BASE_EXTRAS, PRODUCTS, PRODUCT_IDS, SELLERS, SHOPPABLE_POSTS, SHOPPABLE_POST_IDS } from './base.ts' // the ACTIVE dataset's base records
 import type { Availability } from './types.ts'
 
 export interface ProductOverlay {
@@ -41,7 +39,8 @@ export const LIVE_PRODUCT_IDS: ProductId[] = [...PRODUCT_IDS]
 export const LIVE_POST_IDS: ShoppablePostId[] = [...SHOPPABLE_POST_IDS]
 /** Authored Scene ids only, newest edit first: they lead For You. */
 export const authoredPostIds = (): ShoppablePostId[] => Object.keys(authored.scenes).sort((a, b) => authored.scenes[b].revision - authored.scenes[a].revision) as ShoppablePostId[]
-export const liveProductDetails = (id: string) => authored.products[id]
+// The marketplace dataset's seeded Products carry a taxonomy id and exact Variant rows too (BASE_EXTRAS); legacy has none.
+export const liveProductDetails = (id: string): AuthoredProductLive | undefined => authored.products[id] ?? BASE_EXTRAS[id]
 export const liveSceneMedia = (id: string) => authored.scenes[id]
 
 let products: Readonly<Record<string, ProductOverlay>> = {}
@@ -109,7 +108,7 @@ export const livePhotos = (id: ProductId): readonly string[] => authored.product
 export const liveScenePhoto = (id: ShoppablePostId) => authored.scenes[id]?.image ?? undefined
 /** The exact price (santim) of the chosen options, from the Variants the Seller listed; null when the Product keeps no such row. */
 export function liveVariantRow(id: string, options: readonly string[]) {
-  const own = authored.products[id]
+  const own = liveProductDetails(id)
   if (!own?.rows) return null
   // Exact match: the chosen value of each option group, by that group's name and position (never by value alone: two options may share a value).
   const groups = own.record.variants
@@ -117,4 +116,4 @@ export function liveVariantRow(id: string, options: readonly string[]) {
   return own.rows.find(r => groups.every((g, i) => r.values[g.name ?? ''] === options[i])) ?? null
 }
 /** Seeded Products the Seller returned to draft: Buyers cannot see them. */
-export const isUnpublishedSeeded = (id: ProductId) => products[id]?.published === false
+export const isUnpublishedSeeded = (id: ProductId) => products[id]?.published === false || PRODUCTS[id]?.publication === 'Draft'

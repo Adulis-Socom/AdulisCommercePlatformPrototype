@@ -8,8 +8,10 @@ import type { OrderId } from '../records/orders.ts'
 import type { ShoppablePostId } from '../records/posts.ts'
 import type { ProductId } from '../records/products.ts'
 import type { SellerId } from '../records/sellers.ts'
+import { isLegacy } from '../../marketplace/registry.ts'
+import { MARKETPLACE } from '../../marketplace/adapt.ts'
 
-export const SURFACE_DEFAULTS: {
+type SurfaceDefaults = {
   /** The signed-in Buyer of the Buyer app. */
   readonly buyer: BuyerId
   /** The Seller of the Seller Console, the Seller Companion and the Storefront. */
@@ -20,7 +22,9 @@ export const SURFACE_DEFAULTS: {
   readonly order: OrderId
   readonly claim: ClaimId
   readonly conversation: ConversationId
-} = {
+}
+
+const LEGACY_DEFAULTS: SurfaceDefaults = {
   buyer: 'BUY-MAYA-TESFAYE',
   seller: 'SEL-ADDIS-ATELIER',
   courier: 'COU-DANIEL-K',
@@ -30,6 +34,19 @@ export const SURFACE_DEFAULTS: {
   claim: 'CLM-1002',
   conversation: 'CNV-MAYA-AA',
 }
+
+// Marketplace dataset (DEMO-001): Maya (BY-01) is the primary Buyer, DS-01 the primary Seller, and the Product and Scene are real DS-01 records.
+// The order, claim and courier defaults stay the historical fixtures: those surfaces belong to later work orders (Orders, Courier, Reviews).
+// Shortcut: ids are cast to the seeded unions at this boundary.
+const MARKETPLACE_DEFAULTS: SurfaceDefaults = {
+  ...LEGACY_DEFAULTS,
+  buyer: 'BY-01' as BuyerId, seller: 'DS-01' as SellerId,
+  product: MARKETPLACE.firstProduct('DS-01') as ProductId, post: MARKETPLACE.firstScene('DS-01') as ShoppablePostId,
+  conversation: 'BY-01-DS-01-CHAT' as ConversationId,
+}
+
+/** The canonical records each surface opens on: the active dataset's primary story. */
+export const SURFACE_DEFAULTS: SurfaceDefaults = isLegacy ? LEGACY_DEFAULTS : MARKETPLACE_DEFAULTS
 
 /**
  * The Buyer app's Seller carts. Carts are transient session state (rule 3.12); these hold DEMO_DATA's Flow D carts,

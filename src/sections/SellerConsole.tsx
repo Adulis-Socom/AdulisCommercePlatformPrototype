@@ -551,7 +551,8 @@ function discountLabel(id: ProductId) {
 
 /** A Scene Post's publication at the story moment: Draft, Published, or Restricted after a moderation action. */
 function publicationOf(postId: ShoppablePostId, at: Moment) {
-  return SHOPPABLE_POSTS[postId].publication === 'Draft' ? 'draft' : restrictionAt(postId, at) ? 'restricted' : 'published'
+  // An Archived Scene (marketplace dataset) has no state of its own here yet and reads as a draft.
+  return SHOPPABLE_POSTS[postId].publication !== 'Published' ? 'draft' : restrictionAt(postId, at) || SHOPPABLE_POSTS[postId].restricted ? 'restricted' : 'published'
 }
 
 function ContentPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {

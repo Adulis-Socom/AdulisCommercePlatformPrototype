@@ -436,8 +436,8 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
     setCartRaw(scope === 'mvp' ? normalizeCart(workspace.buyerCart) : initial.cart)
     setCollectionsRaw(collectionsFor(scope))
   }, [scope])
-  const [cartSeller, setCartSeller] = useState<SellerId>(ORDERS[DEMO_CARTS[0]].seller)
-  const [checkoutSeller, setCheckoutSeller] = useState<SellerId>(ORDERS[DEMO_CARTS[0]].seller)
+  const [cartSeller, setCartSeller] = useState<SellerId>(SURFACE_DEFAULTS.seller) // = the first demo cart's Seller in the legacy dataset
+  const [checkoutSeller, setCheckoutSeller] = useState<SellerId>(SURFACE_DEFAULTS.seller)
   // Checkout (WO-006), all transient session state that a reset removes (rule 3.12): each Seller cart's own fulfilment
   // choice (rule 4.3); the Seller Orders this session's Checkout created, with their payment attempts; the Order being
   // paid (none yet: the checkout Seller's cart, before its Order exists); and the Checkout test run, if one is loaded.
@@ -2210,6 +2210,7 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
       </div>
       <div className="relative min-h-0 flex-[70]" style={{ background: SCENE_MEDIA }}>
         <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark photo={liveScenePhoto(postId)} className="absolute inset-0 h-full w-full text-6xl" />
+        {post.positioned === false && <span role="status" className="absolute left-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white">Photo pending · tagged Products are listed below</span>}
         {markers.map(marker => {
           const { product } = marker
           const on = product === current

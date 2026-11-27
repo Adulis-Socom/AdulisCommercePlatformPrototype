@@ -9,7 +9,7 @@ export type FulfilmentMode = 'Buyer Collection' | 'Seller Delivery' | 'Courier D
 
 export type Availability = 'Available' | 'Low Stock' | 'Out of Stock'
 
-export type PublicationState = 'Published' | 'Draft'
+export type PublicationState = 'Published' | 'Draft' | 'Archived'
 
 // Seller Order states (rules 4.4–4.6). Each Order passes only through its own fulfilment mode's states (rule 4.7).
 export type CourierDeliveryState = 'Paid' | 'Preparing' | 'Ready for Courier' | 'Courier Assigned' | 'Pickup Verified' | 'Out for Delivery' | 'Delivery Handoff' | 'Completed'

@@ -1,0 +1,109 @@
+{
+  "dataset_id": "ADULIS-MARKETPLACE-OPS-001",
+  "snapshot": "2026-11-27T10:00:00+03:00",
+  "generated_by": "tools/marketplace/build.mjs",
+  "sources": {
+    "Adulis_Demo_Data_Fixtures.json": {
+      "sha256": "2061e01087484ca9d68b7ac8840c8bb2d970d09e1fb4fcba5c221f2d7563ab13",
+      "bytes": 366694,
+      "records": {
+        "sellers": 23,
+        "products": 140,
+        "variants": 15,
+        "scenes": 66,
+        "stories": 11,
+        "scenarios": 29,
+        "assets": 391
+      }
+    },
+    "Adulis_Operations_Complete.json": {
+      "sha256": "6b5692850667efce3cf8417bab22e8fe47e923e89430350de517ab1ea9512cc6",
+      "bytes": 1819615,
+      "records": {
+        "buyers": 11,
+        "follows": 22,
+        "collections": 15,
+        "saves": 27,
+        "cart_lines": 12,
+        "chat_messages": 10,
+        "couriers": 5,
+        "relationships_and_eligibility": 115,
+        "relationship_events": 37,
+        "opportunities": 5,
+        "courier_comments": 25,
+        "delivery_offers": 33,
+        "simulation_courier_settings": 10,
+        "teams": 23,
+        "team_members": 83,
+        "role_grants": 197,
+        "tasks": 71,
+        "team_messages": 50,
+        "orders": 146,
+        "order_lines": 192,
+        "order_events": 848,
+        "handoffs": 164,
+        "claims": 1,
+        "review_grants": 138,
+        "reviews": 119,
+        "product_ratings": 147,
+        "seller_reputation": 23,
+        "product_reputation": 140,
+        "seller_summary": 23,
+        "seller_weekly": 184,
+        "scene_weekly": 528,
+        "product_weekly": 1120,
+        "simulation_weekly": 184,
+        "simulation_product_period": 280,
+        "simulation_scene_period": 132
+      }
+    }
+  },
+  "expected_counts": {
+    "sellers": 23,
+    "products": 140,
+    "scenes": 66,
+    "stories": 11,
+    "variants": 15,
+    "assets": 391,
+    "buyers": 11,
+    "couriers": 5,
+    "relationships_and_eligibility": 115,
+    "courier_comments": 25,
+    "delivery_offers": 33,
+    "teams": 23,
+    "team_members": 83,
+    "role_grants": 197,
+    "tasks": 71,
+    "team_messages": 50,
+    "orders": 146,
+    "order_lines": 192,
+    "order_events": 848,
+    "handoffs": 164,
+    "review_grants": 138,
+    "reviews": 119,
+    "product_ratings": 147
+  },
+  "generated": {
+    "catalogue.json": {
+      "sha256": "e1067322121b6fa771acb689ea682cbbfaa72355e837e4c8c1149fe62f52ce82",
+      "bytes": 282314
+    },
+    "operations.json": {
+      "sha256": "735862db571df9e2ab0b91a7c5883886a7ecdbc352e4fd39a8c540ed7b511fa8",
+      "bytes": 686291
+    },
+    "analytics.json": {
+      "sha256": "33e9c0419ff46c36ee82097d7766c13a635bad5b309cd45224a28bf5035eeb4e",
+      "bytes": 654401
+    }
+  },
+  "validator": {
+    "errors": 0,
+    "conflicts": {},
+    "gaps": {
+      "taxonomy-gap": 71,
+      "scene-gate-note": 2,
+      "lifecycle-note": 4
+    }
+  }
+}

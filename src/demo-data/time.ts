@@ -1,6 +1,7 @@
 // Story time (docs/DEMO_DATA.md › Conventions, › Story timeline). Every timestamp is market-local time written with its
 // explicit offset, EAT (+03:00). Events that share a timestamp carry an explicit `sequence` in DEMO_DATA's order.
 // A snapshot shows every event that happened strictly before its own (at, sequence).
+import { isLegacy } from '../marketplace/registry.ts'
 
 /** An ISO 8601 timestamp in EAT, for example '2026-10-02T10:25:00+03:00'. */
 export type Timestamp = string
@@ -15,8 +16,8 @@ export interface Moment {
   readonly sequence?: number
 }
 
-/** The default canonical demo snapshot: Friday 2 October 2026, 10:25 EAT. */
-export const DEFAULT_SNAPSHOT: Moment = { at: '2026-10-02T10:25:00+03:00' }
+/** The default canonical demo snapshot: Friday 2 October 2026, 10:25 EAT (legacy dataset); Friday 27 November 2026, 10:00 EAT, the marketplace operations snapshot (default dataset). */
+export const DEFAULT_SNAPSHOT: Moment = isLegacy ? { at: '2026-10-02T10:25:00+03:00' } : { at: '2026-11-27T10:00:00+03:00' }
 
 const TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):00\+03:00$/
 const DATE = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/

@@ -32,6 +32,8 @@ export interface ProductRecord {
   /** For records created during the demo. */
   readonly created?: Moment
   readonly createdBy?: StaffId
+  /** Marketplace dataset only (absent = Published): a Draft Product is never shown to Buyers. */
+  readonly publication?: 'Published' | 'Draft'
 }
 
 const size = (options: readonly string[]): VariantGroup => ({ name: 'Size', options })

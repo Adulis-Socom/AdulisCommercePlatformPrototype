@@ -6,15 +6,16 @@ import { DEFAULT_SNAPSHOT, addMinutes, happenedBefore } from './time.ts'
 import type { CalendarDate, Moment, Timestamp } from './time.ts'
 import { ORDER_TIMELINES } from './types.ts'
 import type { ClaimState, CourierAvailability, FulfilmentMode, OrderState, TrustLevel } from './types.ts'
-import { SELLERS, SELLER_SESSIONS, STAFF, VOLT_HOUSE_PREPUBLICATION } from './records/sellers.ts'
+import { VOLT_HOUSE_PREPUBLICATION } from './records/sellers.ts'
+import {
+  BUYERS, CONVERSATIONS, CONVERSATION_IDS, FOLLOWING_ORDER, FOR_YOU_ORDER, NEARBY_PROXIMITY, PRODUCTS, PRODUCT_IDS, SELLERS, SELLER_IDS, SELLER_SESSIONS,
+  SHOPPABLE_POSTS as SEEDED_POSTS, SHOPPABLE_POST_IDS, STAFF,
+} from './base.ts' // the ACTIVE dataset's base records (DEMO-001): legacy = the seeded records untouched
 import type { SellerId, StaffId } from './records/sellers.ts'
-import { PRODUCTS, PRODUCT_IDS } from './records/products.ts'
-import { SHOPPABLE_POSTS as SEEDED_POSTS, SHOPPABLE_POST_IDS } from './records/posts.ts'
 import { LIVE_PRODUCTS, LIVE_POSTS, LIVE_POST_IDS, LIVE_PRODUCT_IDS, authoredPostIds, isUnpublishedSeeded, liveVariantRow } from './live.ts'
 import type { ProductId, ProductRecord } from './records/products.ts'
 const SHOPPABLE_POSTS = LIVE_POSTS // authored Scenes are first-class (FIX-004)
 import type { ShoppablePostId } from './records/posts.ts'
-import { BUYERS } from './records/buyers.ts'
 import type { BuyerId } from './records/buyers.ts'
 import { COURIERS, COURIER_RELATIONSHIPS } from './records/couriers.ts'
 import type { CourierId, CourierRelationship, CourierVerification } from './records/couriers.ts'
@@ -24,13 +25,11 @@ import { REVIEWS, REVIEW_IDS } from './records/reviews.ts'
 import type { ReviewId } from './records/reviews.ts'
 import { CLAIMS } from './records/claims.ts'
 import type { ClaimId } from './records/claims.ts'
-import { CONVERSATIONS, CONVERSATION_IDS } from './records/conversations.ts'
 import type { ConversationId, MessageContext, MessageRecord } from './records/conversations.ts'
 import { AUDIT_LOG, HANDOFF_REVIEWS, MODERATION_CASES, SOLO_COVERAGE } from './records/operations.ts'
 import type { ModerationId, SoloCoverageId } from './records/operations.ts'
 import { NOTIFICATIONS } from './records/notifications.ts'
 import type { NotificationRecord } from './records/notifications.ts'
-import { FOLLOWING_ORDER, FOR_YOU_ORDER, NEARBY_PROXIMITY } from './records/channels.ts'
 
 const byId = <T extends string>(ids: readonly T[]) => [...ids].sort()
 
@@ -38,7 +37,7 @@ const byId = <T extends string>(ids: readonly T[]) => [...ids].sort()
 
 /** The three primary showcase Sellers, the only ones with Seller surfaces (Nile Loom is operations-only). */
 export function showcaseSellers(): SellerId[] {
-  return (Object.keys(SELLERS) as SellerId[]).filter(id => SELLERS[id].showcase)
+  return SELLER_IDS.filter(id => SELLERS[id].showcase)
 }
 
 /** The Seller's Trust level at `at` (the last change before it), or undefined before it was admitted. */
@@ -165,7 +164,7 @@ export function restrictionAt(post: ShoppablePostId, at: Moment = DEFAULT_SNAPSH
 
 /** Published and not restricted or removed. */
 export function isPubliclyEligibleAt(post: ShoppablePostId, at: Moment = DEFAULT_SNAPSHOT): boolean {
-  return isPublishedAt(post, at) && !restrictionAt(post, at)
+  return isPublishedAt(post, at) && !restrictionAt(post, at) && !SHOPPABLE_POSTS[post].restricted
 }
 
 /**
@@ -246,7 +245,8 @@ export function discoveryAreas(): string[] {
 
 /** The Sellers Buyers can see: the primary showcase Sellers (Nile Loom is operations-only). */
 export function buyerVisibleSellers(): SellerId[] {
-  return showcaseSellers()
+  // A DRAFT or SUSPENDED Seller (marketplace dataset) stays inspectable internally but is never public.
+  return showcaseSellers().filter(id => (SELLERS[id].lifecycle ?? 'ACTIVE') === 'ACTIVE')
 }
 
 /** The Products Buyers can see at `at`, in ID order. */
