@@ -3,7 +3,7 @@ import { Button } from '../components/ui/Button'
 import { Textarea, TextInput } from '../components/ui/Input'
 import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
 import {
-  PhoneFrame, BottomNav, IconAlerts, IconOrders, IconInbox, IconMore, IconChevronDown, IconChevronRight,
+  PhoneFrame, BottomNav, IconAlerts, IconOrders, IconPackage, IconInbox, IconMore, IconChevronDown, IconChevronRight,
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
@@ -18,6 +18,7 @@ import {
 } from '../demo-data'
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
+import { CatalogueTab } from './companion-catalogue'
 
 type TabKey = 'alerts' | 'orders' | 'inbox' | 'more'
 type Screen = 'tabs' | 'order' | 'prepare' | 'couriers' | 'offer' | 'pickup-qr' | 'pickup-verified' | 'delivery' | 'handoff-qr' | 'handoff-otp' | 'handoff-verified' | 'collection-qr' | 'conversation' | 'claim' | 'gated'
@@ -66,10 +67,15 @@ function openClaims(sellerId: SellerId, at: Moment) {
   return CLAIM_IDS.filter(id => ORDERS[CLAIMS[id].order].seller === sellerId && [ 'Open', 'Under Review' ].includes(claimStateAt(id, at) ?? ''))
 }
 
+/** FE-001: messages about an Order exist only in the internal simulation; the conversation itself stays. */
+function visibleMessages<T extends { context: MessageContext }>(list: readonly T[], simulation: boolean): T[] {
+  return simulation ? [...list] : list.filter(message => !('order' in message.context))
+}
+
 /** The Seller's conversations with messages by the story moment, latest message first. */
-function sellerThreads(sellerId: SellerId, at: Moment) {
+function sellerThreads(sellerId: SellerId, at: Moment, simulation = true) {
   return CONVERSATION_IDS.filter(id => CONVERSATIONS[id].seller === sellerId)
-    .flatMap(id => { const last = messagesAt(id, at).pop(); return last ? [{ id, last }] : [] })
+    .flatMap(id => { const last = visibleMessages(messagesAt(id, at), simulation).pop(); return last ? [{ id, last }] : [] })
     .sort((a, b) => b.last.at.localeCompare(a.last.at))
 }
 
@@ -118,12 +124,12 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
       : demoTarget === 'collection-qr'
         ? 'collection-qr'
         : 'tabs'
+  const { simulation } = usePrototypeMode()
   // The step's records (the surface defaults otherwise) when they belong to this Seller; else the Seller's own.
   const { focus } = useStory()
   const initialOrder = [focus?.order, SURFACE_DEFAULTS.order].find(id => id && ORDERS[id].seller === sellerId) ?? activeOrders(sellerId, at)[0] ?? ordersAt({ seller: sellerId }, at)[0]
-  const initialConversation = [focus?.conversation, SURFACE_DEFAULTS.conversation].find(id => id && CONVERSATIONS[id].seller === sellerId) ?? sellerThreads(sellerId, at)[0]?.id
+  const initialConversation = [focus?.conversation, SURFACE_DEFAULTS.conversation].find(id => id && CONVERSATIONS[id].seller === sellerId) ?? sellerThreads(sellerId, at, simulation)[0]?.id
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
-  const { simulation } = usePrototypeMode()
   // FE-001: Order handling (preparation, Courier offers, QR handoff) and Claims belong to the internal simulation.
   const [rawScreen, setScreen] = useState<Screen>(initialScreen)
   const screen: Screen = !simulation && rawScreen !== 'tabs' && rawScreen !== 'conversation' ? 'gated' : rawScreen
@@ -177,7 +183,7 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
   const badges: Partial<Record<TabKey, number>> = {
     alerts: notificationsAt(sellerId, at).filter(n => (simulation || MVP_ALERTS.includes(n.event.kind)) && alertFor(n).attention).length,
     orders: simulation ? active.filter(id => [...NEEDS_PREP, ...READY].includes(orderStateAt(id, at)!)).length : undefined,
-    inbox: sellerThreads(sellerId, at).filter(({ id }) => awaitingSellerReplyAt(id, at)).length + (simulation ? openClaims(sellerId, at).length : 0),
+    inbox: sellerThreads(sellerId, at, simulation).filter(({ id, last }) => simulation ? awaitingSellerReplyAt(id, at) : last.from === 'buyer').length + (simulation ? openClaims(sellerId, at).length : 0),
   }
 
   return (
@@ -187,11 +193,11 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
           <CompanionHeader tab={activeTab} sellerId={sellerId} onSwitchSeller={() => setSwitcherOpen(true)} />
           <div className="flex-1 overflow-y-auto">
             {activeTab === 'alerts' && <AlertsTab sellerId={sellerId} at={at} onOrder={openOrder} onClaim={openClaim} onConversation={openConversation} onLowStock={() => selectTab('more')} />}
-            {activeTab === 'orders' && (simulation ? <OrdersTab sellerId={sellerId} at={at} onOrder={openOrder} /> : <SimulationGate title="Orders" compact>Release 1 has no paid Orders, so there is nothing to prepare or hand over. Your catalogue, messages and alerts are available.</SimulationGate>)}
+            {activeTab === 'orders' && (simulation ? <OrdersTab sellerId={sellerId} at={at} onOrder={openOrder} /> : <CatalogueTab sellerId={sellerId} at={at} />)}
             {activeTab === 'inbox' && <InboxTab sellerId={sellerId} at={at} sent={sentReplies} onConversation={openConversation} onClaim={openClaim} />}
             {activeTab === 'more' && <MoreTab sellerId={sellerId} at={at} notice={consoleNotice} onConsole={() => setConsoleNotice(true)} />}
           </div>
-          <BottomNav items={TABS.map(tab => ({ ...tab, badge: badges[tab.key] }))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-brand)" />
+          <BottomNav items={TABS.map(tab => (!simulation && tab.key === 'orders' ? { ...tab, label: 'Catalogue', icon: <IconPackage size={22} />, badge: badges[tab.key] } : { ...tab, badge: badges[tab.key] }))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-brand)" />
         </>
       )}
       {screen === 'gated' && <SimulationGate title="Order handling" compact onBack={() => { setActiveTab('alerts'); setScreen('tabs') }}>Preparing Orders, Courier offers and QR handoff belong to the historical paid-commerce design, which Release 1 does not include.</SimulationGate>}
@@ -231,7 +237,8 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
 }
 
 function CompanionHeader({ tab, sellerId, onSwitchSeller }: { tab: TabKey; sellerId: SellerId; onSwitchSeller: () => void }) {
-  const titles: Record<TabKey, string> = { alerts: 'Alerts', orders: 'Paid Orders', inbox: 'Inbox', more: 'More' }
+  const { simulation } = usePrototypeMode()
+  const titles: Record<TabKey, string> = { alerts: 'Alerts', orders: simulation ? 'Paid Orders' : 'Catalogue', inbox: 'Inbox', more: 'More' }
   const seller = SELLERS[sellerId]
   return (
     <div className="flex h-13 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-4">
@@ -695,10 +702,10 @@ function InboxTab({ sellerId, at, sent, onConversation, onClaim }: {
   // The Seller's conversations, latest first, marked while the Buyer awaits a reply; then Claims awaiting a response. Each
   // row previews its conversation's newest message, a reply sent in this session included, so its text and chip come from
   // the same message.
-  const threads = sellerThreads(sellerId, at)
-  const rows = threads.flatMap(({ id }) => { const last = effectiveMessagesAt(id, at, sent[id]).pop(); return last ? [{ id, last }] : [] })
-    .sort((a, b) => byMessageTime(b.last, a.last))
   const { simulation } = usePrototypeMode()
+  const threads = sellerThreads(sellerId, at, simulation)
+  const rows = threads.flatMap(({ id }) => { const last = visibleMessages(effectiveMessagesAt(id, at, sent[id]), simulation).pop(); return last ? [{ id, last }] : [] })
+    .sort((a, b) => byMessageTime(b.last, a.last))
   const claims = simulation ? openClaims(sellerId, at) : []
   if (threads.length === 0 && claims.length === 0) return (
     <div className="px-6 py-16 text-center"><div className="font-display text-lg font-semibold">Inbox is empty</div><p className="mt-1 text-sm text-text-muted">Buyer conversations and Claims that need your response appear here.</p></div>
@@ -722,6 +729,7 @@ function BuyerConversation({ conversationId, at, sent, onSend, onDocumentedReply
   conversationId: ConversationId; at: Moment; sent: readonly MessageRecord[]; onSend: (message: MessageRecord) => void
   onDocumentedReply: (at: Timestamp) => void; onBack: () => void
 }) {
+  const { simulation } = usePrototypeMode()
   const { buyer, seller } = CONVERSATIONS[conversationId]
   // The team member with the Companion session replies (DEMO_DATA › Seller Console Settings). When a guided-flow step
   // stops just before that member's documented reply (Flow L at 11:48), the composer holds it with its context, and
@@ -734,7 +742,7 @@ function BuyerConversation({ conversationId, at, sent, onSend, onDocumentedReply
   const [message, setMessage] = useState(documented?.text ?? '')
   const [choosing, setChoosing] = useState(false)
   // DEMO_DATA's messages so far, then this session's replies, in time order. The Seller team's are this side's.
-  const messages = effectiveMessagesAt(conversationId, at, sent)
+  const messages = visibleMessages(effectiveMessagesAt(conversationId, at, sent), simulation)
   const send = () => {
     if (!message || !staff) return
     if (documented && message === documented.text && sameContext(context, documented.context)) onDocumentedReply(documented.at)
@@ -757,10 +765,10 @@ function BuyerConversation({ conversationId, at, sent, onSend, onDocumentedReply
       </div>
       <div className="border-t border-border bg-surface p-3 pb-5">
         <button onClick={() => setChoosing(true)} aria-haspopup="dialog" aria-label={`Talking about: ${contextSubject(context)}. Change`} className="mb-2 inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand bg-brand-muted px-3 py-1 text-left text-xs font-semibold text-brand-dark"><span>Talking about: {contextSubject(context)}</span><IconChevronDown size={12} /></button>
-        <div className="mb-2 flex gap-2 overflow-x-auto"><Pill onClick={() => setMessage('Your order is ready for courier pickup.')}>Order ready</Pill><Pill onClick={() => setMessage('A courier has been assigned.')}>Courier assigned</Pill></div>
+        <div className="mb-2 flex gap-2 overflow-x-auto">{simulation ? <><Pill onClick={() => setMessage('Your order is ready for courier pickup.')}>Order ready</Pill><Pill onClick={() => setMessage('A courier has been assigned.')}>Courier assigned</Pill></> : <><Pill onClick={() => setMessage('Thank you for your message.')}>Thank you</Pill><Pill onClick={() => setMessage('I will check and reply soon.')}>I will check</Pill></>}</div>
         <div className="flex gap-2"><div className="flex-1 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary">{message || ('general' in context ? `Message ${shortName(BUYERS[buyer].name)}` : `Message about ${contextSubject(context)}`)}</div><Button size="sm" onClick={send}>Send</Button></div>
       </div>
-      {choosing && <ContextSheet choices={contextChoicesAt(conversationId, at)} selected={context} onSelect={setContext} onClose={() => setChoosing(false)} />}
+      {choosing && <ContextSheet choices={contextChoicesAt(conversationId, at).filter(choice => simulation || !('order' in choice))} selected={context} onSelect={setContext} onClose={() => setChoosing(false)} />}
     </>
   )
 }

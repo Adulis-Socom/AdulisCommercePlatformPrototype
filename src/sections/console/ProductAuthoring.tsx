@@ -23,7 +23,7 @@ function blankProduct(id: string, seller: SellerId, state: WorkspaceState, at: M
   return { id, seller, status: 'draft', name: '', description: '', category: null, attributes: {}, customAttributes: [], options: [], variants: [], price: '', stock: '', photos: [], fulfilment: offered(state, seller, at), locallyMade: false, updated: 0 }
 }
 
-function fromSeed(id: ProductId, seller: SellerId, state: WorkspaceState, at: Moment): WsProduct {
+export function fromSeed(id: ProductId, seller: SellerId, state: WorkspaceState, at: Moment): WsProduct {
   const o = state.products[id]
   if (o) return o
   const seed = PRODUCTS[id]
