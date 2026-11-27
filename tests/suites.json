@@ -1,0 +1,7 @@
+{
+  "bgr002fix.test.mjs": 2, "boards.test.mjs": 1, "fe001.test.mjs": 1, "fe001b.test.mjs": 2, "fix001.test.mjs": 1, "fix002.test.mjs": 1,
+  "fix003.test.mjs": 1, "guide6598.test.mjs": 3, "inbox-mvp.test.mjs": 1, "journey-full.test.mjs": 1, "lab.test.mjs": 1, "mb-authored.test.mjs": 1,
+  "mb004.test.mjs": 1, "mc001.test.mjs": 1, "mc002.test.mjs": 1, "media-editor.test.mjs": 1, "op.test.mjs": 1, "price-consistency.test.mjs": 1,
+  "sc002.test.mjs": 2, "sc006.test.mjs": 1, "sc008.test.mjs": 3, "sc145.test.mjs": 1, "sf001.test.mjs": 1, "tax002.test.mjs": 1, "tax003.test.mjs": 1,
+  "web001.test.mjs": 1, "web001m.test.mjs": 1
+}

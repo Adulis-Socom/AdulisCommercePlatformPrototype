@@ -6,5 +6,5 @@ import { mkdirSync } from 'node:fs'
 export const EVIDENCE = process.env.TEST_EVIDENCE || process.argv[2] || 'tests/results/evidence'
 mkdirSync(EVIDENCE, { recursive: true })
 export const run = (viewport, fn) =>
-  suite(process.argv[1].split(/[\/]/).pop().replace('.test.mjs', ''), viewport, (page, t) =>
+  suite(process.argv[1].split(/[\\/]/).pop().replace('.test.mjs', ''), viewport, (page, t) =>
     fn(page, { BASE, requests: t.requests, errors: t.errors, open: t.open, section: t.section, settle: t.settle, ck: t.ck, eq: t.eq, knownGap: t.knownGap, shot: (file, opts = {}) => page.screenshot({ path: file, ...opts }) }))

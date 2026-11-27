@@ -12,6 +12,7 @@ const png = path.join(OUT, 'fixture.png');
   for (const [w, hgt] of [[1440, 900], [390, 844]]) await run({ width: w, height: hgt }, async (page, h) => {
     await h.open();
     await h.section('Seller Console');
+    if (w < 700) { await page.getByRole('button', { name: 'Open Seller Console navigation' }).click(); await h.settle(300); } // phone: navigation is a drawer
     await page.locator('.seller-console-sidebar').getByRole('button', { name: /^Products/ }).first().click(); await h.settle();
     await page.getByRole('button', { name: 'Create Product' }).click(); await h.settle();
     await page.locator('input[type=file]').setInputFiles(png); await h.settle();

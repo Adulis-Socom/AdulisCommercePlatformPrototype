@@ -98,5 +98,7 @@ run({ width: 1440, height: 900 }, async (page, h) => {
 });
 
 run({ width: 390, height: 844 }, async (page, h) => {
-  await h.open(); await h.section('Seller Console').catch(() => {});
+  await h.open(); await h.section('Seller Console');
+  h.ck('390px: Seller Console opens without horizontal page overflow', (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
+  h.ck('390px: Seller Console shows its sections', /Products/.test(await txt(page)));
 });
