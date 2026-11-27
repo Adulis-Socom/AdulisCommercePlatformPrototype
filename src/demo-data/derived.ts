@@ -306,11 +306,13 @@ export function orderTotals(order: OrderId): OrderTotals {
  * requirement 10). Recorded Orders keep their own totals (orderTotals).
  */
 export function productsSubtotal(lines: readonly OrderLine[]): Santim {
-  return lines.reduce((sum, line) => sum + unitPriceFor(line) * line.quantity, 0)
+  // A line whose Product is gone (unpublished, restricted, removed) is not priced: it cannot be bought and is reviewed in the Cart.
+  return lines.filter(line => line.product in LIVE_PRODUCTS).reduce((sum, line) => sum + unitPriceFor(line) * line.quantity, 0)
 }
 
 /** The price one unit of a Cart line pays now: the exact Variant's price when the Seller listed one, else the Product's current price. */
 export function unitPriceFor(line: Pick<OrderLine, 'product' | 'options'>): Santim {
+  if (!(line.product in LIVE_PRODUCTS)) return 0 as Santim
   const row = liveVariantRow(line.product, line.options ?? [])
   return (row?.price ?? currentPrice(line.product)) as Santim
 }
@@ -320,7 +322,7 @@ export function unitPriceFor(line: Pick<OrderLine, 'product' | 'options'>): Sant
  * mode at `at`, and the 0.5% surcharge on the Products subtotal only, excluding the delivery charge (rules 5.6–5.8).
  */
 export function checkoutTotalsAt(seller: SellerId, lines: readonly OrderLine[], mode: FulfilmentMode, at: Moment = DEFAULT_SNAPSHOT): OrderTotals {
-  if (lines.some(line => LIVE_PRODUCTS[line.product].seller !== seller)) throw new Error(`A ${SELLERS[seller].name} cart holds only its own Products`)
+  if (lines.some(line => !(line.product in LIVE_PRODUCTS) || LIVE_PRODUCTS[line.product].seller !== seller)) throw new Error(`A ${SELLERS[seller].name} cart holds only its own Products`)
   const delivery = fulfilmentOptionsAt(seller, at).find(option => option.mode === mode)?.charge
   if (delivery === undefined) throw new Error(`${SELLERS[seller].name} offers no ${mode} at ${at.at}`)
   const products = productsSubtotal(lines)

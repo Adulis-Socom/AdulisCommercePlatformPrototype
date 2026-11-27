@@ -2,10 +2,11 @@
 // and Scenes, the Seller's Store setup and the chatbot configuration. Nothing is copied or re-entered; every call reads current state.
 import { LIVE_PRODUCTS, LIVE_SELLERS } from '../demo-data/live'
 import {
-  CHATBOTS, MARKET, PRODUCTS, SHOPPABLE_POSTS, buyerVisibleProductsAt, currentPrice, isBuyerVisiblePostAt,
+  CHATBOTS, DEFAULT_SNAPSHOT, MARKET, PRODUCTS, SHOPPABLE_POSTS, buyerVisibleProductsAt, currentPrice, isBuyerVisiblePostAt,
   sellerPostsAt, type Moment, type ProductId, type SellerId, type ShoppablePostId,
 } from '../demo-data'
 import { COVERAGE_AREAS, exactVariants, linkableProducts, parseMoney, productPrices, productStock, sceneVisibility, type WorkspaceState } from '../seller-workspace'
+import { cartFulfilment, sellerMethods } from '../fulfilment'
 import { blankBotConfig, type BotConfig } from './config'
 import type { LeafLabels } from './taxonomy-labels'
 import type { ProductFacts, SceneFacts, SellerFacts, World } from './types'
@@ -16,14 +17,15 @@ const isSeededSeller = (id: string): id is SellerId => id in LIVE_SELLERS
 
 const variantRows = exactVariants
 
-export function sellerFacts(state: WorkspaceState, id: string): SellerFacts | null {
+export function sellerFacts(state: WorkspaceState, id: string, at: Moment = DEFAULT_SNAPSHOT): SellerFacts | null {
   if (!isSeededSeller(id)) return null
   const seller = LIVE_SELLERS[id]
   const setup = state.setup[id]
   const config = botConfigOf(state, id)
-  const methods: SellerFacts['methods'] = setup && !setup.blank
-    ? [setup.collection.on && 'Buyer Collection', setup.sellerDelivery.on && 'Seller Delivery', setup.courier && 'Courier Delivery'].filter(Boolean) as SellerFacts['methods']
-    : [seller.buyerCollection && 'Buyer Collection', seller.sellerDelivery && 'Seller Delivery', seller.courierCompensation && 'Courier Delivery'].filter(Boolean) as SellerFacts['methods']
+  // DATA-FIX-02: the same effective methods the Buyer's Cart and checkout use.
+  const effective = sellerMethods(state, id, at).methods
+  const methods: SellerFacts['methods'] = effective.map(m => m.mode)
+  const sellerCharge = effective.find(m => m.mode === 'Seller Delivery')?.charge
   const coverage = setup && !setup.blank ? setup.coverage : (seller.sellerDelivery?.coverage ?? '').includes('Addis Ababa') ? ['Addis Ababa'] : []
   const seededAnswers = (CHATBOTS[id]?.answers ?? []).map((a, i) => ({ id: `seed-${i}`, topic: a.topic, answer: a.answer }))
   const warranty = config.warrantyOffered === 'yes' && config.warranty.trim() ? { summary: config.warranty.trim() } : null
@@ -31,7 +33,7 @@ export function sellerFacts(state: WorkspaceState, id: string): SellerFacts | nu
     id, name: seller.name, handle: seller.handle, bio: seller.bio ?? '',
     collectionPlace: setup && !setup.blank ? (setup.collection.on ? setup.collection.place : '') : seller.buyerCollection?.place ?? '',
     collectionHours: config.collectionHours.trim() || (setup && !setup.blank ? '' : seller.buyerCollection?.hours ?? ''),
-    knownAreas: COVERAGE_AREAS.filter(a => !/nationwide/i.test(a)), methods, deliveryFee: setup?.sellerDelivery.fee ?? '', coverage,
+    knownAreas: COVERAGE_AREAS.filter(a => !/nationwide/i.test(a)), methods, deliveryFee: setup && !setup.blank ? setup.sellerDelivery.fee : sellerCharge ? String(sellerCharge / 100) : '', coverage,
     returns: config.returns, warranty, sizeGuide: config.sizeGuide, botEnabled: config.enabled,
     supplementary: state.knowledge[id] ?? seededAnswers,
   }
@@ -57,7 +59,7 @@ export function productFacts(state: WorkspaceState, labels: LeafLabels | null, a
     listedDetails: !seeded ? [] : own ? own.customAttributes.filter(a => !a.name.trim() && a.value.trim()).map(a => a.value) : [...(rec?.attributes ?? [])], options, variants: own ? variantRows(own) : null,
     price: price !== null && Number.isFinite(price) ? price : null, regularPrice: seeded && rec ? rec.price : null,
     stock: rec ? rec.stock : own ? productStock(own) : 0,
-    fulfilment: own && !seeded ? [...own.fulfilment] : sellerFacts(state, sellerId)?.methods ?? [], knowledge,
+    fulfilment: cartFulfilment(state, sellerId as SellerId, [{ id, name: rec?.name ?? own?.name ?? id }], at).methods.map(m => m.mode), knowledge,
     viewable: !!rec && buyerVisibleProductsAt(at).includes(id as ProductId) && (!own || own.status === 'published'),
   }
 }
@@ -88,7 +90,7 @@ export const sceneTitle = (state: WorkspaceState, id: string) => (id in SHOPPABL
 
 export function buildWorld(state: WorkspaceState, labels: LeafLabels | null, at: Moment): World {
   return {
-    seller: id => sellerFacts(state, id),
+    seller: id => sellerFacts(state, id, at),
     product: (sellerId, id) => productFacts(state, labels, at, sellerId, id),
     scene: (sellerId, id) => {
       const live = publicScenes(state, at, sellerId).find(s => s.id === id)

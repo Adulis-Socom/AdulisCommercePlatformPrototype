@@ -133,7 +133,7 @@ await suite('buyer-cart', { width: 1440, height: 900 }, async (page, t) => {
   t.ck('the Cart is Seller-separated and holds authored Products, exact Variants and quantities', /Addis Atelier cart/.test(text) && /Test Kettle/.test(text) && /Linen Wrap Dress/.test(text))
   t.ck('a changed price is detected with both prices', /Price changed/.test(text) && /from ETB 1,000 to ETB 1,200/.test(text), text.slice(0, 900))
   t.ck('insufficient stock is detected for the exact Variant (3 wanted, 2 available)', /only 2 available for this option/.test(text))
-  t.ck('an unavailable Variant is detected', /No longer available/.test(text))
+  t.ck('an out-of-stock Variant is detected', /Out of stock/.test(text))
   t.ck('a Variant the Seller no longer lists is detected', /no longer offered/.test(text))
   const checkout = page.getByRole('button', { name: 'Checkout this Seller cart' })
   t.ck('renewed review: checkout stays closed while anything has changed, and nothing is held or charged', await checkout.isDisabled() && /Nothing has been ordered, held or charged/.test(text))

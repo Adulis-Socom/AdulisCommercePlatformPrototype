@@ -3,6 +3,7 @@ import { Button } from '../components/ui/Button'
 import { PhoneInput, SearchInput, Select, Textarea, TextInput } from '../components/ui/Input'
 import { BuyerChat } from './buyer-chat'
 import { useWorkspace } from '../seller-workspace'
+import { cartFulfilment, describeMethods, sellerMethods, type CartFulfilment } from '../fulfilment'
 import { Skeleton } from '../components/ui/Overlay'
 import { VerificationFailed } from '../components/ui/Handoff'
 import {
@@ -25,7 +26,7 @@ import {
   type AccountDeletionCapability, type BuyerId, type CalendarDate, type DeletionBlocker, type ProductPurchase, type PurchasedProduct, type ReviewEntitlement, type SellerStoryGroup, type StoryId,
   type CheckoutTest, type CheckoutTestId, type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FinalHandoff, type FulfilmentMode, type MessageContext,
   type MessageRecord, type ModerationId, type Moment, type NotificationRecord, type OrderId, type OrderLine, type OrderState, type OrderTotals, type ProductId,
-  type SellerId, type ShoppablePostId, type Timestamp,
+  type Santim, type SellerId, type ShoppablePostId, type Timestamp,
 } from '../demo-data'
 import { LIVE_POSTS as SHOPPABLE_POSTS, LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, isUnpublishedSeeded, livePhoto, liveProductDetails, liveSceneMedia, liveScenePhoto, liveVariantRow } from '../demo-data/live'
 
@@ -75,6 +76,8 @@ type ReviewTab = { kind: 'product'; product: ProductId } | { kind: 'seller'; sel
 type CartLine = OrderLine & {
   /** The unit price (santim) the Buyer last saw for this line. A different price now is a material change that needs renewed review. */
   seen?: number
+  /** What the Buyer saw when adding the line, so it can still be shown and removed after its Product is unpublished, restricted or removed (BUYER-FIX-01). */
+  seller?: SellerId; name?: string
 }
 /**
  * The conversation Chat opens, by Seller (one per Buyer and Seller, rule 12.1); the context its composer starts on: the
@@ -178,11 +181,32 @@ function signInGate(screen: Screen): { title: string; message: string; then?: 'c
   return null
 }
 
+/** A Cart line's Seller: the live record while the Product exists, else what was seen when it was added; undefined when neither names a real Seller. */
+function lineSeller(line: CartLine): SellerId | undefined {
+  const seller = (line.product in PRODUCTS ? PRODUCTS[line.product].seller : undefined) ?? line.seller
+  return seller && seller in SELLERS ? seller : undefined
+}
+const lineName = (line: CartLine) => (line.product in PRODUCTS ? PRODUCTS[line.product].name : undefined) ?? line.name ?? 'Unavailable item'
+/** Lines no Seller can be found for (an invalid persisted reference): kept, never dropped silently, and removable. */
+const orphanLines = (cart: readonly CartLine[]) => cart.filter(line => !lineSeller(line))
+/** A Cart read back from the session store: shapes are repaired (never trusted), references to Products that no longer exist are kept. */
+function normalizeCart(raw: unknown): CartLine[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((item): CartLine[] => {
+    if (!item || typeof item !== 'object' || typeof (item as CartLine).product !== 'string') return []
+    const line = item as Partial<CartLine>
+    const quantity = Number.isInteger(line.quantity) && (line.quantity as number) >= 1 ? (line.quantity as number) : 1
+    return [{ product: line.product as ProductId, options: Array.isArray(line.options) ? line.options.filter((o): o is string => typeof o === 'string') : [], quantity,
+      seen: typeof line.seen === 'number' && Number.isFinite(line.seen) ? line.seen : undefined, seller: typeof line.seller === 'string' ? (line.seller as SellerId) : undefined, name: typeof line.name === 'string' ? line.name : undefined }]
+  })
+}
+
 /** The temporary Cart's Seller carts, in the order each Seller's first item was added: carts stay separated by Seller (rules 4.1–4.3). */
 function sellerCarts(cart: readonly CartLine[]): { seller: SellerId; lines: CartLine[] }[] {
   const groups: { seller: SellerId; lines: CartLine[] }[] = []
   for (const line of cart) {
-    const seller = PRODUCTS[line.product].seller
+    const seller = lineSeller(line)
+    if (!seller) continue // an unresolvable line is shown apart (orphanLines) so the Buyer can still remove it
     const group = groups.find(item => item.seller === seller)
     if (group) group.lines.push(line)
     else groups.push({ seller, lines: [line] })
@@ -196,8 +220,10 @@ const sameLine = (a: CartLine, b: CartLine) => a.product === b.product && a.opti
  * FIX-006: what changed under a Cart line since the Buyer built it, from the effective records. Each is a material change: checkout review
  * stays closed until the Buyer has reviewed it (accepted the new price, reduced the quantity or removed the line). Nothing is held or ordered.
  */
-type CartProblem = { kind: 'out' | 'unlisted' | 'short' | 'price'; max?: number; was?: number; now?: number }
-function cartProblem(line: CartLine, purchasable: (id: ProductId) => boolean): CartProblem | null {
+type CartProblem = { kind: 'gone' | 'out' | 'unlisted' | 'short' | 'price'; max?: number; was?: number; now?: number }
+function cartProblem(line: CartLine, purchasable: (id: ProductId) => boolean, visible: (id: ProductId) => boolean): CartProblem | null {
+  // Unpublished, restricted, removed or unknown Product: no record to read, so nothing below may dereference it.
+  if (!(line.product in PRODUCTS) || !visible(line.product)) return { kind: 'gone' }
   const own = liveProductDetails(line.product)
   const row = liveVariantRow(line.product, line.options)
   if (own?.rows && !row) return { kind: 'unlisted' }
@@ -280,6 +306,7 @@ function Placeholder({ label, initialsOf, className, dark, photo }: { label: str
 
 /** The Product's availability as Buyers see it: an out-of-stock Product is "Currently unavailable". */
 function availabilityText(id: ProductId) {
+  if (!(id in PRODUCTS) || isUnpublishedSeeded(id)) return 'No longer available'
   const availability = PRODUCTS[id].availability
   return availability === 'Out of Stock' ? 'Currently unavailable' : availability
 }
@@ -305,10 +332,14 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [chosenArea, setChosenArea] = useState<string | null>(null)
   // Saves and removals made in this session, on top of the canonical default Saved Collection; DEMO_DATA never changes.
   const { state: workspace, dispatch: workspaceDispatch } = useWorkspace()
-  const [savedChanges, setSavedChangesRaw] = useState<Partial<Record<SaveKey, boolean>>>(() => (workspace.buyerSaved ?? {}) as Partial<Record<SaveKey, boolean>>)
+  const { simulation } = usePrototypeMode()
+  // BUYER-FIX-01: the ordinary MVP Cart and Saves live in the workspace store and survive switching surfaces. The historical simulation and a
+  // guided-flow step (which opens on demonstration carts and Saves) work on their own copies: they neither read nor overwrite the ordinary ones.
+  const scope: 'mvp' | 'isolated' = simulation || demoTarget ? 'isolated' : 'mvp'
+  const [savedChanges, setSavedChangesRaw] = useState<Partial<Record<SaveKey, boolean>>>(() => (scope === 'mvp' ? (workspace.buyerSaved ?? {}) : {}) as Partial<Record<SaveKey, boolean>>)
   const savedTouched = useRef(false)
   const setSavedChanges = (next: Partial<Record<SaveKey, boolean>> | ((c: Partial<Record<SaveKey, boolean>>) => Partial<Record<SaveKey, boolean>>)) => { savedTouched.current = true; setSavedChangesRaw(next) }
-  useEffect(() => { if (savedTouched.current) workspaceDispatch({ type: 'saved', changes: savedChanges as Record<string, boolean> }) }, [savedChanges])
+  useEffect(() => { if (savedTouched.current && scope === 'mvp') workspaceDispatch({ type: 'saved', changes: savedChanges as Record<string, boolean> }) }, [savedChanges])
   // Posts hidden from For You with Not Interested, for this session only (rule 3.9, specification §7). They're Maya's
   // personalization, so a guest's For You never applies them.
   const [hidden, setHidden] = useState<ShoppablePostId[]>([])
@@ -383,9 +414,17 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   // The Cart is session state; once the Buyer edits it, it is kept in the workspace store so it survives switching surfaces (and so a Seller's
   // later price or stock change is noticed when the Buyer returns).
   const cartTouched = useRef(false)
-  const [cart, setCartRaw] = useState<CartLine[]>(() => (workspace.buyerCart ? (workspace.buyerCart as CartLine[]) : initial.cart))
+  const [cart, setCartRaw] = useState<CartLine[]>(() => (scope === 'mvp' && workspace.buyerCart ? normalizeCart(workspace.buyerCart) : initial.cart))
   const setCart = (next: CartLine[] | ((lines: CartLine[]) => CartLine[])) => { cartTouched.current = true; setCartRaw(next) }
-  useEffect(() => { if (cartTouched.current) workspaceDispatch({ type: 'cart', lines: cart }) }, [cart])
+  useEffect(() => { if (cartTouched.current && scope === 'mvp') workspaceDispatch({ type: 'cart', lines: cart }) }, [cart])
+  // Switching the prototype mode swaps between the two copies instead of carrying one into the other.
+  const scopeRef = useRef(scope)
+  useEffect(() => {
+    if (scopeRef.current === scope) return
+    scopeRef.current = scope; cartTouched.current = false; savedTouched.current = false
+    setCartRaw(scope === 'mvp' ? normalizeCart(workspace.buyerCart) : initial.cart)
+    setSavedChangesRaw((scope === 'mvp' ? workspace.buyerSaved ?? {} : {}) as Partial<Record<SaveKey, boolean>>)
+  }, [scope])
   const [cartSeller, setCartSeller] = useState<SellerId>(ORDERS[DEMO_CARTS[0]].seller)
   const [checkoutSeller, setCheckoutSeller] = useState<SellerId>(ORDERS[DEMO_CARTS[0]].seller)
   // Checkout (WO-006), all transient session state that a reset removes (rule 3.12): each Seller cart's own fulfilment
@@ -431,7 +470,11 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const raced = run?.raced ? run.test.race : undefined
   const purchasable = (id: ProductId) => id !== raced && isPurchasableAt(id, at)
   const availabilityOf = (id: ProductId) => (id === raced ? 'Currently unavailable' : availabilityText(id))
+  const visible = (id: ProductId) => isBuyerVisibleAt(id, at)
   const carts = sellerCarts(cart)
+  const orphans = orphanLines(cart)
+  // DATA-FIX-02: what a Seller cart may choose now = the Seller's CURRENT configuration ∩ every Product's own methods.
+  const fulfilmentOf = (seller: SellerId, lines: readonly CartLine[]): CartFulfilment => cartFulfilment(workspace, seller, lines.map(line => ({ id: line.product, name: lineName(line) })), at, simulation)
   const checkoutLines = carts.find(item => item.seller === checkoutSeller)?.lines ?? []
   // Checkout continues only once the Cart is revalidated against current availability (rule 3.11). `racedNow` is a race
   // that happened as this checkout started, before its state update.
@@ -450,11 +493,12 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   // Each Seller cart's own fulfilment choice (rule 4.3). Until the Buyer chooses, Checkout preselects the mode of the
   // Seller Order it creates (the test run's or DEMO_DATA's), otherwise Courier Delivery where the Seller offers it.
   const modeFor = (seller: SellerId, lines: readonly CartLine[]): FulfilmentMode => {
-    const options = fulfilmentOptionsAt(seller, at)
+    const options = fulfilmentOf(seller, lines).methods
     const offered = (mode?: FulfilmentMode) => (mode && options.some(option => option.mode === mode) ? mode : undefined)
     const canonical = canonicalOrderFor(seller, lines, at)
     const planned = run ? run.test.orders.find(order => order.seller === seller)?.mode : canonical && ORDERS[canonical].fulfilment
-    return offered(modeChoice[seller]) ?? offered(planned) ?? offered('Courier Delivery') ?? options[0].mode
+    // With no common method the checkout review shows why instead of a choice (cartFulfilment.none); this fallback is never presented as chosen.
+    return offered(modeChoice[seller]) ?? offered(planned) ?? offered(simulation ? 'Courier Delivery' : undefined) ?? options[0]?.mode ?? 'Buyer Collection'
   }
   // The Seller Order a Seller cart's Checkout creates: the test run's TEST- Order for that Seller, or DEMO_DATA's Order in
   // Flows C and D, with its own fulfilment mode. Otherwise why no Seller Order is created.
@@ -484,7 +528,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
     const open = openOrderFor(seller)
     if (open) return retryPayment(open)
     // Renewed review: a price, option or stock change keeps checkout review closed until the Cart lines are reviewed.
-    if (carts.find(item => item.seller === seller)?.lines.some(line => cartProblem(line, purchasable))) { setCartSeller(seller); setScreen('seller-cart'); return }
+    if (carts.find(item => item.seller === seller)?.lines.some(line => cartProblem(line, purchasable, visible)) || (!simulation && fulfilmentOf(seller, carts.find(item => item.seller === seller)?.lines ?? []).none)) { setCartSeller(seller); setScreen('seller-cart'); return }
     setCheckoutSeller(seller)
     // Requirement 24's race: the run makes its Product unavailable once it is in this Seller cart, as checkout starts.
     const race = run && !run.raced && run.test.race && PRODUCTS[run.test.race].seller === seller && cart.some(line => line.product === run.test.race) ? run.test.race : undefined
@@ -521,6 +565,13 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const nextUp = progress.find(entry => orderStatus(entry.order) !== 'PAID' && carts.some(item => item.seller === entry.seller))
   const checkoutMode = modeFor(checkoutSeller, checkoutLines)
   const checkoutPlan = orderPlanFor(checkoutSeller, checkoutLines, checkoutMode)
+  const checkoutFulfilment = fulfilmentOf(checkoutSeller, checkoutLines)
+  // Revalidate on every change while a checkout review is open: a Product that is gone, out, changed or repriced sends the Buyer back to the
+  // Cart review instead of showing a stale summary.
+  useEffect(() => {
+    if (simulation || (screen !== 'checkout-coordinator' && screen !== 'seller-checkout')) return
+    if (checkoutLines.length === 0 || checkoutLines.some(line => cartProblem(line, purchasable, visible))) { setCartSeller(checkoutSeller); setScreen('seller-cart'); setToast('Your cart changed. Review it before checkout.') }
+  })
   // The outcome of the attempt in progress, as the provider and backend establish it (rules 5.1–5.5): DEMO_DATA's
   // attempts move the story to their times (10:05, 10:06, 10:07); a test run moves no story time. A paid Order's items
   // leave the Cart.
@@ -668,7 +719,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
     const cap = Math.max(1, exact ? exact.stock : PRODUCTS[line.product].stock)
     const seen = unitPriceFor(line)
     // Quantity never exceeds what is available for the exact option; the Cart review shows anything that changes later.
-    setCart(lines => (lines.some(item => sameLine(item, line)) ? lines.map(item => (sameLine(item, line) ? { ...item, quantity: Math.min(cap, item.quantity + line.quantity) } : item)) : [...lines, { ...line, quantity: Math.min(cap, line.quantity), seen }]))
+    setCart(lines => (lines.some(item => sameLine(item, line)) ? lines.map(item => (sameLine(item, line) ? { ...item, quantity: Math.min(cap, item.quantity + line.quantity) } : item)) : [...lines, { ...line, quantity: Math.min(cap, line.quantity), seen, seller: PRODUCTS[line.product].seller, name: PRODUCTS[line.product].name }]))
     setCartSeller(PRODUCTS[line.product].seller)
   }
 
@@ -682,7 +733,6 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   }
 
   const showNav = ['feed', 'search', 'saved', 'orders', 'you'].includes(screen)
-  const { simulation } = usePrototypeMode()
   const gate = signedIn ? null : signInGate(screen)
   const shown: Screen | 'gated' | 'simulation-only' = gate ? 'gated' : !simulation && SIMULATION_SCREENS.includes(screen) ? 'simulation-only' : screen
 
@@ -811,7 +861,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onSeller={openSeller}
           />
         )}
-        {shown === 'saved' && <Saved changes={savedChanges} onCollection={id => { setCollectionId(id); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
+        {shown === 'saved' && <Saved changes={savedChanges} cartCount={cart.length} onCart={() => { if (carts[0]) setCartSeller(carts[0].seller); setScreen(carts.length > 1 || (carts.length === 0 && orphans.length > 0) ? 'multi-cart' : 'seller-cart') }} onCollection={id => { setCollectionId(id); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
         {shown === 'collection' && <Collection collectionId={collectionId} changes={savedChanges} onBack={() => setScreen('saved')} onProduct={openProduct} onPost={openPost} />}
         {shown === 'seller-cart' && (
           <SellerCart
@@ -825,14 +875,16 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onCheckout={() => startCheckout(cartSeller)}
             onQuantity={(line, quantity) => setCart(lines => lines.map(item => (sameLine(item, line) ? { ...item, quantity } : item)))}
             onAcceptPrice={line => setCart(lines => lines.map(item => (sameLine(item, line) ? { ...item, seen: unitPriceFor(item) } : item)))}
-            problemOf={line => cartProblem(line, purchasable)}
+            problemOf={line => cartProblem(line, purchasable, visible)}
             onRemove={line => setCart(lines => lines.filter(item => !sameLine(item, line)))}
+            orphans={orphans}
+            fulfilmentNone={simulation ? null : fulfilmentOf(cartSeller, carts.find(item => item.seller === cartSeller)?.lines ?? []).none}
           />
         )}
-        {shown === 'multi-cart' && <MultiCart carts={carts} first={cartSeller} isAvailable={signedIn ? purchasable : null} openOrderFor={openOrderFor} progress={progress} onBack={() => setScreen('seller-cart')} onCheckout={startCheckout} />}
+        {shown === 'multi-cart' && <MultiCart orphans={orphans} onRemove={line => setCart(lines => lines.filter(item => !sameLine(item, line)))} carts={carts} first={cartSeller} isAvailable={signedIn ? purchasable : null} openOrderFor={openOrderFor} progress={progress} onBack={() => setScreen('seller-cart')} onCheckout={startCheckout} />}
         {shown === 'cart-check' && <CartCheck unavailable={unavailable} availabilityOf={availabilityOf} afterSignIn={checkAfterSignIn} seller={checkoutSeller} sellerReady={checkoutLines.length > 0 && checkoutLines.every(line => purchasable(line.product))} onContinue={() => setScreen('checkout-coordinator')} onReview={seller => { setCartSeller(seller); setScreen('seller-cart') }} onAllCarts={() => setScreen('multi-cart')} />}
         {shown === 'checkout-coordinator' && <CheckoutCoordinator seller={checkoutSeller} lines={checkoutLines} others={carts.filter(item => item.seller !== checkoutSeller).map(item => item.seller)} onBack={() => setScreen('multi-cart')} onContinue={() => setScreen('seller-checkout')} />}
-        {shown === 'seller-checkout' && <SellerCheckout at={at} seller={checkoutSeller} lines={checkoutLines} mode={checkoutMode} onMode={mode => setModeChoice(choices => ({ ...choices, [checkoutSeller]: mode }))} note={'note' in checkoutPlan ? checkoutPlan.note : undefined} onBack={() => setScreen('checkout-coordinator')} onPay={() => { setPayingRef(null); setScreen('payment-transition') }} />}
+        {shown === 'seller-checkout' && <SellerCheckout at={at} seller={checkoutSeller} lines={checkoutLines} fulfilment={checkoutFulfilment} mode={checkoutMode} onMode={mode => setModeChoice(choices => ({ ...choices, [checkoutSeller]: mode }))} note={'note' in checkoutPlan ? checkoutPlan.note : undefined} onBack={() => setScreen('checkout-coordinator')} onPay={() => { setPayingRef(null); setScreen('payment-transition') }} />}
         {shown === 'payment-transition' && <PaymentTransition seller={retrying?.seller ?? checkoutSeller} amount={retrying?.totals.total ?? checkoutTotalsAt(checkoutSeller, checkoutLines, checkoutMode, at).total} retrying={retrying} onBack={() => { if (!retrying) return setScreen('seller-checkout'); setPayingRef(retrying.ref); setScreen('payment-failed') }} onContinue={openPayment} />}
         {shown === 'payment-processing' && payingOrder && <PaymentProcessing order={payingOrder} source={run ? run.test.label : 'Demo data'} outcome={scheduledOutcome(payingOrder, run?.test, payingOrder.attempts.length - 1)} onOutcome={resolvePayment} onChecking={() => setScreen('payment-checking')} />}
         {shown === 'payment-success' && payingOrder && <PaymentSuccess order={payingOrder} progress={progress} next={nextUp && SELLERS[nextUp.seller].name} onNext={() => nextUp && startCheckout(nextUp.seller)} onDone={() => { setActiveTab('orders'); setScreen('orders') }} />}
@@ -1177,10 +1229,10 @@ function CartCheck({ unavailable, availabilityOf, afterSignIn, seller, sellerRea
         <div className="mt-5 flex flex-col gap-3">
           {unavailable.map(line => (
             <div key={`${line.product}-${line.options.join('-')}`} className="flex gap-3 rounded-xl border border-danger/20 bg-danger-bg p-3">
-              <Placeholder label={PRODUCTS[line.product].name} photo={livePhoto(line.product)} className="h-16 w-14 rounded-lg" />
+              <Placeholder label={lineName(line)} photo={line.product in PRODUCTS ? livePhoto(line.product) : undefined} className="h-16 w-14 rounded-lg" />
               <span className="flex-1">
-                <span className="block text-sm font-semibold">{PRODUCTS[line.product].name}</span>
-                <span className="mt-1 block text-xs text-text-muted">{SELLERS[PRODUCTS[line.product].seller].name} · {[lineOptions(line), `Quantity ${line.quantity}`].filter(Boolean).join(' · ')}</span>
+                <span className="block text-sm font-semibold">{lineName(line)}</span>
+                <span className="mt-1 block text-xs text-text-muted">{(() => { const s = lineSeller(line); return s ? SELLERS[s].name : 'Seller unavailable' })()} · {[lineOptions(line), `Quantity ${line.quantity}`].filter(Boolean).join(' · ')}</span>
                 <span className="mt-1 block text-xs font-semibold text-danger">{availabilityOf(line.product)}</span>
               </span>
             </div>
@@ -2525,6 +2577,8 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
   onOrder: (options: readonly string[], quantity: number) => void; onAskSeller: () => void
 }) {
   const product = PRODUCTS[productId]
+  const workspaceState = useWorkspace().state
+  const simulationOn = usePrototypeMode().simulation
   // A Product that is out of stock stays viewable, but nothing offers it for purchase (rule 1.8; DEMO_DATA › Scene Posts).
   const purchasable = !withdrawn && isPurchasableAt(productId, at)
   const availability = withdrawn ? 'Out of Stock' : product.availability
@@ -2589,7 +2643,7 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
           <InfoBlock title="Description">{product.description ?? '—'}</InfoBlock>
           <InfoBlock title="Specifications">{product.attributes.join(' · ') || '—'}</InfoBlock>
           {liveProductDetails(productId)?.category && (() => { const tax = findTaxonomy(liveProductDetails(productId)!.category); return <InfoBlock title="Category">{tax?.label}{!tax?.sub?.attributes && <span role="status" className="mt-1 block text-xs text-text-muted">Details for this category are not defined yet. Ask the Seller for anything you need to know.</span>}</InfoBlock> })()}
-          <InfoBlock title="Fulfilment">{describeFulfilment(fulfilmentOptionsAt(product.seller, at))}</InfoBlock>
+          <InfoBlock title="Fulfilment">{describeMethods(cartFulfilment(workspaceState, product.seller, [{ id: productId, name: product.name }], at, simulationOn).methods)}</InfoBlock>
           {/* Reviews: the Product's Product Quality and its Seller's Seller Service, kept apart; it opens both tabs. */}
           <button onClick={onReviews} className="flex w-full items-center gap-3 border-b border-border py-5 text-left">
             <span className="min-w-0 flex-1">
@@ -2742,13 +2796,16 @@ function Stars({ rating, label }: { rating: number; label: string }) {
 // (Buyer Collection); a physical storefront isn't required, and no home address is ever shown.
 function SellerAbout({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const seller = SELLERS[sellerId]
+  const workspaceState = useWorkspace().state
+  const simulationOn = usePrototypeMode().simulation
+  const offersCollection = sellerMethods(workspaceState, sellerId, at, simulationOn).methods.some(m => m.mode === 'Buyer Collection')
   const service = sellerServiceAt(sellerId, at)
   const completed = sellerCompletedOrdersAt(sellerId, at)
   const rows: [string, string][] = [
     ['Category', seller.category],
     ['Based in', `${seller.area}, ${MARKET.city}`],
-    ...(seller.buyerCollection ? [['Collection point', `${seller.buyerCollection.place} · ${seller.buyerCollection.hours}`] as [string, string]] : []),
-    ['Fulfilment', describeFulfilment(fulfilmentOptionsAt(sellerId, at))],
+    ...(seller.buyerCollection && offersCollection ? [['Collection point', `${seller.buyerCollection.place} · ${seller.buyerCollection.hours}`] as [string, string]] : []),
+    ['Fulfilment', describeMethods(sellerMethods(workspaceState, sellerId, at, simulationOn).methods)],
     ['Member since', formatMonthYear(onAdulisSince(sellerId))],
   ]
   // DEMO_DATA defines no Seller-level Product Quality and no claim rate.
@@ -2905,7 +2962,7 @@ function collectionContents(id: CollectionId, changes: Partial<Record<SaveKey, b
   return { products, posts, unavailable: products.filter(p => productGone(p) || PRODUCTS[p].availability === 'Out of Stock').length + posts.filter(postGone).length }
 }
 
-function Saved({ changes, onCollection, onProduct, onPost }: { changes: Partial<Record<SaveKey, boolean>>; onCollection: (id: CollectionId) => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void }) {
+function Saved({ changes, cartCount, onCart, onCollection, onProduct, onPost }: { changes: Partial<Record<SaveKey, boolean>>; cartCount: number; onCart: () => void; onCollection: (id: CollectionId) => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void }) {
   const collections = COLLECTION_IDS.filter(id => COLLECTIONS[id].owner === BUYER)
   // "Recently saved" shows the latest Product Post and whole Scene Post saved this session, otherwise the default
   // Collection's first of each.
@@ -2915,7 +2972,7 @@ function Saved({ changes, onCollection, onProduct, onPost }: { changes: Partial<
   const recentPost = [(latest('post:') as { post: ShoppablePostId } | undefined)?.post, ...recent.posts].find(p => p && !postGone(p))
   return (
     <>
-      <Header title="Saved" />
+      <Header title="Saved" trailing={<button onClick={onCart} aria-label={`Cart, ${cartCount} item${cartCount === 1 ? '' : 's'}`} className="min-h-9 rounded-full border border-border px-3 text-xs font-semibold">Cart{cartCount ? ` · ${cartCount}` : ''}</button>} />
       <div className="flex-1 overflow-y-auto p-4">
         <div className="mb-4 flex items-end justify-between"><div><div className="font-display text-2xl font-semibold">Your finds</div><div className="text-xs text-text-muted">Private to you</div></div><Button size="sm">New collection</Button></div>
         {collections.map(id => {
@@ -3677,7 +3734,26 @@ function AddToCartConfirmation({ product, options, quantity, onClose, onCart }: 
   )
 }
 
-function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held, onBack, onAllCarts, onCheckout, onQuantity, onRemove, onAcceptPrice, problemOf }: {
+/** Cart lines no Seller can be found for (an invalid saved reference): shown apart so the Buyer can remove them. */
+function OrphanLines({ lines, onRemove }: { lines: readonly CartLine[]; onRemove: (line: CartLine) => void }) {
+  if (!lines.length) return null
+  return (
+    <div className="mt-4 rounded-xl border border-danger/20 bg-danger-bg p-3" role="alert">
+      <div className="text-sm font-semibold text-danger">{lines.length} saved item{lines.length === 1 ? '' : 's'} no longer available</div>
+      {lines.map(line => (
+        <div key={`${line.product}-${line.options.join('-')}`} className="mt-2 flex items-center justify-between gap-2 text-xs">
+          <span className="text-text-secondary">{lineName(line)}</span>
+          <button onClick={() => onRemove(line)} aria-label={`Remove ${lineName(line)}`} className="text-danger">Remove</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held, onBack, onAllCarts, onCheckout, onQuantity, onRemove, onAcceptPrice, problemOf, orphans, fulfilmentNone }: {
+  orphans: readonly CartLine[]
+  /** Why this cart has no fulfilment method now (DATA-FIX-02), or null. */
+  fulfilmentNone: string | null
   onAcceptPrice: (line: CartLine) => void; problemOf: (line: CartLine) => CartProblem | null
   seller: SellerId; lines: readonly CartLine[]
   /** Whether the signed-in Buyer can buy a Product now; a guest's Cart is checked after sign-in instead (rule 3.11). */
@@ -3703,17 +3779,19 @@ function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held
           <div className="mt-4 font-display text-xl font-semibold">{seller} cart is empty</div>
           <p className="mt-2 text-sm leading-relaxed text-text-muted">The Product was removed. Your other Seller carts are unchanged.</p>
           <Button variant="secondary" onClick={onBack} style={{ marginTop: 20 }}>Return to Product</Button>
+          <div className="mt-4 w-full text-left"><OrphanLines lines={orphans} onRemove={onRemove} /></div>
         </div>
       ) : <div className="flex-1 overflow-y-auto p-4">
         <SellerIdentity initials={initials(seller)} name={seller} meta={`${lines.length} item${lines.length === 1 ? '' : 's'} · Seller-specific cart`} />
         {lines.map(line => {
-          const product = PRODUCTS[line.product]
-          const gone = unavailable.includes(line)
+          const product = { name: lineName(line) }
+          const kind = problemFor(line)?.kind
+          const gone = unavailable.includes(line) || kind === 'gone' || kind === 'out'
           // Items a Seller Order holds can't change while it waits for payment: its retry pays exactly what it holds.
           const locked = isHeld(line)
           return (
             <div key={`${line.product}-${line.options.join('-')}`} className="mt-4 flex gap-3 border-b border-border pb-5">
-              <Placeholder label={product.name} photo={livePhoto(line.product)} className="h-28 w-24 rounded-xl" />
+              <Placeholder label={product.name} photo={line.product in PRODUCTS ? livePhoto(line.product) : undefined} className="h-28 w-24 rounded-xl" />
               <div className="flex flex-1 flex-col">
                 <div className="text-sm font-semibold leading-snug">{product.name}</div>
                 <div className="mt-1 text-xs text-text-muted">{lineOptions(line)}</div>
@@ -3725,7 +3803,8 @@ function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held
                     <div role="alert" className="mt-2 rounded-lg bg-warning-bg p-2 text-xs leading-relaxed text-text-secondary">
                       {p.kind === 'price' && <><span className="font-semibold">Price changed</span> from {formatEtb(p.was as never)} to {formatEtb(p.now as never)}. <button onClick={() => onAcceptPrice(line)} className="font-semibold text-brand-text underline">Accept the new price</button></>}
                       {p.kind === 'short' && <><span className="font-semibold">Not enough stock</span> for {line.quantity}: only {p.max} available for this option. <button onClick={() => onQuantity(line, p.max!)} className="font-semibold text-brand-text underline">Reduce to {p.max}</button></>}
-                      {p.kind === 'out' && <><span className="font-semibold">No longer available.</span> Remove it to continue.</>}
+                      {p.kind === 'out' && <><span className="font-semibold">Out of stock.</span> Remove it to continue.</>}
+                      {p.kind === 'gone' && <><span className="font-semibold">No longer available.</span> The Seller has withdrawn it. Remove it to continue.</>}
                       {p.kind === 'unlisted' && <><span className="font-semibold">This option is no longer offered.</span> Remove it and choose another.</>}
                     </div>
                   )
@@ -3742,6 +3821,7 @@ function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held
             </div>
           )
         })}
+        <OrphanLines lines={orphans} onRemove={onRemove} />
         <div className="mt-5 rounded-xl bg-surface-raised p-4">
           <PriceRow label="Products" value={formatEtb(subtotal)} />
           <div className="mt-3 border-t border-border pt-3"><PriceRow label="Cart subtotal" value={formatEtb(subtotal)} strong /></div>
@@ -3757,14 +3837,16 @@ function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held
           : <>
               {unavailable.length > 0 && <p role="alert" className="mb-3 text-xs leading-relaxed text-danger">Remove the unavailable item{unavailable.length === 1 ? '' : 's'} to check out this cart.</p>}
               {problems.length > 0 && <p role="status" className="mb-3 text-xs leading-relaxed text-text-secondary">Something in this cart changed. Review it above before you continue. Nothing has been ordered, held or charged.</p>}
-              <Button size="lg" onClick={onCheckout} disabled={unavailable.length > 0 || problems.length > 0} style={{ width: '100%' }}>Checkout this Seller cart</Button>
+              {fulfilmentNone && problems.length === 0 && <p role="alert" className="mb-3 text-xs leading-relaxed text-danger">{fulfilmentNone}</p>}
+              <Button size="lg" onClick={onCheckout} disabled={unavailable.length > 0 || problems.length > 0 || !!fulfilmentNone} style={{ width: '100%' }}>Checkout this Seller cart</Button>
             </>}
       </div>}
     </>
   )
 }
 
-function MultiCart({ carts, first, isAvailable, openOrderFor, progress, onBack, onCheckout }: {
+function MultiCart({ carts, first, isAvailable, openOrderFor, progress, onBack, onCheckout, orphans, onRemove }: {
+  orphans: readonly CartLine[]; onRemove: (line: CartLine) => void
   carts: readonly { seller: SellerId; lines: readonly CartLine[] }[]; first: SellerId; isAvailable: ((id: ProductId) => boolean) | null
   /** A Seller's Order waiting for payment again, if any: that Seller cart is paid by a retry (rule 5.9). */
   openOrderFor: (seller: SellerId) => CheckoutOrder | undefined
@@ -3786,6 +3868,7 @@ function MultiCart({ carts, first, isAvailable, openOrderFor, progress, onBack, 
           ? <CartSummary key={item.seller} seller={item.seller} lines={item.lines} status={status(item.seller)} blocked={!openOrderFor(item.seller) && !!isAvailable && item.lines.some(line => !isAvailable(line.product))} onCheckout={() => onCheckout(item.seller)} actionLabel={openOrderFor(item.seller) ? 'Retry payment' : undefined} />
           : <CartSummary key={item.seller} seller={item.seller} lines={item.lines} status={status(item.seller)} onCheckout={() => setNotice(item.seller)} actionLabel="Review separately" />))}
         {notice && ordered[0] && <div className="mt-3 rounded-xl bg-brand-muted p-3 text-xs leading-relaxed text-brand-dark">{SELLERS[notice].name} remains a separate Seller cart. Finish or leave the {SELLERS[ordered[0].seller].name} checkout before starting this one.</div>}
+        <OrphanLines lines={orphans} onRemove={onRemove} />
         <MultiCartNote />
       </div>
     </>
@@ -3799,7 +3882,7 @@ function CartSummary({ seller: sellerId, lines, status, blocked, onCheckout, act
   blocked?: boolean; onCheckout: () => void; actionLabel?: string
 }) {
   const seller = SELLERS[sellerId].name
-  const item = lines.map(line => PRODUCTS[line.product].name).join(' · ')
+  const item = lines.map(lineName).join(' · ')
   const quantity = lines.reduce((sum, line) => sum + line.quantity, 0)
   return (
     <div className="mt-4 rounded-2xl border border-border bg-surface p-4 shadow-sm">
@@ -3847,8 +3930,10 @@ function CheckoutCoordinator({ seller: sellerId, lines, others, onBack, onContin
   )
 }
 
-function SellerCheckout({ at, seller: sellerId, lines, mode, onMode, note, onBack, onPay }: {
+function SellerCheckout({ at, seller: sellerId, lines, fulfilment, mode, onMode, note, onBack, onPay }: {
   at: Moment; seller: SellerId; lines: readonly CartLine[]
+  /** DATA-FIX-02: the methods this Seller cart may choose now (Seller configuration ∩ every Product's methods), with what was ruled out and why. */
+  fulfilment: CartFulfilment
   /** This Seller cart's own fulfilment choice, one the Seller offers at `at` (rule 4.3). */
   mode: FulfilmentMode; onMode: (mode: FulfilmentMode) => void
   /** Why payment doesn't continue from this cart, so no Seller Order is created; without one, payment continues. */
@@ -3859,10 +3944,16 @@ function SellerCheckout({ at, seller: sellerId, lines, mode, onMode, note, onBac
   const seller = SELLERS[sellerId]
   const buyer = BUYERS[BUYER]
   const { simulation } = usePrototypeMode()
-  const options = fulfilmentOptionsAt(sellerId, at)
-  const courier = options.find(option => option.mode === 'Courier Delivery')
-  // The Products at current prices, the Seller's charge for the mode, and the 0.5% surcharge on the Products alone (WO-006).
-  const totals = checkoutTotalsAt(sellerId, lines, mode, at)
+  const options = fulfilment.methods
+  const method = options.find(option => option.mode === mode)
+  const courier = simulation ? options.find(option => option.mode === 'Courier Delivery') : undefined
+  // The Products at current prices, the Seller's charge for the mode, and the 0.5% surcharge on the Products alone (WO-006). The checkout REVIEW
+  // (MVP) adds no surcharge and shows a delivery charge only where the Seller set one; the historical simulation keeps its paid-commerce totals.
+  const totals = simulation
+    ? checkoutTotalsAt(sellerId, lines, mode, at)
+    : (() => { const products = productsSubtotal(lines); const delivery = (method?.charge ?? 0) as Santim; return { products, delivery, surcharge: 0 as Santim, total: (products + delivery) as Santim } })()
+  const feeUnset = !simulation && method?.charge === null
+  const feeText = (charge: number | null) => (charge === null ? 'Fee not set' : charge ? formatEtb(charge as Santim) : 'No delivery fee')
   const detail: Record<FulfilmentMode, string> = {
     'Buyer Collection': `Collect from ${seller.name} in ${seller.area}`,
     'Seller Delivery': 'Arranged and delivered by the seller',
@@ -3874,14 +3965,16 @@ function SellerCheckout({ at, seller: sellerId, lines, mode, onMode, note, onBac
       <div className="flex-1 overflow-y-auto p-4">
         <div className="rounded-xl bg-surface-raised p-3"><SellerIdentity initials={initials(seller.name)} name={seller.name} meta={`${simulation ? 'Seller Order · ' : ''}${lines.length} product${lines.length === 1 ? '' : 's'}`} /></div>
         <SectionLabel>Fulfilment</SectionLabel>
-        {options.map(option => <FulfilmentOption key={option.mode} active={mode === option.mode} onClick={() => onMode(option.mode)} title={option.mode} detail={detail[option.mode]} price={option.charge ? formatEtb(option.charge) : 'No delivery fee'} />)}
-        {mode === 'Courier Delivery' && courier && (
+        {options.map(option => <FulfilmentOption key={option.mode} active={mode === option.mode} onClick={() => onMode(option.mode)} title={option.mode} detail={detail[option.mode]} price={feeText(option.charge)} />)}
+        {fulfilment.none && <div role="alert" className="mb-2 rounded-xl bg-danger-bg p-3 text-xs leading-relaxed text-danger">{fulfilment.none}</div>}
+        {!fulfilment.none && fulfilment.excluded.length > 0 && <div role="note" className="mb-2 rounded-xl bg-surface-raised p-3 text-xs leading-relaxed text-text-secondary">Not available for this cart: {fulfilment.excluded.map(e => `${e.mode} (${e.reason})`).join(' ')}</div>}
+        {mode === 'Courier Delivery' && courier && courier.charge !== null && (
           <div className="mt-2 rounded-xl bg-info-bg p-3 text-xs leading-relaxed text-info">
-            The {formatEtb(courier.charge)} Courier Delivery fee {simulation ? 'is shown now and is separate from the Adulis surcharge.' : 'is the Seller’s estimate; nothing is charged.'}
+            The {formatEtb(courier.charge)} Courier Delivery fee is shown now and is separate from the Adulis surcharge.
           </div>
         )}
         {/* Buyer Collection isn't a delivery, so it shows no delivery address (WO-006 pre-commit correction 2). */}
-        {mode !== 'Buyer Collection' && (
+        {!fulfilment.none && mode !== 'Buyer Collection' && (
           <>
             <SectionLabel>Delivery details</SectionLabel>
             <div className="rounded-xl border border-border p-3 text-sm">
@@ -3894,9 +3987,9 @@ function SellerCheckout({ at, seller: sellerId, lines, mode, onMode, note, onBac
         <SectionLabel>{simulation ? 'Payment breakdown' : 'Estimated costs'}</SectionLabel>
         <div className="rounded-xl bg-surface-raised p-4">
           <PriceRow label="Products" value={formatEtb(totals.products)} />
-          <PriceRow label={mode} value={formatEtb(totals.delivery)} />
+          {!fulfilment.none && <PriceRow label={mode} value={feeUnset ? 'Fee not set' : formatEtb(totals.delivery)} />}
           {simulation && <PriceRow label={SURCHARGE_LABEL} value={formatEtb(totals.surcharge)} />}
-          <div className="mt-3 border-t border-border pt-3"><PriceRow label={simulation ? 'Total' : 'Estimated total'} value={formatEtb(simulation ? totals.total : totals.products + totals.delivery)} strong /></div>
+          <div className="mt-3 border-t border-border pt-3"><PriceRow label={simulation ? 'Total' : feeUnset ? 'Estimated total (excluding delivery)' : 'Estimated total'} value={formatEtb(simulation ? totals.total : totals.products + totals.delivery)} strong /></div>
         </div>
         {simulation
           ? <p className="mt-3 text-xs leading-relaxed text-text-muted">Payment status is established by the payment provider and Adulis backend. The seller does not confirm payment.</p>

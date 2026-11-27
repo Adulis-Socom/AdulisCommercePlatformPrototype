@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { AdulisLogo } from '../App'
 import { StoryProvider, useStory } from '../StoryClock'
 import { linkableProducts, productStock, sceneVisibility, stockState, useWorkspace } from '../seller-workspace'
+import { describeMethods, sellerMethods } from '../fulfilment'
+import { usePrototypeMode } from '../prototype-mode'
 import { priceLabel, taxonomyOf } from './buyer-authored'
 import {
   BUYERS, MARKET, ORDERS, REVIEWS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
@@ -73,6 +75,7 @@ function useStorefront() {
   const sellerId = story.seller ?? SURFACE_DEFAULTS.seller
   const seller = SELLERS[sellerId]
   const { state: workspace } = useWorkspace()
+  const { simulation } = usePrototypeMode()
   const seededProducts: Product[] = sellerProductsAt(sellerId, at).filter(id => !isUnpublishedSeeded(id)).map((id, index) => {
     const p = PRODUCTS[id]
     const discount = activeDiscount(id)
@@ -122,7 +125,7 @@ function useStorefront() {
     trust: trustLabel(trustAt(sellerId, at)),
     service: sellerServiceAt(sellerId, at),
     completed: sellerCompletedOrdersAt(sellerId, at),
-    fulfilment: describeFulfilment(fulfilmentOptionsAt(sellerId, at)),
+    fulfilment: describeMethods(sellerMethods(workspace, sellerId, at, simulation).methods),
     location: `${seller.area}, ${MARKET.city}`,
     // A physical place only where the Seller gives Buyers one (Buyer Collection); a physical storefront isn't required.
     collectionPoint: seller.buyerCollection && `${seller.buyerCollection.place} · ${seller.buyerCollection.hours}`,

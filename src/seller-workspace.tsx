@@ -57,7 +57,7 @@ export interface WorkspaceState {
   /** The Buyer's temporary Cart once the Buyer has edited it this session (so it survives switching surfaces); null until then. Never a record. */
   /** The Buyer's Saves and unsaves this session (keyed "product:ID" / "post:ID"), kept so they survive switching surfaces; null until the Buyer saves something. */
   buyerSaved: Record<string, boolean> | null
-  buyerCart: { product: string; options: string[]; quantity: number; seen?: number }[] | null
+  buyerCart: { product: string; options: string[]; quantity: number; seen?: number; seller?: string; name?: string }[] | null
   /** Prototype hours since the session began; Story lifetimes read it, so expiry is deterministic and demonstrable. */
   clockHours: number
 }
@@ -67,7 +67,7 @@ type Action =
   | { type: 'restrict'; scene: string; reason: string | null }
   | { type: 'bot'; seller: SellerId; config: BotConfig }
   | { type: 'saved'; changes: Record<string, boolean> }
-  | { type: 'cart'; lines: { product: string; options: readonly string[]; quantity: number; seen?: number }[] }
+  | { type: 'cart'; lines: { product: string; options: readonly string[]; quantity: number; seen?: number; seller?: string; name?: string }[] }
   | { type: 'feedback-add'; item: BotFeedback }
   | { type: 'feedback-review'; id: string; review: NonNullable<BotFeedback['review']> }
   | { type: 'chat-exchange'; conversation: Conversation; messages: ChatMsg[]; pending: Pending | null; escalate?: string; waiting?: boolean }
@@ -86,7 +86,7 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
     case 'remove': { const next = { ...state[action.collection] }; delete next[action.id]; return { ...state, [action.collection]: next } }
     case 'setup': return { ...state, setup: { ...state.setup, [action.seller]: action.setup } }
     case 'saved': return { ...state, buyerSaved: { ...action.changes } }
-    case 'cart': return { ...state, buyerCart: action.lines.map(l => ({ product: l.product, options: [...l.options], quantity: l.quantity, seen: l.seen })) }
+    case 'cart': return { ...state, buyerCart: action.lines.map(l => ({ product: l.product, options: [...l.options], quantity: l.quantity, seen: l.seen, seller: l.seller, name: l.name })) }
     case 'feedback-add': return { ...state, botFeedback: [...state.botFeedback, action.item] }
     case 'feedback-review': return { ...state, botFeedback: state.botFeedback.map(f => (f.id === action.id ? { ...f, status: 'reviewed' as const, review: action.review } : f)) }
     case 'bot': return { ...state, bot: { ...state.bot, [action.seller]: action.config } }
