@@ -24,6 +24,8 @@ import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { CatalogueTab } from './companion-catalogue'
+import { isLegacy } from '../marketplace/registry'
+import { CompanionOrderAlerts, CompanionOrders, useSellerActions } from '../simulation/surfaces'
 
 type TabKey = 'alerts' | 'orders' | 'inbox' | 'more'
 type Screen = 'tabs' | 'order' | 'prepare' | 'couriers' | 'offer' | 'pickup-qr' | 'pickup-verified' | 'delivery' | 'handoff-qr' | 'handoff-otp' | 'handoff-verified' | 'collection-qr' | 'conversation' | 'claim' | 'gated'
@@ -140,6 +142,9 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
   const [rawScreen, setScreen] = useState<Screen>(initialScreen)
   const screen: Screen = !simulation && rawScreen !== 'tabs' && rawScreen !== 'conversation' ? 'gated' : rawScreen
   const [orderId, setOrderId] = useState<OrderId | undefined>(initialOrder)
+  // SIM-001: on the marketplace dataset the Orders tab and the order Alerts read the shared simulation store.
+  const [simOrder, setSimOrder] = useState<string | null>(null)
+  const simActions = useSellerActions(sellerId)
   const advance = (state: OrderState | undefined) => { const t = orderId && state && stateTime(orderId, state); if (t) advanceTo(t) }
   const fulfilment = orderId && ORDERS[orderId].fulfilment
   const readyState = fulfilment ? readyStateFor(fulfilment) : undefined
@@ -188,7 +193,7 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
   const active = activeOrders(sellerId, at)
   const badges: Partial<Record<TabKey, number>> = {
     alerts: notificationsAt(sellerId, at).filter(n => (simulation || MVP_ALERTS.includes(n.event.kind)) && alertFor(n).attention).length,
-    orders: simulation ? active.filter(id => [...NEEDS_PREP, ...READY].includes(orderStateAt(id, at)!)).length : undefined,
+    orders: simulation ? (isLegacy ? active.filter(id => [...NEEDS_PREP, ...READY].includes(orderStateAt(id, at)!)).length : simActions.length) : undefined,
     inbox: sellerThreads(sellerId, at, simulation).filter(({ id, last }) => simulation ? awaitingSellerReplyAt(id, at) : last.from === 'buyer').length + (simulation ? openClaims(sellerId, at).length : 0),
   }
 
@@ -198,8 +203,8 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
         <>
           <CompanionHeader tab={activeTab} sellerId={sellerId} onSwitchSeller={() => setSwitcherOpen(true)} />
           <div className="flex-1 overflow-y-auto">
-            {activeTab === 'alerts' && <AlertsTab sellerId={sellerId} at={at} onOrder={openOrder} onClaim={openClaim} onConversation={openConversation} onLowStock={() => selectTab('more')} />}
-            {activeTab === 'orders' && (simulation ? <OrdersTab sellerId={sellerId} at={at} onOrder={openOrder} /> : <CatalogueTab sellerId={sellerId} at={at} />)}
+            {activeTab === 'alerts' && <>{simulation && !isLegacy && <CompanionOrderAlerts sellerId={sellerId} onOpen={id => { setSimOrder(id); setActiveTab('orders') }} />}<AlertsTab sellerId={sellerId} at={at} onOrder={openOrder} onClaim={openClaim} onConversation={openConversation} onLowStock={() => selectTab('more')} /></>}
+            {activeTab === 'orders' && (simulation ? (isLegacy ? <OrdersTab sellerId={sellerId} at={at} onOrder={openOrder} /> : <CompanionOrders sellerId={sellerId} open={simOrder} setOpen={setSimOrder} />) : <CatalogueTab sellerId={sellerId} at={at} />)}
             {activeTab === 'inbox' && <InboxTab sellerId={sellerId} at={at} sent={sentReplies} onConversation={openConversation} onClaim={openClaim} />}
             {activeTab === 'more' && <MoreTab sellerId={sellerId} at={at} notice={consoleNotice} onConsole={() => setConsoleNotice(true)} />}
           </div>
@@ -262,7 +267,7 @@ function SellerSwitcher({ current, onClose, onSelect }: { current: SellerId; onC
   return (
     <div role="dialog" aria-modal="true" aria-label="Switch Seller" className="absolute inset-0 z-30 flex flex-col justify-end bg-black/40" onKeyDown={event => { if (event.key === 'Escape') onClose() }}>
       <button aria-label="Close" className="flex-1" onClick={onClose} />
-      <div className="rounded-t-3xl bg-surface px-4 pb-8 pt-3">
+      <div className="max-h-[85%] overflow-y-auto rounded-t-3xl bg-surface px-4 pb-8 pt-3">
         <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-border-strong" />
         <div className="font-display text-lg font-semibold">Switch Seller</div>
         <div className="mb-3 font-mono text-[10px] uppercase tracking-wider text-text-muted">Prototype · demo Sellers</div>

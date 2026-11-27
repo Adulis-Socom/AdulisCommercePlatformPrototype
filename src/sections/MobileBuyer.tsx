@@ -6,6 +6,9 @@ import { buyerKey, sessionOf, useWorkspace, type BuyerSession } from '../seller-
 import { BuyerCtx, useBuyer } from '../buyer-context'
 import { isLegacy } from '../marketplace/registry'
 import { INDEX } from '../marketplace/import'
+import { useSim } from '../simulation/store'
+import { isOpen, ordersOfBuyer, sortNewest } from '../simulation/orders'
+import { OrderDetail as SimOrderDetail, OrderRows, SimBar } from '../simulation/ui'
 import { cartFulfilment, describeMethods, sellerMethods, type CartFulfilment } from '../fulfilment'
 import { MAX_COLLECTION_NAME, add as addToCollection, applyLegacySaves, clean as cleanName, create as createCollection, ensureDefault, isSaved as savedIn, normalize as normalizeCollections, remove as removeCollection, removeItem, rename as renameCollection, split as splitCollection, unsave, type BuyerCollection } from '../buyer-collections'
 import { Skeleton } from '../components/ui/Overlay'
@@ -3413,41 +3416,34 @@ function orderStages(orderId: OrderId) {
   return ORDER_TIMELINES[ORDERS[orderId].fulfilment].map(state => ({ key: state, label: state, detail: stageDetail(state, orderId) }))
 }
 
-const ORDER_STATUS: Record<string, string> = { COMPLETED: 'Completed', OUT_FOR_DELIVERY: 'Out for delivery', READY_FOR_DELIVERY: 'Ready for delivery', READY_FOR_COLLECTION: 'Ready for collection', RETURNED_TO_SELLER: 'Returned to Seller', DELIVERY_FAILED: 'Delivery failed', CANCELLED: 'Cancelled' }
-const ORDER_ACTIVE = ['OUT_FOR_DELIVERY', 'READY_FOR_DELIVERY', 'READY_FOR_COLLECTION']
-
 /**
- * The Buyer's Order history from the demo dataset (operations.orders), shown only in the internal simulation, where the Orders screen exists. A read-only
- * list per account: Order detail, handoff and Reviews are the Orders work order's (SIM-001), so rows do not open.
+ * The Buyer's Orders on the marketplace dataset (SIM-001): the shared internal-simulation store, shown only in the simulation (the MVP shows the gate).
+ * List by group, then Order detail with timeline, Handoffs and the Buyer's scan. The layout redesign is BUYER-010.
  */
 function DatasetOrders({ onBack, onChats, onNotifications }: { onBack?: () => void; onChats: () => void; onNotifications: () => void }) {
   const BUYER = useBuyer()
-  const orders = [...(INDEX.ordersByBuyer.get(BUYER) ?? [])].sort((a, b) => b.paid_at.localeCompare(a.paid_at))
-  const groups = [{ title: 'Active', rows: orders.filter(o => ORDER_ACTIVE.includes(o.status)) }, { title: 'Completed', rows: orders.filter(o => o.status === 'COMPLETED') }, { title: 'Cancelled, returned or failed', rows: orders.filter(o => o.status !== 'COMPLETED' && !ORDER_ACTIVE.includes(o.status)) }]
+  const { sim } = useSim()
+  const [open, setOpen] = useState<string | null>(null)
+  const orders = sortNewest(ordersOfBuyer(sim, BUYER))
+  const groups = [{ title: 'Active', rows: orders.filter(isOpen) }, { title: 'Completed', rows: orders.filter(o => o.status === 'COMPLETED') }, { title: 'Cancelled, returned or failed', rows: orders.filter(o => o.status !== 'COMPLETED' && !isOpen(o)) }]
   return (
     <>
-      <Header title="Orders" onBack={onBack} trailing={<div className="flex gap-1"><IconButton label="Chats" onClick={onChats}><ChatIcon /></IconButton><IconButton label="Notifications" onClick={onNotifications}><BellIcon /></IconButton></div>} />
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="font-display text-2xl font-semibold">Your Seller Orders</div>
-        <p className="mt-1 text-sm text-text-muted">{orders.length === 0 ? 'No Orders for this account.' : `${orders.length} simulated Orders, newest first.`}</p>
-        <PrototypeNote>Internal simulation. These Orders are fictional demo history: no payment was taken and nothing was delivered. Order detail arrives with the Orders update.</PrototypeNote>
-        {groups.filter(g => g.rows.length).map(group => (
-          <section key={group.title} aria-label={group.title}>
-            <SectionLabel>{group.title} · {group.rows.length}</SectionLabel>
-            <ul className="flex flex-col gap-2">
-              {group.rows.map(o => {
-                const seller = SELLERS[o.seller_id as SellerId]?.name ?? o.seller_id
-                return (
-                  <li key={o.order_id} className="rounded-xl border border-border p-3">
-                    <SellerIdentity initials={initials(seller)} name={seller} meta={`Order ${o.order_id} · ${ORDER_STATUS[o.status] ?? o.status}`} />
-                    <div className="mt-2 text-xs text-text-secondary">{(INDEX.linesByOrder.get(o.order_id) ?? []).map(l => `${l.product_name_snapshot}${l.quantity > 1 ? ` × ${l.quantity}` : ''}`).join(' · ')}</div>
-                    <div className="mt-1 flex items-center justify-between text-xs"><span className="text-text-muted">{formatDate(o.paid_at)}</span><span className="font-semibold">{formatEtb(Math.round(o.total_etb * 100) as Santim)}</span></div>
-                  </li>
-                )
-              })}
-            </ul>
-          </section>
-        ))}
+      <Header title="Orders" onBack={open ? () => setOpen(null) : onBack} trailing={<div className="flex gap-1"><IconButton label="Chats" onClick={onChats}><ChatIcon /></IconButton><IconButton label="Notifications" onClick={onNotifications}><BellIcon /></IconButton></div>} />
+      <SimBar />
+      <div className="flex-1 overflow-y-auto" data-sim-surface="buyer-orders">
+        {open ? <SimOrderDetail orderId={open} actor={{ role: 'BUYER', id: BUYER }} onBack={() => setOpen(null)} /> : (
+          <div className="p-4">
+            <div className="font-display text-2xl font-semibold">Your Seller Orders</div>
+            <p className="mt-1 text-sm text-text-muted">{orders.length === 0 ? 'No Orders for this account.' : `${orders.length} simulated Orders, newest first.`}</p>
+            {(BUYER as string) !== 'BY-02' && !orders.some(isOpen) && <PrototypeNote>This account has no active Orders. Hana (BY-02) is the primary simulation Buyer: choose her in the account selector to follow an active Order.</PrototypeNote>}
+            {groups.filter(g => g.rows.length).map(group => (
+              <section key={group.title} aria-label={group.title}>
+                <SectionLabel>{group.title} · {group.rows.length}</SectionLabel>
+                <div className="overflow-hidden rounded-xl border border-border"><OrderRows orders={group.rows} who="buyer" onOpen={setOpen} /></div>
+              </section>
+            ))}
+          </div>
+        )}
       </div>
     </>
   )

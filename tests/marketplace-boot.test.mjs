@@ -34,7 +34,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       const text = await main(page)
       t.ck(`${label} renders`, text.trim().length > 50, text.length)
       if (/^0[3-6]|^08/.test(label)) t.ck(`${label} names no legacy Seller`, !LEGACY.test(text), text.match(LEGACY)?.[0])
-      if (/^07|^09|^11/.test(label)) t.ck(`${label} carries the labelled historical-fixture note`, /MARKETPLACE DATASET/.test(text))
+      if (/^09|^11/.test(label)) t.ck(`${label} carries the labelled historical-fixture note`, /MARKETPLACE DATASET/.test(text))
     }
 
     // Public Storefront: ACTIVE Sellers only.

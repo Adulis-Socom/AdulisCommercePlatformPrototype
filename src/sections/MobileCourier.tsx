@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react'
+import { isLegacy } from '../marketplace/registry'
+import { MarketplaceCourier } from '../simulation/surfaces'
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { Button } from '../components/ui/Button'
 import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
@@ -75,7 +77,12 @@ function dayLabel(time: Timestamp, at: Moment) {
   return days === 0 ? `Today · ${formatClock(time)}` : days === 1 ? 'Yesterday' : formatDayMonth(time)
 }
 
+/** SIM-001: the marketplace dataset has its own Courier app on the shared simulation store; the historical one stays for ?dataset=legacy. */
 export default function MobileCourier({ demoTarget }: { demoTarget?: string }) {
+  return isLegacy ? <LegacyCourier demoTarget={demoTarget} /> : <MarketplaceCourier />
+}
+
+function LegacyCourier({ demoTarget }: { demoTarget?: string }) {
   const initialTab: TabKey = ['active', 'pickup-scan', 'delivery', 'delivery-qr'].includes(demoTarget ?? '') ? 'active' : 'assignments'
   const initialScreen: Screen = demoTarget === 'pickup-scan'
     ? 'pickup-scan'

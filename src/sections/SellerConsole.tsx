@@ -35,6 +35,8 @@ import {
 } from '../demo-data'
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
+import { isLegacy } from '../marketplace/registry'
+import { SellerOrders, useSellerActions } from '../simulation/surfaces'
 import { Notice } from './console/kit'
 import { LiveInbox, LiveThreadControls } from './console/LiveInbox'
 import { liveAsRecords, keyFor } from '../chatbot/thread'
@@ -180,8 +182,9 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
   const sellerOptions = showcaseSellers().map(id => ({ id, name: SELLERS[id].name, detail: `${SELLERS[id].category} · ${SELLERS[id].handle}` }))
 
   // Sidebar counts: Paid Orders needing action, conversations awaiting a reply, and open Claims.
+  const simActions = useSellerActions(sellerId) // SIM-001: the marketplace dataset counts Orders from the shared simulation store
   const badges: Partial<Record<NavKey, number>> = {
-    orders: sellerOrders(sellerId, at).filter(id => bucketOf(orderStateAt(id, at)!) === 'needs-action').length,
+    orders: isLegacy ? sellerOrders(sellerId, at).filter(id => bucketOf(orderStateAt(id, at)!) === 'needs-action').length : simActions.length,
     inbox: sellerThreads(sellerId, at).filter(({ id }) => awaitingSellerReplyAt(id, at)).length,
     claims: sellerClaims(sellerId, at).filter(id => claimStateAt(id, at) !== 'Resolved').length,
   }
@@ -209,7 +212,8 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
         {/* Keyed by Seller: each panel starts again from the selected Seller's records. */}
         <div key={sellerId} className="seller-console-content flex-1 overflow-y-auto">
           {activeNav === 'home' && <HomePanel sellerId={sellerId} at={at} onOpenOrder={id => { setActiveNav('orders'); setSelectedOrder(id) }} onOpenOrders={() => navigate('orders')} onOpenContent={() => navigate('content')} onNavigate={navigate} />}
-          {activeNav === 'orders' && (!simulation ? <SimulationGate title="Orders">Release 1 has no paid Orders: Buyers review a checkout preview and no Order is placed, so there is nothing to prepare, confirm or fulfil here.</SimulationGate> : selectedOrder ? <OrderDetail orderId={selectedOrder} at={at} courierChanges={courierChanges} onBack={() => setSelectedOrder(null)} /> : <OrdersPanel sellerId={sellerId} at={at} onOpenOrder={setSelectedOrder} />)}
+          {activeNav === 'orders' && !isLegacy && <SellerOrders sellerId={sellerId} />}
+          {activeNav === 'orders' && isLegacy && (!simulation ? <SimulationGate title="Orders">Release 1 has no paid Orders: Buyers review a checkout preview and no Order is placed, so there is nothing to prepare, confirm or fulfil here.</SimulationGate> : selectedOrder ? <OrderDetail orderId={selectedOrder} at={at} courierChanges={courierChanges} onBack={() => setSelectedOrder(null)} /> : <OrdersPanel sellerId={sellerId} at={at} onOpenOrder={setSelectedOrder} />)}
           {activeNav === 'setup' && <SellerSetup sellerId={sellerId} at={at} onNavigate={navigate} />}
           {activeNav === 'products' && <ProductAuthoring sellerId={sellerId} at={at} />}
           {activeNav === 'content' && <ContentHub sellerId={sellerId} at={at} demoTarget={demoTarget} />}

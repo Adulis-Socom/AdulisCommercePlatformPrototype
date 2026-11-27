@@ -1,7 +1,7 @@
 import { isLegacy } from './registry'
 
 /** Surfaces whose Orders, couriers, claims, moderation and board fixtures are still the historical narrative (later work orders adapt them to the marketplace data). */
-const HISTORICAL = new Set(['07-courier', '09-operator-console', '11-system-states'])
+const HISTORICAL = new Set(['09-operator-console', '11-system-states'])
 
 /**
  * Marketplace dataset only: a persistent label on the surfaces that have not been rebuilt on the marketplace operations data yet, so a
