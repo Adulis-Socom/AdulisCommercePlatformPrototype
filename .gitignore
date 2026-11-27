@@ -24,3 +24,4 @@ logs/
 /tools/bg-removal/.venv/
 /tools/bg-removal/models/
 __pycache__/
+tests/results/
