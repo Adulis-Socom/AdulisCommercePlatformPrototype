@@ -97,8 +97,7 @@ run({ width: 1440, height: 900 }, async (page, h) => {
   await page.getByRole('button', { name: 'Back', exact: true }).click(); await h.settle(300);
   await page.getByPlaceholder('Search Products, Scenes, Sellers').fill('buyer scene'); await h.settle(300);
   await page.getByRole('tab', { name: /^Scenes/ }).click(); await h.settle(500);
-  h.ck('Search: the authored Scene matches by caption', /Buyer scene caption/.test(await page.locator('body').innerText()), (await page.locator('body').innerText()).slice(300, 800).replace(/
-+/g, ' | '));
+  h.ck('Search: the authored Scene matches by caption', await page.getByRole('img', { name: /Scene: Buyer scene caption/ }).count() >= 1);
   await page.getByPlaceholder('Search Products, Scenes, Sellers').fill('nothing like this'); await h.settle(300);
   h.ck('Search: nothing matches, with a meaningful empty state', /No results for/.test(await page.locator('body').innerText()));
   // Out of stock: Scene private -> leaves feed, Story gone

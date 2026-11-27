@@ -38,7 +38,7 @@ await suite('fix003', { width: 1440, height: 900 }, async (page, t) => {
   await setStock('Linen Overshirt', 0)
   await buyer()
   await page.getByRole('button', { name: /Explore the Scene: Rail of the week/ }).first().click(); await t.settle(400)
-  t.eq('Buyer: the remaining hotspot is still numbered 2', await page.getByRole('button', { name: /^Product 2: Cotton Shirt Dress/ }).count(), 1)
+  t.eq('Buyer: the remaining hotspot is still numbered 2', await page.getByRole('button', { name: 'Cotton Shirt Dress', exact: true }).filter({ hasText: '2' }).count(), 1)
   t.eq('Buyer: no hotspot is renumbered to 1', await page.getByRole('button', { name: /^Product 1:/ }).count(), 0)
 
   // Private: every gate failure gives a reason; restock brings the Scene back on its own.

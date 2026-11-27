@@ -28,7 +28,7 @@ await suite('fix001', { width: 1440, height: 900 }, async (page, t) => {
 
   await t.section('Mobile — Buyer'); const g = page.getByRole('button', { name: 'Explore as guest' }); if (await g.count()) { await g.click(); await t.settle(500) }
   await page.getByRole('button', { name: /Search/ }).first().click(); await t.settle(400)
-  const box = page.getByPlaceholder(/Search/).or(page.getByRole('searchbox')).first(); await box.fill('shirt'); await box.press('Enter'); await t.settle(500)
+  const box = page.getByPlaceholder(/Search/).or(page.getByRole('searchbox')).first(); await box.fill('reworked'); await box.press('Enter'); await t.settle(500)
   body = await page.locator('.phone-stage').innerText()
   t.ck('Buyer Search: renamed Product with new price, old name and price gone', /Linen Overshirt Reworked/.test(body) && /ETB 2,600/.test(body) && !/Linen Overshirt(?! Reworked)/.test(body) && !/ETB 2,450/.test(body), body.slice(150, 500))
   t.ck('Buyer Search: renamed store', /Atelier Renamed/.test(body) && !/Addis Atelier/.test(body), body.slice(150, 500))

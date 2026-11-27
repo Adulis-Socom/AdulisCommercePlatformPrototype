@@ -2588,6 +2588,7 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
           <InfoBlock title="Trust">Purchase protection · Seller identity and business details reviewed by Adulis.</InfoBlock>
           <InfoBlock title="Description">{product.description ?? '—'}</InfoBlock>
           <InfoBlock title="Specifications">{product.attributes.join(' · ') || '—'}</InfoBlock>
+          {liveProductDetails(productId)?.category && (() => { const tax = findTaxonomy(liveProductDetails(productId)!.category); return <InfoBlock title="Category">{tax?.label}{!tax?.sub?.attributes && <span role="status" className="mt-1 block text-xs text-text-muted">Details for this category are not defined yet. Ask the Seller for anything you need to know.</span>}</InfoBlock> })()}
           <InfoBlock title="Fulfilment">{describeFulfilment(fulfilmentOptionsAt(product.seller, at))}</InfoBlock>
           {/* Reviews: the Product's Product Quality and its Seller's Seller Service, kept apart; it opens both tabs. */}
           <button onClick={onReviews} className="flex w-full items-center gap-3 border-b border-border py-5 text-left">
@@ -4123,7 +4124,7 @@ function ResultHeading({ title, count }: { title: string; count: string }) {
 
 function ProductRow({ productId, onClick }: { productId: ProductId; onClick: () => void }) {
   const product = PRODUCTS[productId]
-  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={product.name} photo={livePhoto(productId)} className="h-20 w-20 rounded-lg" /><span className="flex-1 py-1"><span className="block text-sm font-semibold">{product.name}</span><span className="block text-xs text-text-muted">{SELLERS[product.seller].name}</span><span className="mt-2 block text-sm font-bold text-brand-text"><InlinePrice productId={productId} /></span></span></button>
+  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={product.name} photo={livePhoto(productId)} className="h-20 w-20 rounded-lg" /><span className="flex-1 py-1"><span className="block text-sm font-semibold">{product.name}</span><span className="block text-xs text-text-muted">{SELLERS[product.seller].name}</span>{liveProductDetails(productId)?.category && <span className="block text-[11px] text-text-muted">{findTaxonomy(liveProductDetails(productId)!.category)?.label}</span>}<span className="mt-2 block text-sm font-bold text-brand-text"><InlinePrice productId={productId} /></span></span></button>
 }
 
 function PostRow({ postId, onClick }: { postId: ShoppablePostId; onClick: () => void }) {
