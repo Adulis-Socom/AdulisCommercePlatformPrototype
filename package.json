@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node tests/run.mjs",
+    "test:unit": "node tests/unit/chatbot-coverage.mjs && node tests/unit/chatbot-engine.mjs",
     "format": "oxfmt"
   },
   "dependencies": {
