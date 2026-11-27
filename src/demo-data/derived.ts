@@ -849,8 +849,9 @@ export function awaitingSellerReplyAt(conversation: ConversationId, at: Moment =
 export function contextOptionsAt(conversation: ConversationId, at: Moment = DEFAULT_SNAPSHOT) {
   const { buyer, seller } = CONVERSATIONS[conversation]
   return {
-    products: sellerProductsAt(seller, at),
-    posts: sellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at)),
+    // Seeded and authored Products and Scenes alike (FIX-004/007): a reply or message can be about any of them.
+    products: liveSellerProductsAt(seller, at),
+    posts: liveSellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at)),
     orders: ordersAt({ buyer, seller }, at),
   }
 }

@@ -15,6 +15,10 @@ export type MessageContext = { readonly general: true } | { readonly product: Pr
 
 export interface MessageRecord {
   readonly at: Timestamp
+  /** FIX-007: an answer from the Seller's automated assistant (shown as such, never as a team member). */
+  readonly automated?: boolean
+  /** FIX-007: the display name of the Seller team member who replied in this session. */
+  readonly author?: string
   /**
    * Orders messages that share `at` (0 when absent), as a Moment's sequence orders events. DEMO_DATA's messages have
    * none; a message sent in a prototype session takes that surface's next number, so the last one sent is the newest.

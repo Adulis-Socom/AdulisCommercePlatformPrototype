@@ -17,7 +17,9 @@ import {
   type OrderId, type OrderState, type SellerId, type Timestamp,
 } from '../demo-data'
 import { useWorkspace } from '../seller-workspace'
-import { LiveInbox } from './console/LiveInbox'
+import { LiveInbox, LiveThreadControls } from './console/LiveInbox'
+import { liveAsRecords, keyFor } from '../chatbot/thread'
+import { replyInThread } from '../chatbot/session'
 import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
@@ -707,11 +709,11 @@ function InboxTab({ sellerId, at, sent, onConversation, onClaim }: {
   // row previews its conversation's newest message, a reply sent in this session included, so its text and chip come from
   // the same message.
   const { simulation } = usePrototypeMode()
+  const { state: workspace } = useWorkspace()
   const threads = sellerThreads(sellerId, at, simulation)
-  const rows = threads.flatMap(({ id }) => { const last = visibleMessages(effectiveMessagesAt(id, at, sent[id]), simulation).pop(); return last ? [{ id, last }] : [] })
+  const rows = threads.flatMap(({ id }) => { const last = visibleMessages(effectiveMessagesAt(id, at, [...(sent[id] ?? []), ...liveAsRecords(workspace.chats[keyFor(id)], sessionStaffOn(sellerId, 'Seller Companion') ?? ('STF-AA-01' as never), at)]), simulation).pop(); return last ? [{ id, last }] : [] })
     .sort((a, b) => byMessageTime(b.last, a.last))
   const claims = simulation ? openClaims(sellerId, at) : []
-  const { state: workspace } = useWorkspace()
   const staffId = sessionStaffOn(sellerId, 'Seller Companion')
   const live = <LiveInbox compact sellerId={sellerId} author={staffId ? shortName(STAFF[staffId].name) : SELLERS[sellerId].name} />
   const hasLive = Object.values(workspace.chats).some(c => c.sellerId === sellerId)
@@ -751,11 +753,13 @@ function BuyerConversation({ conversationId, at, sent, onSend, onDocumentedReply
   const [message, setMessage] = useState(documented?.text ?? '')
   const [choosing, setChoosing] = useState(false)
   // DEMO_DATA's messages so far, then this session's replies, in time order. The Seller team's are this side's.
-  const messages = visibleMessages(effectiveMessagesAt(conversationId, at, sent), simulation)
+  const { state: ws, dispatch: wsDispatch } = useWorkspace()
+  const live = liveAsRecords(ws.chats[keyFor(conversationId)], staff ?? ('STF-AA-01' as never), at)
+  const messages = visibleMessages(effectiveMessagesAt(conversationId, at, [...sent, ...live]), simulation)
   const send = () => {
     if (!message || !staff) return
     if (documented && message === documented.text && sameContext(context, documented.context)) onDocumentedReply(documented.at)
-    else onSend({ at: at.at, from: staff, context, text: message })
+    else replyInThread(ws, wsDispatch, conversationId, shortName(STAFF[staff].name), message, context)
     setMessage('')
   }
   // A reply just sent comes into view; opening the conversation keeps its place.
@@ -770,7 +774,8 @@ function BuyerConversation({ conversationId, at, sent, onSend, onDocumentedReply
       <ScreenHeader title={shortName(BUYERS[buyer].name)} onBack={onBack} />
       <div className="border-b border-border bg-warning-bg px-4 py-2 text-[10px] leading-relaxed text-text-secondary">Chat supports coordination. It does not change payment, pickup, delivery, claim, or Order truth.</div>
       <div ref={list} role="list" aria-label="Messages" className="flex-1 overflow-y-auto bg-surface-raised p-4">
-        {messages.map((m, index) => <Bubble key={index} mine={m.from !== 'buyer'} context={m.context} author={m.from === 'buyer' ? undefined : shortName(STAFF[m.from].name)}>{m.text}</Bubble>)}
+        <LiveThreadControls conversationKey={keyFor(conversationId)} sellerId={seller} />
+        {messages.map((m, index) => <Bubble key={index} mine={m.from !== 'buyer'} context={m.context} author={m.from === 'buyer' ? undefined : m.automated ? 'Automated assistant' : m.author ?? shortName(STAFF[m.from].name)}>{m.text}</Bubble>)}
       </div>
       <div className="border-t border-border bg-surface p-3 pb-5">
         <button onClick={() => setChoosing(true)} aria-haspopup="dialog" aria-label={`Talking about: ${contextSubject(context)}. Change`} className="mb-2 inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand bg-brand-muted px-3 py-1 text-left text-xs font-semibold text-brand-dark"><span>Talking about: {contextSubject(context)}</span><IconChevronDown size={12} /></button>

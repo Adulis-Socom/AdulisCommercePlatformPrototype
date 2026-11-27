@@ -147,7 +147,7 @@ function Bubble({ m, seller }: { m: ChatMsg; seller: string }) {
   return (
     <div role="listitem" className={`${mine ? 'ml-auto items-end' : 'items-start'} mt-3 flex max-w-[82%] flex-col`}>
       {mine && <span className="mb-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-semibold text-text-secondary">Talking about: {m.subjectLabel ?? 'General'}</span>}
-      {!mine && <span className="mb-1 text-[10px] font-semibold text-text-muted">{m.from === 'bot' ? 'Automated assistant' : seller}</span>}
+      {!mine && <span className="mb-1 text-[10px] font-semibold text-text-muted">{m.from === 'bot' ? 'Automated assistant' : seller}{m.from === 'seller' && m.subjectLabel && m.subjectLabel !== `General question for ${seller}` ? ` · about ${m.subjectLabel}` : ''}</span>}
       <div className={`${mine ? 'rounded-tr-sm bg-brand text-on-brand' : 'rounded-tl-sm bg-surface shadow-sm'} rounded-2xl p-3 text-sm`}>{m.text}</div>
       {mine && m.escalated && <span className="mt-1 text-[10px] font-semibold text-success">Sent to {seller}</span>}
     </div>

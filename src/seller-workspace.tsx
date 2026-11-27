@@ -66,7 +66,7 @@ type Action =
   | { type: 'feedback-add'; item: BotFeedback }
   | { type: 'feedback-review'; id: string; review: NonNullable<BotFeedback['review']> }
   | { type: 'chat-exchange'; conversation: Conversation; messages: ChatMsg[]; pending: Pending | null; escalate?: string; waiting?: boolean }
-  | { type: 'chat-seller'; key: string; message: ChatMsg }
+  | { type: 'chat-seller'; key: string; message: ChatMsg; conversation?: Conversation }
   | { type: 'chat-mode'; key: string; mode: Conversation['mode'] }
   | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'knowledge'; seller: SellerId; entries: Knowledge[] } | { type: 'clock'; hours: number } | { type: 'reset' }
 
@@ -91,7 +91,7 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
       return { ...state, chats: { ...state.chats, [base.key]: { ...base, messages, pending: action.pending, waiting: action.escalate ? true : action.waiting ?? base.waiting, seq: base.seq + action.messages.length } } }
     }
     case 'chat-seller': {
-      const c = state.chats[action.key]
+      const c = state.chats[action.key] ?? action.conversation
       return c ? { ...state, chats: { ...state.chats, [c.key]: { ...c, messages: [...c.messages, action.message], mode: 'human_takeover', waiting: false, pending: null, seq: c.seq + 1 } } } : state
     }
     case 'chat-mode': { const c = state.chats[action.key]; return c ? { ...state, chats: { ...state.chats, [c.key]: { ...c, mode: action.mode, waiting: action.mode === 'bot' ? c.waiting : false } } } : state }

@@ -1,7 +1,8 @@
 // Sending a Buyer message and the Seller's reply (BOT-006). The Bot's answer comes from the one deterministic engine; nothing here touches
 // the Cart, inventory, a price or money. The Message keeps the subject it was sent with, and the answer is stored beside it.
 import type { Dispatch } from 'react'
-import type { Moment } from '../demo-data'
+import { CONVERSATIONS, contextSubject, type ConversationId, type MessageContext, type Moment } from '../demo-data'
+import { contextToSubject, keyFor } from './thread'
 import type { WorkspaceState } from '../seller-workspace'
 import { conversationKey, newConversation, type ChatMsg } from './chat'
 import { respond } from './engine'
@@ -36,6 +37,16 @@ export function sendBuyerMessage(state: WorkspaceState, dispatch: Dispatch<Send>
   dispatch({ type: 'chat-exchange', conversation, messages, pending: conversation.mode === 'human_takeover' ? null : result.pending,
     escalate: result.handoff && !handoffThis ? result.handoff.originalMessageId : undefined, waiting: handoffThis ? true : undefined })
   return result
+}
+
+/** A reply from a team member to a seeded or live thread, with the Product or Scene the Seller chose as its explicit context. */
+export function replyInThread(state: WorkspaceState, dispatch: Dispatch<{ type: 'chat-seller'; key: string; message: ChatMsg; conversation?: ReturnType<typeof newConversation> }>, id: ConversationId, staffName: string, text: string, context: MessageContext) {
+  const body = text.trim()
+  if (!body) return
+  const key = keyFor(id)
+  const c = state.chats[key] ?? newConversation(CONVERSATIONS[id].buyer, CONVERSATIONS[id].seller, MARKET.id)
+  const subject = contextToSubject(c.sellerId, context)
+  dispatch({ type: 'chat-seller', key, conversation: c, message: { id: `${key}#${c.seq + 1}`, seq: c.seq + 1, from: 'seller', text: body, staff: staffName, subject, subjectLabel: contextSubject(context) } })
 }
 
 export function sellerReply(dispatch: Dispatch<{ type: 'chat-seller'; key: string; message: ChatMsg }>, state: WorkspaceState, key: string, text: string, staff: string) {

@@ -36,7 +36,9 @@ import {
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { Notice } from './console/kit'
-import { LiveInbox } from './console/LiveInbox'
+import { LiveInbox, LiveThreadControls } from './console/LiveInbox'
+import { liveAsRecords, keyFor } from '../chatbot/thread'
+import { replyInThread } from '../chatbot/session'
 
 type NavKey = 'home' | 'setup' | 'orders' | 'products' | 'content' | 'inbox' | 'claims' | 'reviews' | 'trust' | 'insights' | 'store' | 'couriers' | 'automation' | 'settings'
 type HomeMode = 'pre-publication' | 'active'
@@ -740,8 +742,10 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const [reply, setReply] = useState('')
   // Replies sent in this session, per conversation, each with its context and the team member with the Seller Console
   // session (DEMO_DATA › Seller Console Settings). They are transient: a reset remounts the Console without them.
-  const [sent, setSent] = useState<Partial<Record<ConversationId, readonly MessageRecord[]>>>({})
+  // FIX-007: replies live in the shared conversation store, so the Buyer and the Companion see exactly this thread; nothing is local here.
+  const { state: ws, dispatch: wsDispatch } = useWorkspace()
   const staff = sessionStaffOn(sellerId, 'Seller Console')
+  const sentFor = (id: ConversationId) => liveAsRecords(ws.chats[keyFor(id)], staff ?? ('STF-AA-01' as never), at)
   const selectId = useId()
   // A chatbot escalation is the Buyer's unmatched question to the Seller's chatbot, still awaiting the Seller's reply.
   const escalationOf = (id?: ConversationId) => { const last = id && visible(messagesAt(id, at)).pop(); return last && last.from === 'buyer' && last.escalatedFromChatbot ? last : undefined }
@@ -752,17 +756,17 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const send = () => {
     const text = reply.trim()
     if (!text || !selected || !staff) return
-    setSent(all => ({ ...all, [selected]: [...(all[selected] ?? []), { at: at.at, sequence: Object.values(all).reduce((n, list) => n + (list?.length ?? 0), 0) + 1, from: staff, context, text }] }))
+    replyInThread(ws, wsDispatch, selected, shortName(STAFF[staff].name), text, context)
     setReply('')
   }
   const name = (id: ConversationId) => shortName(BUYERS[CONVERSATIONS[id].buyer].name)
   const choices = (selected ? contextChoicesAt(selected, at) : []).filter(choice => simulation || !('order' in choice))
   const question = escalationOf(selected)
   // DEMO_DATA's messages so far, then this session's replies, in time order.
-  const messages = selected ? visible(effectiveMessagesAt(selected, at, sent[selected])) : []
+  const messages = selected ? visible(effectiveMessagesAt(selected, at, sentFor(selected))) : []
   // Each row previews its conversation's newest message, a reply sent in this session included, so its text and chip come
   // from the same message. Latest first.
-  const rows = threads.flatMap(({ id }) => { const last = visible(effectiveMessagesAt(id, at, sent[id])).pop(); return last ? [{ id, last }] : [] })
+  const rows = threads.flatMap(({ id }) => { const last = visible(effectiveMessagesAt(id, at, sentFor(id))).pop(); return last ? [{ id, last }] : [] })
     .sort((a, b) => byMessageTime(b.last, a.last))
   // A reply just sent comes into view; opening a conversation keeps its place.
   const list = useRef<HTMLDivElement>(null)
@@ -783,8 +787,9 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
       {selected && <div className="seller-inbox-thread flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-border bg-surface px-5 py-3"><div className="flex items-center gap-3"><button onClick={() => setPhoneView('list')} aria-label="Back to conversations" className="seller-inbox-back flex-shrink-0 items-center justify-center rounded-lg text-lg font-semibold text-brand-text">←</button><AvatarText name={name(selected)} /><span><span className="block text-sm font-semibold">{name(selected)}</span><span className="text-xs text-text-muted">Buyer–Seller relationship thread</span></span></div>{escalated && <StatusBadge status="open" customLabel="Chatbot escalated" />}</div>
         {escalated && question && <div className="flex items-center gap-3 bg-warning-bg px-5 py-3 text-xs text-text-secondary"><span className="font-semibold text-warning">Chatbot escalation</span><span>The chatbot had no approved answer for “{question.text}” A human Seller reply is requested.</span><button onClick={() => setEscalated(false)} className="ml-auto font-semibold text-brand-text">Mark handled</button></div>}
+        <LiveThreadControls conversationKey={keyFor(selected)} sellerId={sellerId} />
         <div ref={list} role="list" aria-label="Messages" className="flex-1 overflow-y-auto bg-surface-raised p-5">
-          {messages.map((m, index) => <ChatBubble key={index} mine={m.from !== 'buyer'} context={m.context} author={m.from === 'buyer' ? undefined : shortName(STAFF[m.from].name)}>{m.text}</ChatBubble>)}
+          {messages.map((m, index) => <ChatBubble key={index} mine={m.from !== 'buyer'} context={m.context} author={m.from === 'buyer' ? undefined : m.automated ? 'Automated assistant' : m.author ?? shortName(STAFF[m.from].name)}>{m.text}</ChatBubble>)}
         </div>
         <div className="border-t border-border bg-surface p-4">
           {/* DEMO_DATA defines no preparation lead time, so no quick reply quotes one. */}

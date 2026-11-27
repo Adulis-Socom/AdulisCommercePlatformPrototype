@@ -4,6 +4,7 @@ import { BUYERS, type BuyerId } from '../../demo-data'
 import { threadStatus, type ChatMsg, type Conversation } from '../../chatbot/chat'
 import { sellerReply } from '../../chatbot/session'
 import { botConfigOf } from '../../chatbot/world'
+import { seededThreadOf } from '../../chatbot/thread'
 import { useWorkspace } from '../../seller-workspace'
 
 /**
@@ -17,7 +18,8 @@ const shortBuyer = (id: string) => { const name = BUYERS[id as BuyerId]?.name ??
 
 export function LiveInbox({ sellerId, author, compact }: { sellerId: string; author: string; compact?: boolean }) {
   const { state, dispatch } = useWorkspace()
-  const convs = Object.values(state.chats).filter(c => c.sellerId === sellerId).sort((a, b) => (b.messages.at(-1)?.seq ?? 0) - (a.messages.at(-1)?.seq ?? 0))
+  // A conversation with a Buyer who already has a seeded thread appears INSIDE that thread (one thread per Buyer, Seller and Market), not here.
+  const convs = Object.values(state.chats).filter(c => c.sellerId === sellerId && !seededThreadOf(c)).sort((a, b) => (b.messages.at(-1)?.seq ?? 0) - (a.messages.at(-1)?.seq ?? 0))
   const [open, setOpen] = useState<string | null>(null)
   const [reply, setReply] = useState('')
   if (!convs.length) return null
@@ -67,13 +69,31 @@ export function LiveInbox({ sellerId, author, compact }: { sellerId: string; aut
   )
 }
 
+/** The assistant's state for a thread shown in the ordinary Inbox, with Take over and Hand back. Renders nothing until the Buyer has used the assistant. */
+export function LiveThreadControls({ conversationKey, sellerId }: { conversationKey: string; sellerId: string }) {
+  const { state, dispatch } = useWorkspace()
+  const c = state.chats[conversationKey]
+  if (!c) return null
+  const status = threadStatus(c, botConfigOf(state, sellerId).enabled)
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2 text-xs" aria-label="Assistant status">
+      <span className={`rounded-full px-2 py-0.5 font-semibold ${TONE[status]}`}>{STATUS[status]}</span>
+      <span className="text-text-muted">{status === 'waiting' ? 'The Assistant handed a question to you; the original is in the thread.' : status === 'human' ? 'The Assistant is silent in this conversation.' : 'Replying pauses the Assistant here.'}</span>
+      <span className="flex-1" />
+      {c.mode === 'human_takeover'
+        ? <button onClick={() => dispatch({ type: 'chat-mode', key: c.key, mode: 'bot' })} className="rounded-lg border border-border px-2.5 py-1 font-semibold">Hand back to the Assistant</button>
+        : <button onClick={() => dispatch({ type: 'chat-mode', key: c.key, mode: 'human_takeover' })} className="rounded-lg border border-border px-2.5 py-1 font-semibold">Take over</button>}
+    </div>
+  )
+}
+
 function Row({ m }: { m: ChatMsg }) {
   if (m.from === 'ui') return <div role="listitem" className="text-center text-[11px] font-semibold text-text-muted">{m.text}</div>
   const buyer = m.from === 'buyer'
   return (
     <div role="listitem" className={`flex max-w-[85%] flex-col ${buyer ? 'items-start' : 'ml-auto items-end'}`}>
       {buyer && <span className="mb-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-semibold text-text-secondary">Talking about: {m.subjectLabel ?? 'General'}</span>}
-      {!buyer && <span className="mb-1 text-[10px] font-semibold text-text-muted">{m.from === 'bot' ? `Automated assistant${m.intent ? ` · ${m.intent} · ${m.templateId} v${m.templateVersion}` : ''}` : m.staff}</span>}
+      {!buyer && <span className="mb-1 text-[10px] font-semibold text-text-muted">{m.from === 'bot' ? `Automated assistant${m.intent ? ` · ${m.intent} · ${m.templateId} v${m.templateVersion}` : ''}` : `${m.staff}${m.subjectLabel ? ` · about ${m.subjectLabel}` : ''}`}</span>}
       <div className={`rounded-2xl p-3 text-sm ${buyer ? 'bg-surface shadow-sm' : m.from === 'bot' ? 'bg-brand-muted' : 'bg-brand text-on-brand'}`}>{m.text}</div>
       {buyer && m.escalated && <span className="mt-1 text-[10px] font-semibold text-warning">Original question retained · handed to the Seller</span>}
       {m.from === 'bot' && m.dialogue && m.dialogue.length > 0 && <span className="mt-1 text-[10px] text-text-muted">Script: {m.dialogue.join(', ')}</span>}
