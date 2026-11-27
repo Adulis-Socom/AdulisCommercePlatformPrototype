@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { Textarea, TextInput } from '../../components/ui/Input'
 import { CHATBOTS, PRODUCTS, type Moment, type ProductId, type SellerId } from '../../demo-data'
-import { linkableProducts, parseMoney, productStock, sceneVisibility, useWorkspace, type WorkspaceState } from '../../seller-workspace'
+import { linkableProducts, parseMoney, productPrices, productStock, sceneVisibility, useWorkspace, type WorkspaceState } from '../../seller-workspace'
 import { respond, type Knowledge, type Outcome, type ProductFacts, type StoreFacts, type Subject } from './chatbot-engine'
 import { Notice, SelectField } from './kit'
 
@@ -49,7 +49,7 @@ function factsOf(state: WorkspaceState, id: string, seller: SellerId, at: Moment
   if (!known) return null
   const o = state.products[id]
   if (o) {
-    const prices = o.variants.map(v => parseMoney(v.price || o.price)).filter((n): n is number => n !== null)
+    const prices = productPrices(o)
     return { id, name: o.name, fromPrice: prices.length ? Math.min(...prices) : parseMoney(o.price), stock: productStock(o), options: o.options.length ? o.options : o.seeded ? PRODUCTS[id as ProductId].variants.map(v => ({ name: v.name ?? 'Option', values: [...v.options] })) : [], description: o.description, attributes: [...Object.entries(o.attributes).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`), ...o.customAttributes.filter(a => a.name && a.value).map(a => `${a.name}: ${a.value}`)], fulfilment: o.fulfilment }
   }
   const seed = PRODUCTS[id as ProductId]

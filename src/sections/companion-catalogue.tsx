@@ -26,7 +26,7 @@ export function CatalogueTab({ sellerId, at }: { sellerId: SellerId; at: Moment 
         {rows.map(row => {
           const authored = state.products[row.id]
           const hasVariants = !!authored?.variants.length
-          const price = authored ? priceLabel(authored) : formatBirr(currentPrice(row.id as ProductId))
+          const price = authored && !authored.seeded ? priceLabel(authored) : formatBirr(currentPrice(row.id as ProductId))
           const label = stockState(row.stock)
           const tone = label === 'Out of Stock' ? 'bg-danger-bg text-danger' : label === 'Low Stock' ? 'bg-warning-bg text-warning' : 'bg-success-bg text-success'
           return (

@@ -85,7 +85,7 @@ export function effectiveOverlay(state: WorkspaceState): { products: Record<stri
   for (const p of Object.values(state.products)) {
     if (!p.seeded) continue
     const stock = productStock(p)
-    const prices = (p.variants.length ? p.variants.map(v => parseMoney(v.price || p.price)) : [parseMoney(p.price)]).filter((x): x is number => x !== null)
+    const prices = productPrices(p)
     products[p.id] = {
       published: p.status === 'published', name: p.name, description: p.description, price: prices.length ? Math.min(...prices) : null,
       stock, availability: stockState(stock), locallyMade: p.locallyMade, photos: p.photos,
@@ -104,13 +104,31 @@ export function effectiveOverlay(state: WorkspaceState): { products: Record<stri
 
 // ---------- Derived rules (no state of their own) ----------
 
+// Prototype placeholder limits (founder decision FD-005 still open): they only keep absurd input out of the workspace.
+export const MAX_PRICE_BIRR = 1_000_000
+export const MAX_STOCK = 100_000
+/** Santim for a price such as "2,450" or "2450.50"; null for blank, zero, negative, non-numeric, exponent, infinite or above MAX_PRICE_BIRR. */
 export const parseMoney = (text: string): number | null => {
-  const t = text.trim().replace(/,/g, '')
-  if (!/^\d+(\.\d{1,2})?$/.test(t)) return null
+  const raw = text.trim()
+  // Thousands separators only where they belong ("2,450"), never "1,2,3".
+  if (!/^(\d{1,3}(,\d{3})+|\d{1,9})(\.\d{1,2})?$/.test(raw)) return null
+  const t = raw.replace(/,/g, '')
   const value = Math.round(Number(t) * 100)
-  return value > 0 ? value : null
+  return value > 0 && value <= MAX_PRICE_BIRR * 100 ? value : null
 }
-export const parseCount = (text: string): number | null => (/^\d+$/.test(text.trim()) ? Number(text.trim()) : null)
+/** A whole-number quantity from 0 to MAX_STOCK; null otherwise. */
+export const parseCount = (text: string): number | null => {
+  const t = text.trim()
+  if (!/^\d{1,9}$/.test(t)) return null
+  const n = Number(t)
+  return n <= MAX_STOCK ? n : null
+}
+/** A Variant's effective price in santim: its own price when entered, else the Product's base price; null when neither is valid (never 0). */
+export const variantPrice = (p: Pick<WsProduct, 'price'>, v: WsVariant): number | null => parseMoney(v.price.trim() ? v.price : p.price)
+/** Every valid effective price of the Product (one per Variant, or the single price). */
+export const productPrices = (p: Pick<WsProduct, 'price' | 'variants'>): number[] =>
+  (p.variants.length ? p.variants.map(v => variantPrice(p, v)) : [parseMoney(p.price)]).filter((x): x is number => x !== null)
+const norm = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
 export const formatBirr = (santim: number) => `ETB ${(santim / 100).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: santim % 100 ? 2 : 0 })}`
 
 /** Total stock: the sum over Variants when there are any, else the Product's own figure. Unparseable counts as 0. */
@@ -130,13 +148,26 @@ export function publicationIssues(p: WsProduct): Issue[] {
   if (!p.seeded && !taxonomy?.category) issues.push({ field: 'category', message: 'Choose a category (required before first publication).' })
   else if (!p.seeded && taxonomy?.category?.subcategories.length && !taxonomy.sub) issues.push({ field: 'category', message: 'Choose a subcategory.' })
   if (!p.seeded && p.photos.length === 0) issues.push({ field: 'photos', message: 'Add at least one photo.' })
-  if (!p.variants.length && parseMoney(p.price) === null) issues.push({ field: 'price', message: 'Enter a price above zero, such as 2450 or 2450.50.' })
-  if (!p.variants.length && parseCount(p.stock) === null) issues.push({ field: 'stock', message: 'Enter the available quantity as a whole number (0 is allowed).' })
-  p.variants.forEach(v => {
-    if (v.price.trim() && parseMoney(v.price) === null) issues.push({ field: `variant:${v.key}`, message: `${v.label}: price must be above zero.` })
-    if (parseCount(v.stock) === null) issues.push({ field: `variant:${v.key}`, message: `${v.label}: enter the quantity as a whole number.` })
+  if (!p.variants.length && parseMoney(p.price) === null) issues.push({ field: 'price', message: `Enter a price above zero and at most ${MAX_PRICE_BIRR.toLocaleString('en-US')}, such as 2450 or 2450.50.` })
+  if (!p.variants.length && parseCount(p.stock) === null) issues.push({ field: 'stock', message: `Enter the available quantity as a whole number from 0 to ${MAX_STOCK.toLocaleString('en-US')}.` })
+  const names = new Set<string>()
+  p.options.forEach((o, i) => {
+    const key = norm(o.name)
+    if (!key || !o.values.length) issues.push({ field: 'variants', message: `Option ${i + 1} needs a name and at least one value, or remove it.` })
+    else if (names.has(key)) issues.push({ field: 'variants', message: `Two options are both called “${o.name.trim()}”.` })
+    names.add(key)
+    const seen = new Set<string>()
+    o.values.forEach(value => { const k = norm(value); if (seen.has(k)) issues.push({ field: 'variants', message: `${o.name.trim() || `Option ${i + 1}`} lists “${value}” more than once.` }); seen.add(k) })
   })
-  if (p.variants.length && !p.variants.some(v => parseMoney(v.price || p.price) !== null)) issues.push({ field: 'price', message: 'Set a base price or a price on at least one Variant.' })
+  const combos = new Set<string>()
+  p.variants.forEach(v => {
+    const k = v.label.split(' / ').map(norm).join('|')
+    if (combos.has(k)) issues.push({ field: `variant:${v.key}`, message: `${v.label}: this combination appears twice.` })
+    combos.add(k)
+    if (v.price.trim() && parseMoney(v.price) === null) issues.push({ field: `variant:${v.key}`, message: `${v.label}: price must be above zero and at most ${MAX_PRICE_BIRR.toLocaleString('en-US')}.` })
+    else if (variantPrice(p, v) === null) issues.push({ field: `variant:${v.key}`, message: `${v.label}: set a price here or a base price.` })
+    if (parseCount(v.stock) === null) issues.push({ field: `variant:${v.key}`, message: `${v.label}: enter the quantity as a whole number from 0 to ${MAX_STOCK.toLocaleString('en-US')}.` })
+  })
   if (!p.seeded && p.fulfilment.length === 0) issues.push({ field: 'fulfilment', message: 'Choose at least one fulfilment method.' })
   return issues
 }

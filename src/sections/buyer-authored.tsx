@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 import { buyerVisibleSellers, initials, type Moment, type SellerId, type SellerStory, type SellerStoryGroup } from '../demo-data'
 import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
-import { formatBirr, linkableProducts, parseMoney, productStock, sceneVisibility, stockState, storyPhase, useWorkspace, type WsProduct, type WsScene, type WorkspaceState } from '../seller-workspace'
+import { formatBirr, linkableProducts, productPrices, productStock, variantPrice, sceneVisibility, stockState, storyPhase, useWorkspace, type WsProduct, type WsScene, type WorkspaceState } from '../seller-workspace'
 import { Button } from '../components/ui/Button'
 
 /**
@@ -127,7 +127,7 @@ function Unavailable({ title, onBack, children }: { title: string; onBack: () =>
 }
 
 export function priceLabel(p: WsProduct): string {
-  const prices = (p.variants.length ? p.variants.map(v => parseMoney(v.price || p.price)) : [parseMoney(p.price)]).filter((x): x is number => x !== null)
+  const prices = productPrices(p)
   if (!prices.length) return 'Price not set'
   const low = Math.min(...prices)
   return prices.some(x => x !== low) ? `From ${formatBirr(low)}` : formatBirr(low)
@@ -195,7 +195,7 @@ export function AuthoredScreen({ view, state, at, onBack, onOpen, onSeededProduc
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">Options</h2>
               <ul className="flex flex-col gap-1.5">{product.variants.map(v => {
                 const n = Number(v.stock) || 0
-                return <li key={v.key} className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-sm"><span className="text-text-primary">{v.label}</span><span className={n > 0 ? 'text-text-secondary' : 'text-text-muted'}>{n > 0 ? formatBirr(parseMoney(v.price || product.price) ?? 0) : 'Out of Stock'}</span></li>
+                return <li key={v.key} className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-sm"><span className="text-text-primary">{v.label}</span><span className={n > 0 ? 'text-text-secondary' : 'text-text-muted'}>{n > 0 ? (variantPrice(product, v) === null ? 'Price not set' : formatBirr(variantPrice(product, v)!)) : 'Out of Stock'}</span></li>
               })}</ul>
             </section>
           )}

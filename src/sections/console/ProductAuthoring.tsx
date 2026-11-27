@@ -3,8 +3,9 @@ import { Button } from '../../components/ui/Button'
 import { SearchInput, Textarea, TextInput } from '../../components/ui/Input'
 import { ProductMediaEditor } from '../ProductMediaEditor'
 import { PRODUCTS, activeDiscount, fulfilmentOptionsAt, sellerProductsAt, type Moment, type ProductId, type SellerId } from '../../demo-data'
+import { LIVE_PRODUCTS } from '../../demo-data/live'
 import { TAXONOMY, attributesFor, findTaxonomy, type TaxonomyAttribute } from '../../demo-data/taxonomy'
-import { LOW_STOCK_AT, formatBirr, parseCount, parseMoney, productStock, publicationIssues, stockState, toThumbnail, useWorkspace, type Fulfilment, type WorkspaceState, type WsProduct, type WsVariant } from '../../seller-workspace'
+import { LOW_STOCK_AT, formatBirr, parseCount, parseMoney, productPrices, productStock, publicationIssues, stockState, toThumbnail, useWorkspace, type Fulfilment, type WorkspaceState, type WsProduct, type WsVariant } from '../../seller-workspace'
 import { Card, Check, Notice, Page, SelectField, Thumb, focusField } from './kit'
 
 /** SC-002 / SC-003: Product authoring with drafts, category-driven attributes, options, Variants, stock and simulated publication. */
@@ -62,11 +63,11 @@ function ProductList({ sellerId, at, notice, onOpen }: { sellerId: SellerId; at:
     ]
     return all.map(p => {
       const stock = p.seeded && !state.products[p.id] ? PRODUCTS[p.id as ProductId].stock : productStock(p)
-      const prices = p.variants.map(v => parseMoney(v.price || p.price)).filter((n): n is number => n !== null)
+      const prices = productPrices(p)
       // An unedited seeded Product with an active discount shows the price Buyers pay now, with the regular price beside it.
-      const discount = p.seeded && !state.products[p.id] ? activeDiscount(p.id as ProductId) : undefined
+      const discount = p.seeded ? activeDiscount(p.id as ProductId) : undefined
       const price = discount ? discount.price : prices.length ? Math.min(...prices) : parseMoney(p.price)
-      return { p, stock, price, discount: discount ? { regular: PRODUCTS[p.id as ProductId].price, percent: discount.percent } : null, state: stockState(stock) }
+      return { p, stock, price, discount: discount ? { regular: LIVE_PRODUCTS[p.id as ProductId].price, percent: discount.percent } : null, state: stockState(stock) }
     }).filter(r => r.p.name.toLowerCase().includes(query.toLowerCase()) && (filter === 'all' || (filter === 'out' ? r.stock === 0 && r.p.status === 'published' : r.p.status === filter)))
   }, [state, sellerId, at, query, filter])
   return (
@@ -292,7 +293,7 @@ function OptionRow({ option, index, onChange, onRemove }: { option: { name: stri
 }
 
 function ProductPreview({ p, stock }: { p: WsProduct; stock: number }) {
-  const prices = p.variants.map(v => parseMoney(v.price || p.price)).filter((n): n is number => n !== null)
+  const prices = productPrices(p)
   const price = prices.length ? Math.min(...prices) : parseMoney(p.price)
   const label = findTaxonomy(p.category)?.label
   return (
