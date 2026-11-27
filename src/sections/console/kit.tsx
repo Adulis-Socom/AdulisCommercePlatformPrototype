@@ -16,7 +16,7 @@ export function Page({ title, subtitle, actions, children, wide }: { title: stri
 
 export function Card({ step, title, hint, children }: { step?: string; title: string; hint?: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-border bg-surface p-5 max-sm:p-4" aria-label={title}>
+    <section className="rounded-2xl border border-border bg-surface p-5 max-sm:p-4">
       <div className="mb-4 flex items-start gap-3">
         {step && <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-brand-muted font-mono text-[11px] font-bold text-brand-dark">{step}</span>}
         <div><h2 className="font-display text-lg font-semibold text-text-primary">{title}</h2>{hint && <p className="mt-0.5 text-xs text-text-muted">{hint}</p>}</div>

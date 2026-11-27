@@ -105,7 +105,9 @@ function ProductEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: M
   }, [])
   const [p, setP] = useState<WsProduct>(initial)
   const baseline = useRef(comparable(initial))
-  const [errors, setErrors] = useState<{ field: string; message: string }[]>([])
+  // Errors are derived once publishing has been attempted, so each disappears as soon as its field is fixed.
+  const [attempted, setAttempted] = useState(false)
+  const [nameError, setNameError] = useState(false)
   const [banner, setBanner] = useState('')
   const [preview, setPreview] = useState(false)
   const [confirm, setConfirm] = useState<'discard' | 'delete' | null>(null)
@@ -135,18 +137,19 @@ function ProductEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: M
   const stock = productStock(p)
   const live = stockState(stock)
   const issues = publicationIssues(p)
+  const errors = attempted ? issues : nameError && p.name.trim().length < 2 ? [{ field: 'name', message: 'Add a Product name to save a draft.' }] : []
 
   const persist = (status: WsProduct['status'], message: string) => {
     const saved: WsProduct = { ...p, id: p.id || next('product'), status, updated: Date.now() }
     dispatch({ type: 'product', item: saved })
-    setP(saved); baseline.current = comparable(saved); setErrors([]); setBanner(message)
+    setP(saved); baseline.current = comparable(saved); setAttempted(false); setNameError(false); setBanner(message)
   }
   const saveDraft = () => {
-    if (p.name.trim().length < 2) { setErrors([{ field: 'name', message: 'Add a Product name to save a draft.' }]); focusField('name'); return }
+    if (p.name.trim().length < 2) { setNameError(true); focusField('name'); return }
     persist('draft', 'Draft saved. Nothing is visible to Buyers.')
   }
   const publish = () => {
-    if (issues.length) { setErrors(issues); setBanner(''); requestAnimationFrame(() => summary.current?.focus()); return }
+    if (issues.length) { setAttempted(true); setBanner(''); requestAnimationFrame(() => summary.current?.focus()); return }
     persist('published', p.status === 'published' ? 'Changes saved.' : 'Published (simulated). This Product can now be tagged in Scenes and linked from Stories.')
   }
   const back = () => { if (dirty) setConfirm('discard'); else onBack() }

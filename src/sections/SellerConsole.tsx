@@ -6,6 +6,9 @@ import { Skeleton } from '../components/ui/Overlay'
 import { SearchInput, Textarea, TextInput } from '../components/ui/Input'
 import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
 import ProductAuthoring from './console/ProductAuthoring'
+import SellerSetup from './console/SellerSetup'
+import SceneAuthoring from './console/SceneAuthoring'
+import StoryAuthoring from './console/StoryAuthoring'
 import {
   ConsoleTopBar, SidebarItem, SidebarSeparator, useDrawer,
   IconGrid, IconOrders, IconPackage, IconImage, IconInbox,
@@ -29,7 +32,7 @@ import {
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 
-type NavKey = 'home' | 'orders' | 'products' | 'content' | 'inbox' | 'claims' | 'reviews' | 'trust' | 'insights' | 'store' | 'couriers' | 'automation' | 'settings'
+type NavKey = 'home' | 'setup' | 'orders' | 'products' | 'content' | 'inbox' | 'claims' | 'reviews' | 'trust' | 'insights' | 'store' | 'couriers' | 'automation' | 'settings'
 type HomeMode = 'pre-publication' | 'active'
 type OrderBucket = 'needs-action' | 'preparing' | 'ready' | 'delivery' | 'completed' | 'cancelled'
 type DemoState = 'data' | 'loading' | 'empty' | 'conflict' | 'stale'
@@ -43,6 +46,7 @@ interface NavItem {
 
 const PRIMARY_NAV: NavItem[] = [
   { key: 'home', label: 'Home', icon: <IconGrid size={14} /> },
+  { key: 'setup', label: 'Store setup', icon: <IconStore size={14} /> },
   { key: 'orders', label: 'Orders', icon: <IconOrders size={14} /> },
   { key: 'products', label: 'Products', icon: <IconPackage size={14} /> },
   { key: 'content', label: 'Content', icon: <IconImage size={14} /> },
@@ -133,7 +137,7 @@ function greeting(at: Moment) {
 }
 
 export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
-  const initialNav = (demoTarget && ['home', 'orders', 'products', 'content', 'inbox', 'claims', 'reviews', 'trust', 'insights', 'store', 'couriers', 'automation', 'settings'].includes(demoTarget) ? demoTarget : 'home') as NavKey
+  const initialNav = (demoTarget && ['home', 'setup', 'orders', 'products', 'content', 'inbox', 'claims', 'reviews', 'trust', 'insights', 'store', 'couriers', 'automation', 'settings'].includes(demoTarget) ? demoTarget : 'home') as NavKey
   // The story moment of the guided-flow step (the 10:25 snapshot otherwise); it moves past a documented event the Seller
   // performs here (a Courier approval). The console opens on the step's Seller (the default Seller otherwise); the
   // top-bar Seller selector switches between the primary showcase Sellers.
@@ -198,8 +202,9 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
         <div key={sellerId} className="seller-console-content flex-1 overflow-y-auto">
           {activeNav === 'home' && <HomePanel sellerId={sellerId} at={at} onOpenOrder={id => { setActiveNav('orders'); setSelectedOrder(id) }} onOpenOrders={() => navigate('orders')} onOpenContent={() => navigate('content')} onNavigate={navigate} />}
           {activeNav === 'orders' && (!simulation ? <SimulationGate title="Orders">Release 1 has no paid Orders: Buyers review a checkout preview and no Order is placed, so there is nothing to prepare, confirm or fulfil here.</SimulationGate> : selectedOrder ? <OrderDetail orderId={selectedOrder} at={at} courierChanges={courierChanges} onBack={() => setSelectedOrder(null)} /> : <OrdersPanel sellerId={sellerId} at={at} onOpenOrder={setSelectedOrder} />)}
+          {activeNav === 'setup' && <SellerSetup sellerId={sellerId} at={at} onNavigate={navigate} />}
           {activeNav === 'products' && <ProductAuthoring sellerId={sellerId} at={at} />}
-          {activeNav === 'content' && <ContentPanel sellerId={sellerId} at={at} />}
+          {activeNav === 'content' && <ContentHub sellerId={sellerId} at={at} demoTarget={demoTarget} />}
           {activeNav === 'inbox' && <InboxPanel sellerId={sellerId} at={at} />}
           {activeNav === 'claims' && (simulation ? <ClaimsPanel sellerId={sellerId} at={at} /> : <SimulationGate title="Claims">Payment and refund Claims are deferred. Release 1 has no paid Orders to raise a Claim against.</SimulationGate>)}
           {activeNav === 'insights' && <InsightsPanel sellerId={sellerId} at={at} />}
@@ -1733,4 +1738,23 @@ function StatusClockIcon() {
 
 function InfoIcon() {
   return <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-info text-xs font-bold text-on-status">i</span>
+}
+
+/** Content: the Seller's own Scenes and Stories (SC-004, SC-005), and the historical demonstration Scene Posts. */
+function ContentHub({ sellerId, at }: { sellerId: SellerId; at: Moment; demoTarget?: string }) {
+  const [tab, setTab] = useState<'scenes' | 'stories' | 'demo'>('scenes')
+  const tabs = [['scenes', 'Scenes'], ['stories', 'Stories'], ['demo', 'Demonstration Scene Posts']] as const
+  return (
+    <div className="mx-auto max-w-7xl p-8 max-sm:p-4">
+      <div className="mb-5"><h1 className="font-display text-3xl font-semibold">Content</h1><p className="mt-1 text-sm text-text-muted">Scenes and Stories you create for your storefront and Buyers.</p></div>
+      <div role="tablist" aria-label="Content" className="mb-5 flex gap-1 border-b border-border">
+        {tabs.map(([key, label]) => <button key={key} role="tab" id={`content-tab-${key}`} aria-selected={tab === key} aria-controls="content-panel" onClick={() => setTab(key)} className={`min-h-11 border-b-2 px-4 text-sm font-semibold ${tab === key ? 'border-brand text-brand-text' : 'border-transparent text-text-muted'}`}>{label}</button>)}
+      </div>
+      <div role="tabpanel" id="content-panel" aria-labelledby={`content-tab-${tab}`}>
+        {tab === 'scenes' && <SceneAuthoring sellerId={sellerId} at={at} />}
+        {tab === 'stories' && <StoryAuthoring sellerId={sellerId} at={at} />}
+        {tab === 'demo' && <div className="-mx-8 -my-8 max-sm:-mx-4"><ContentPanel sellerId={sellerId} at={at} /></div>}
+      </div>
+    </div>
+  )
 }
