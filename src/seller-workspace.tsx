@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react'
-import { MARKET, PRODUCTS, SELLERS, buyerVisibleSellers, sellerProductsAt, type Moment, type SellerId } from './demo-data'
-import { setLiveOverlay, type ProductOverlay, type SellerOverlay } from './demo-data/live'
+import { DEFAULT_SNAPSHOT, MARKET, PRODUCTS, SELLERS, buyerVisibleSellers, sellerProductsAt, type Moment, type ProductId, type Santim, type SellerId } from './demo-data'
+import { setLiveOverlay, type AuthoredLive, type AuthoredProductLive, type AuthoredSceneLive, type ProductOverlay, type SellerOverlay } from './demo-data/live'
 import { findTaxonomy } from './demo-data/taxonomy'
 import type { Knowledge } from './sections/console/chatbot-engine'
 import type { BotConfig } from './chatbot/config'
@@ -49,6 +49,10 @@ export interface WorkspaceState {
   chats: Record<string, Conversation>
   /** BOT-FIX-03: Seller feedback on assistant answers, reviewed by an Operator. Never edits a template. */
   botFeedback: BotFeedback[]
+  /** The Buyer's temporary Cart once the Buyer has edited it this session (so it survives switching surfaces); null until then. Never a record. */
+  /** The Buyer's Saves and unsaves this session (keyed "product:ID" / "post:ID"), kept so they survive switching surfaces; null until the Buyer saves something. */
+  buyerSaved: Record<string, boolean> | null
+  buyerCart: { product: string; options: string[]; quantity: number; seen?: number }[] | null
   /** Prototype hours since the session began; Story lifetimes read it, so expiry is deterministic and demonstrable. */
   clockHours: number
 }
@@ -57,6 +61,8 @@ type Action =
   | { type: 'remove'; collection: 'products' | 'scenes' | 'stories'; id: string }
   | { type: 'restrict'; scene: string; reason: string | null }
   | { type: 'bot'; seller: SellerId; config: BotConfig }
+  | { type: 'saved'; changes: Record<string, boolean> }
+  | { type: 'cart'; lines: { product: string; options: readonly string[]; quantity: number; seen?: number }[] }
   | { type: 'feedback-add'; item: BotFeedback }
   | { type: 'feedback-review'; id: string; review: NonNullable<BotFeedback['review']> }
   | { type: 'chat-exchange'; conversation: Conversation; messages: ChatMsg[]; pending: Pending | null; escalate?: string; waiting?: boolean }
@@ -65,7 +71,7 @@ type Action =
   | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'knowledge'; seller: SellerId; entries: Knowledge[] } | { type: 'clock'; hours: number } | { type: 'reset' }
 
 const KEY = 'adulis.seller-workspace.v1'
-const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, botFeedback: [], clockHours: 0 }
+const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, botFeedback: [], buyerCart: null, buyerSaved: null, clockHours: 0 }
 
 function reducer(state: WorkspaceState, action: Action): WorkspaceState {
   switch (action.type) {
@@ -74,6 +80,8 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
     case 'story': return { ...state, stories: { ...state.stories, [action.item.id]: action.item } }
     case 'remove': { const next = { ...state[action.collection] }; delete next[action.id]; return { ...state, [action.collection]: next } }
     case 'setup': return { ...state, setup: { ...state.setup, [action.seller]: action.setup } }
+    case 'saved': return { ...state, buyerSaved: { ...action.changes } }
+    case 'cart': return { ...state, buyerCart: action.lines.map(l => ({ product: l.product, options: [...l.options], quantity: l.quantity, seen: l.seen })) }
     case 'feedback-add': return { ...state, botFeedback: [...state.botFeedback, action.item] }
     case 'feedback-review': return { ...state, botFeedback: state.botFeedback.map(f => (f.id === action.id ? { ...f, status: 'reviewed' as const, review: action.review } : f)) }
     case 'bot': return { ...state, bot: { ...state.bot, [action.seller]: action.config } }
@@ -120,7 +128,7 @@ export function SellerWorkspaceProvider({ children }: { children: ReactNode }) {
   // Ids come from a counter in the state, so they are stable and readable (PRD-NEW-001), never random.
   // FIX-001: publish the effective seeded Product/Seller values before children render (idempotent; keyed on the state).
   const overlay = useMemo(() => effectiveOverlay(state), [state])
-  setLiveOverlay(overlay.products, overlay.sellers)
+  setLiveOverlay(overlay.products, overlay.sellers, overlay.authored)
   const value = useMemo(() => {
     const dispatch: Dispatch<Action> = rawDispatch
     const next = (kind: 'product' | 'scene' | 'story') => {
@@ -136,7 +144,7 @@ export function SellerWorkspaceProvider({ children }: { children: ReactNode }) {
 export const useWorkspace = () => useContext(Ctx)
 
 /** What the Seller changed on seeded Products and Sellers, in the shape demo-data/live.ts applies over the seeded records. */
-export function effectiveOverlay(state: WorkspaceState): { products: Record<string, ProductOverlay>; sellers: Record<string, SellerOverlay> } {
+export function effectiveOverlay(state: WorkspaceState): { products: Record<string, ProductOverlay>; sellers: Record<string, SellerOverlay>; authored: AuthoredLive } {
   const products: Record<string, ProductOverlay> = {}
   for (const p of Object.values(state.products)) {
     if (!p.seeded) continue
@@ -155,7 +163,39 @@ export function effectiveOverlay(state: WorkspaceState): { products: Record<stri
     const handle = s.handle.trim()
     sellers[id] = { name: s.storeName.trim(), handle: handle && !handle.startsWith('@') ? `@${handle}` : handle, bio: s.about.trim(), collectionPlace: s.collection.on ? s.collection.place.trim() : '' }
   }
-  return { products, sellers }
+  // FIX-004: published authored Products and public authored Scenes become first-class records (same shape as the seeded ones).
+  const authoredProducts: Record<string, AuthoredProductLive> = {}
+  for (const p of Object.values(state.products)) {
+    if (p.seeded || p.status !== 'published' || !buyerVisibleSellers().includes(p.seller)) continue
+    const prices = productPrices(p)
+    if (!prices.length) continue
+    const stock = productStock(p)
+    const details = [...Object.entries(p.attributes).filter(([, v]) => v.trim()).map(([label, value]) => ({ label, value })), ...p.customAttributes.filter(a => a.name.trim() && a.value.trim()).map(a => ({ label: a.name, value: a.value }))]
+    authoredProducts[p.id] = {
+      record: { seller: p.seller, name: p.name, price: Math.min(...prices) as Santim, variants: p.options.map(o => ({ name: o.name, options: o.values })), stock, availability: stockState(stock), locallyMade: p.locallyMade, description: p.description, attributes: details.map(d => `${d.label}: ${d.value}`), quality: null },
+      photos: p.photos, category: p.category, rows: exactVariants(p), details,
+    }
+  }
+  const authoredScenes: Record<string, AuthoredSceneLive> = {}
+  for (const scene of Object.values(state.scenes)) {
+    if (scene.status !== 'published' || sceneVisibility(scene, state, DEFAULT_SNAPSHOT) !== 'public') continue
+    const spots = scene.tags.map((t, i) => ({ product: t.product, x: t.x, y: t.y, n: t.n ?? i + 1 })).filter(t => t.product in PRODUCTS || t.product in authoredProducts).sort((a, b) => a.n - b.n)
+    const ids = spots.map(t => t.product).filter((id, i, all) => all.indexOf(id) === i)
+    authoredScenes[scene.id] = {
+      record: { seller: scene.seller, title: scene.caption.trim() || 'Scene', tags: ids as ProductId[], hotspots: spots.length, publication: 'Published', caption: scene.caption },
+      image: scene.image, alt: scene.alt, spots, revision: scene.updated,
+    }
+  }
+  return { products, sellers, authored: { products: authoredProducts, scenes: authoredScenes } }
+}
+
+/** The exact Variants a Seller listed (labels are "S / Black" in option order); null when the Product has no options or no listed rows. */
+export function exactVariants(p: WsProduct): { values: Record<string, string>; label: string; price: number | null; stock: number }[] | null {
+  if (!p.options.length || !p.variants.length) return null
+  return p.variants.map(v => {
+    const parts = v.label.split(' / ')
+    return { values: Object.fromEntries(p.options.map((o, i) => [o.name, parts[i] ?? ''])), label: v.label, price: variantPrice(p, v), stock: parseCount(v.stock) ?? 0 }
+  })
 }
 
 // ---------- Derived rules (no state of their own) ----------

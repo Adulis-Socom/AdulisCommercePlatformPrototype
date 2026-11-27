@@ -5,7 +5,7 @@ import {
   CHATBOTS, MARKET, SHOPPABLE_POSTS, buyerVisibleProductsAt, buyerVisibleSellers, currentPrice, isBuyerVisiblePostAt,
   sellerPostsAt, type Moment, type ProductId, type SellerId, type ShoppablePostId,
 } from '../demo-data'
-import { COVERAGE_AREAS, linkableProducts, parseCount, parseMoney, productPrices, productStock, sceneVisibility, variantPrice, type WorkspaceState, type WsProduct } from '../seller-workspace'
+import { COVERAGE_AREAS, exactVariants, linkableProducts, parseMoney, productPrices, productStock, sceneVisibility, type WorkspaceState } from '../seller-workspace'
 import { blankBotConfig, type BotConfig } from './config'
 import type { LeafLabels } from './taxonomy-labels'
 import type { ProductFacts, SceneFacts, SellerFacts, World } from './types'
@@ -14,15 +14,7 @@ export const botConfigOf = (state: WorkspaceState, seller: string): BotConfig =>
 const isSeededProduct = (id: string): id is ProductId => id in LIVE_PRODUCTS
 const isSeededSeller = (id: string): id is SellerId => id in LIVE_SELLERS
 
-/** Variant rows of an authored or overridden Product, keyed by option name (labels are "S / Black" in option order). */
-function variantRows(p: WsProduct): ProductFacts['variants'] {
-  if (!p.options.length || !p.variants.length) return null
-  return p.variants.map(v => {
-    const parts = v.label.split(' / ')
-    const values = Object.fromEntries(p.options.map((o, i) => [o.name, parts[i] ?? '']))
-    return { label: v.label, values, price: variantPrice(p, v), stock: parseCount(v.stock) ?? 0 }
-  })
-}
+const variantRows = exactVariants
 
 export function sellerFacts(state: WorkspaceState, id: string): SellerFacts | null {
   if (!isSeededSeller(id)) return null

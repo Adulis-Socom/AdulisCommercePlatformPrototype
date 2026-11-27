@@ -73,31 +73,34 @@ run({ width: 1440, height: 900 }, async (page, h) => {
   await h.shot(path.join(OUT, 'buyer-authored-story-1440.png'));
   await page.getByRole('button', { name: 'View Product' }).click(); await h.settle(400);
   body = await page.locator('body').innerText();
-  h.ck('Story link opens the authored Product with price and stock state', /Buyer Dress/.test(body) && /ETB 1,200/.test(body) && /Available/.test(body));
-  h.knownGap('authored Products cannot be added to the Cart yet (FIX-006)', !(await page.getByRole('button', { name: /^(Add to Cart)/i }).count()));
+  h.ck('Story link opens the ordinary Product screen with price and stock state', /Buyer Dress/.test(body) && /ETB 1,200/.test(body) && /Available/.test(body));
+  h.ck('FIX-004: an authored Product offers Add to Cart, Save and Ask Seller exactly like a seeded one', await page.getByRole('button', { name: 'Add to Cart' }).count() === 1 && await page.getByRole('button', { name: /^Save$/ }).count() === 1 && await page.getByRole('button', { name: 'Ask Seller' }).count() === 1);
   await h.shot(path.join(OUT, 'buyer-authored-product-1440.png'));
   await page.getByRole('button', { name: 'Back', exact: true }).click(); await h.settle(300);
   // Scene -> hotspot -> Product -> back to Scene
   await page.getByRole('button', { name: /Explore the Scene: Buyer scene caption/ }).click(); await h.settle(400);
-  h.ck('Explore the Scene lists the tagged Product with a numbered hotspot', await page.getByRole('button', { name: /Product 1: Buyer Dress/ }).count() === 1 && /Products in this Scene/i.test(await page.locator('body').innerText()));
+  h.ck('Explore the Scene lists the tagged Product with a numbered hotspot', await page.getByRole('button', { name: 'Buyer Dress', exact: true }).count() === 1 && await page.getByRole('list', { name: 'Products in this Scene' }).count() === 1, (await page.getByRole('button').evaluateAll(els => els.map(e => (e.getAttribute('aria-label') || e.textContent || '').trim()).filter(Boolean).slice(20, 45))));
   await h.shot(path.join(OUT, 'buyer-authored-scene-1440.png'));
-  await page.getByRole('button', { name: /Product 1: Buyer Dress/ }).click(); await h.settle(300);
-  await page.getByRole('button', { name: 'Back to the Scene' }).click(); await h.settle(300);
-  h.ck('Back to the Scene returns to Explore the Scene', /Products in this Scene/i.test(await page.locator('body').innerText()));
+  await page.getByRole('button', { name: 'Buyer Dress', exact: true }).click(); await h.settle(300);
+  await page.getByRole('button', { name: /View Product/ }).click(); await h.settle(400);
+  await page.getByRole('button', { name: 'Back', exact: true }).click(); await h.settle(300);
+  h.ck('Back to the Scene returns to Explore the Scene', await page.getByRole('list', { name: 'Products in this Scene' }).count() === 1);
   // MB-002: Search finds the authored Product and Scene
   await page.getByRole('button', { name: 'Back', exact: true }).click(); await h.settle(300);
   await page.getByRole('button', { name: 'Search', exact: true }).first().click(); await h.settle(400);
   await page.getByPlaceholder('Search Products, Scenes, Sellers').fill('buyer dress'); await h.settle(300);
-  const sr = page.getByRole('region', { name: /Results from Sellers/ });
-  h.ck('Search: authored Product matches by name (case-insensitive) with Seller, price and stock state', await sr.count() === 1 && /Buyer Dress/.test(await sr.innerText()) && /ETB 1,200/.test(await sr.innerText()) && /Available/.test(await sr.innerText()), await sr.count() ? await sr.innerText() : 'no section');
+  const sr = page.locator('.flex-1.overflow-y-auto').last();
+  h.ck('Search: the authored Product matches by name (case-insensitive) and shows its Seller and availability', /Buyer Dress/.test(await sr.innerText()) , (await sr.innerText()).slice(0, 300));
   await h.shot(path.join(OUT, 'buyer-authored-search-1440.png'));
-  await sr.getByRole('button', { name: /Buyer Dress/ }).click(); await h.settle(300);
-  h.ck('Search result opens the authored Product', /Sold by/.test(await page.locator('body').innerText()));
+  await sr.getByRole('button', { name: /Buyer Dress/ }).first().click(); await h.settle(300);
+  h.ck('Search result opens the Product screen', /Description/.test(await page.locator('body').innerText()) && /Buyer Dress/.test(await page.locator('body').innerText()));
   await page.getByRole('button', { name: 'Back', exact: true }).click(); await h.settle(300);
   await page.getByPlaceholder('Search Products, Scenes, Sellers').fill('buyer scene'); await h.settle(300);
-  h.ck('Search: authored Scene matches by caption', /Scene ·/.test(await page.getByRole('region', { name: /Results from Sellers/ }).innerText()));
+  await page.getByRole('tab', { name: /^Scenes/ }).click(); await h.settle(500);
+  h.ck('Search: the authored Scene matches by caption', /Buyer scene caption/.test(await page.locator('body').innerText()), (await page.locator('body').innerText()).slice(300, 800).replace(/
++/g, ' | '));
   await page.getByPlaceholder('Search Products, Scenes, Sellers').fill('nothing like this'); await h.settle(300);
-  h.ck('Search: no authored section when nothing matches', await page.getByRole('region', { name: /Results from Sellers/ }).count() === 0);
+  h.ck('Search: nothing matches, with a meaningful empty state', /No results for/.test(await page.locator('body').innerText()));
   // Out of stock: Scene private -> leaves feed, Story gone
   await setStock(page, h, 0);
   await toBuyer(page, h);

@@ -9,9 +9,10 @@ import type { ClaimState, CourierAvailability, FulfilmentMode, OrderState, Trust
 import { SELLERS, SELLER_SESSIONS, STAFF, VOLT_HOUSE_PREPUBLICATION } from './records/sellers.ts'
 import type { SellerId, StaffId } from './records/sellers.ts'
 import { PRODUCTS, PRODUCT_IDS } from './records/products.ts'
-import { LIVE_PRODUCTS, isUnpublishedSeeded } from './live.ts'
+import { SHOPPABLE_POSTS as SEEDED_POSTS, SHOPPABLE_POST_IDS } from './records/posts.ts'
+import { LIVE_PRODUCTS, LIVE_POSTS, LIVE_POST_IDS, LIVE_PRODUCT_IDS, authoredPostIds, isUnpublishedSeeded, liveVariantRow } from './live.ts'
 import type { ProductId, ProductRecord } from './records/products.ts'
-import { SHOPPABLE_POSTS, SHOPPABLE_POST_IDS } from './records/posts.ts'
+const SHOPPABLE_POSTS = LIVE_POSTS // authored Scenes are first-class (FIX-004)
 import type { ShoppablePostId } from './records/posts.ts'
 import { BUYERS } from './records/buyers.ts'
 import type { BuyerId } from './records/buyers.ts'
@@ -92,9 +93,19 @@ export function sellerProductsAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT
   return byId(PRODUCT_IDS.filter(id => PRODUCTS[id].seller === seller && productExistsAt(id, at)))
 }
 
+/** Seeded and authored Products of the Seller that exist at `at`: what Buyer surfaces read (FIX-004). Seller-side code keeps the seeded-only list above (authored Products come from the workspace there). */
+export function liveSellerProductsAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): ProductId[] {
+  return byId(LIVE_PRODUCT_IDS.filter(id => LIVE_PRODUCTS[id].seller === seller && productExistsAt(id, at)))
+}
+
 /** The Seller's Scene Posts that exist at `at` (Drafts included), in ID order. */
 export function sellerPostsAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
-  return byId(SHOPPABLE_POST_IDS.filter(id => SHOPPABLE_POSTS[id].seller === seller && happenedBefore(SHOPPABLE_POSTS[id].created, at)))
+  return byId(SHOPPABLE_POST_IDS.filter(id => SEEDED_POSTS[id].seller === seller && happenedBefore(SEEDED_POSTS[id].created, at)))
+}
+
+/** Seeded and authored Scenes of the Seller that exist at `at`, for Buyer surfaces (FIX-004). */
+export function liveSellerPostsAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
+  return byId(LIVE_POST_IDS.filter(id => SHOPPABLE_POSTS[id].seller === seller && happenedBefore(SHOPPABLE_POSTS[id].created, at)))
 }
 
 /** The Seller's Pre-publication Setup Snapshot, a historical replay; DEMO_DATA records one for Volt House only. */
@@ -119,7 +130,7 @@ export function prepublicationCards(): { card: string; state: string; detail: st
 // ---------- Products ----------
 
 export function productExistsAt(product: ProductId, at: Moment = DEFAULT_SNAPSHOT): boolean {
-  return happenedBefore(PRODUCTS[product].created, at)
+  return happenedBefore(LIVE_PRODUCTS[product].created, at)
 }
 
 /** The Product's active demo discount (DEMO_DATA › Discounts). It applies to new Orders only, never retroactively. */
@@ -135,7 +146,7 @@ export function currentPrice(product: ProductId): Santim {
 
 /** Product Quality at `at`: the 10:25 count plus Reviews written since; null when the Product has no ratings yet. */
 export function productQualityAt(product: ProductId, at: Moment = DEFAULT_SNAPSHOT): { average: number; ratings: number } | null | undefined {
-  const base = PRODUCTS[product].quality
+  const base = LIVE_PRODUCTS[product].quality
   if (!base) return base
   return { average: base.average, ratings: base.ratings + REVIEW_IDS.filter(id => writtenAfterSnapshot(id, at) && REVIEWS[id].productQuality.some(q => q.product === product)).length }
 }
@@ -214,7 +225,8 @@ export function moderationIssuesAt(seller: SellerId, at: Moment = DEFAULT_SNAPSH
 }
 
 export function forYouAt(at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
-  return FOR_YOU_ORDER.filter(id => isForYouEligibleAt(id, at))
+  // Authored Scenes lead For You, then the seeded order (same eligibility rules for both).
+  return [...authoredPostIds(), ...FOR_YOU_ORDER].filter(id => isForYouEligibleAt(id, at))
 }
 
 export function followingAt(buyer: BuyerId, at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
@@ -224,7 +236,7 @@ export function followingAt(buyer: BuyerId, at: Moment = DEFAULT_SNAPSHOT): Shop
 
 /** Nearby for a discovery area: Sellers in demo proximity order, each one's eligible posts with an available Product. */
 export function nearbyAt(area: string, at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
-  return (NEARBY_PROXIMITY[area] ?? []).flatMap(seller => sellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at) && hasAvailableTagAt(id, at)))
+  return (NEARBY_PROXIMITY[area] ?? []).flatMap(seller => liveSellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at) && hasAvailableTagAt(id, at)))
 }
 
 /** The discovery areas a Buyer can choose for Nearby: those in the demo proximity metadata (rules 2.9, 2.14). */
@@ -239,7 +251,7 @@ export function buyerVisibleSellers(): SellerId[] {
 
 /** The Products Buyers can see at `at`, in ID order. */
 export function buyerVisibleProductsAt(at: Moment = DEFAULT_SNAPSHOT): ProductId[] {
-  return buyerVisibleSellers().flatMap(seller => sellerProductsAt(seller, at)).filter(id => !isUnpublishedSeeded(id))
+  return buyerVisibleSellers().flatMap(seller => liveSellerProductsAt(seller, at)).filter(id => !isUnpublishedSeeded(id))
 }
 
 /** Whether Buyers can see the Product at `at`, and so open its Product Post. It may still be out of stock (rule 1.8). */
@@ -254,7 +266,7 @@ export function isPurchasableAt(product: ProductId, at: Moment = DEFAULT_SNAPSHO
 
 /** The Scene Posts Buyers can see at `at` (published, not restricted, not Private), in ID order. */
 export function buyerVisiblePostsAt(at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
-  return buyerVisibleSellers().flatMap(seller => sellerPostsAt(seller, at).filter(id => isBuyerVisiblePostAt(id, at)))
+  return buyerVisibleSellers().flatMap(seller => liveSellerPostsAt(seller, at).filter(id => isBuyerVisiblePostAt(id, at)))
 }
 
 /** Discounts (rule 2.11): Buyer-visible Products with an active discount, largest discount first, then the larger ETB saving. */
@@ -294,7 +306,13 @@ export function orderTotals(order: OrderId): OrderTotals {
  * requirement 10). Recorded Orders keep their own totals (orderTotals).
  */
 export function productsSubtotal(lines: readonly OrderLine[]): Santim {
-  return lines.reduce((sum, line) => sum + currentPrice(line.product) * line.quantity, 0)
+  return lines.reduce((sum, line) => sum + unitPriceFor(line) * line.quantity, 0)
+}
+
+/** The price one unit of a Cart line pays now: the exact Variant's price when the Seller listed one, else the Product's current price. */
+export function unitPriceFor(line: Pick<OrderLine, 'product' | 'options'>): Santim {
+  const row = liveVariantRow(line.product, line.options ?? [])
+  return (row?.price ?? currentPrice(line.product)) as Santim
 }
 
 /**
@@ -302,7 +320,7 @@ export function productsSubtotal(lines: readonly OrderLine[]): Santim {
  * mode at `at`, and the 0.5% surcharge on the Products subtotal only, excluding the delivery charge (rules 5.6–5.8).
  */
 export function checkoutTotalsAt(seller: SellerId, lines: readonly OrderLine[], mode: FulfilmentMode, at: Moment = DEFAULT_SNAPSHOT): OrderTotals {
-  if (lines.some(line => PRODUCTS[line.product].seller !== seller)) throw new Error(`A ${SELLERS[seller].name} cart holds only its own Products`)
+  if (lines.some(line => LIVE_PRODUCTS[line.product].seller !== seller)) throw new Error(`A ${SELLERS[seller].name} cart holds only its own Products`)
   const delivery = fulfilmentOptionsAt(seller, at).find(option => option.mode === mode)?.charge
   if (delivery === undefined) throw new Error(`${SELLERS[seller].name} offers no ${mode} at ${at.at}`)
   const products = productsSubtotal(lines)
@@ -868,7 +886,7 @@ export function isContextChoiceAt(conversation: ConversationId, context: Message
 
 /** What a context chip names, in the specification §22 form: the Product's name, '<title> Scene Post' or 'Order <reference>'. */
 export function contextSubject(context: MessageContext): string {
-  if ('product' in context) return PRODUCTS[context.product].name
+  if ('product' in context) return LIVE_PRODUCTS[context.product].name
   if ('post' in context) return `${SHOPPABLE_POSTS[context.post].title} Scene Post`
   if ('order' in context) return `Order ${context.order}`
   return 'General / Seller'

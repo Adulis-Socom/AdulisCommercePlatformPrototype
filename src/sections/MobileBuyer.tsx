@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Button } from '../components/ui/Button'
 import { PhoneInput, SearchInput, Select, Textarea, TextInput } from '../components/ui/Input'
 import { BuyerChat } from './buyer-chat'
@@ -10,22 +10,24 @@ import {
   IconSearch, IconChevronDown, IconChevronRight,
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
-import { AuthoredSceneCard, AuthoredScreen, AuthoredSearchResults, useAuthoredBuyer, type AuthoredView } from './buyer-authored'
+import { useAuthoredBuyer, type AuthoredView } from './buyer-authored'
+import { NO_FILTERS, facets, searchProducts, searchScenes, searchSellers, type ProductDoc, type ProductFilters, type SceneDoc, type SellerDoc } from '../buyer-search'
+import { findTaxonomy } from '../demo-data/taxonomy'
 import {
   BUYERS, CHATBOTS, CHECKOUT_TESTS, CLAIMS, COLLECTIONS, COLLECTION_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, DELETION_CONSEQUENCES, DELETION_REASONS, DEMO_CARTS, GENERAL_CONTEXT, GUEST_STATE,
-  MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, REVIEWS, REVIEW_IDS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
-  accountDeletionPreviewAt, activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, claimStateAt, claimSubmitted, claimsForOrder,
+  MARKET, MODERATION_CASES, ORDERS, ORDER_TIMELINES, REVIEWS, REVIEW_IDS, SURFACE_DEFAULTS,
+  accountDeletionPreviewAt, activeDiscount, buyerVisiblePostsAt, buyerVisibleProductsAt, buyerVisibleSellers, byMessageTime, checkoutTotalsAt, unitPriceFor, claimStateAt, claimSubmitted, claimsForOrder,
   contextChoicesAt, contextKey, contextSubject, conversationBetween, currentPrice, describeFulfilment, discountsAt, discoveryAreas, effectiveMessagesAt, finalHandoffAt, followingAt,
   forYouAt, formatAge, formatClock12, formatClockShort, formatCompactCount, formatDate, formatDayMonth, formatEtb, formatMonthYear, fulfilmentOptionsAt, happenedBefore, initials, isBuyerVisibleAt,
   isBuyerVisiblePostAt, isContextChoiceAt, isPurchasableAt, issueAccountDeletionCapability, lineOptions, locallyMadeAt, nearbyAt, notificationTime, notificationsAt, onAdulisSince, ordersAt, orderStateAt, orderTotals, paidAt, paymentAttempts,
-  productQualityAt, productReviewsAt, productsSubtotal, purchasedProductsAt, requestAccountDeletionAt, reviewEligibilityAt, reviewEntitlementsAt, reviewsAt, sameContext, sceneReviewProducts, sellerCompletedOrdersAt, sellerPostsAt, sellerProductsAt, sellerReviewsAt,
+  productQualityAt, productReviewsAt, productsSubtotal, purchasedProductsAt, requestAccountDeletionAt, reviewEligibilityAt, reviewEntitlementsAt, reviewsAt, sameContext, sceneReviewProducts, sellerCompletedOrdersAt, sellerPostsAt, liveSellerPostsAt, liveSellerProductsAt, sellerProductsAt, sellerReviewsAt,
   sellerServiceAt, shortName, stateTime, storyGroupsAt, testPaymentRef, trustAt, trustLabel,
   type AccountDeletionCapability, type BuyerId, type CalendarDate, type DeletionBlocker, type ProductPurchase, type PurchasedProduct, type ReviewEntitlement, type SellerStoryGroup, type StoryId,
   type CheckoutTest, type CheckoutTestId, type ClaimId, type CollectionId, type CollectionItem, type ConversationId, type FinalHandoff, type FulfilmentMode, type MessageContext,
   type MessageRecord, type ModerationId, type Moment, type NotificationRecord, type OrderId, type OrderLine, type OrderState, type OrderTotals, type ProductId,
   type SellerId, type ShoppablePostId, type Timestamp,
 } from '../demo-data'
-import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, livePhoto } from '../demo-data/live'
+import { LIVE_POSTS as SHOPPABLE_POSTS, LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, isUnpublishedSeeded, livePhoto, liveProductDetails, liveSceneMedia, liveScenePhoto, liveVariantRow } from '../demo-data/live'
 
 import { CHECKOUT_PREVIEW_NOTICE, SimulationGate, usePrototypeMode } from '../prototype-mode'
 
@@ -70,7 +72,10 @@ type SessionReview = { entitlement: ReviewEntitlement; rating: number; text: str
 /** A Reviews tab (PR-005): a Product's Product Reviews, or a Seller's Seller Reviews. */
 type ReviewTab = { kind: 'product'; product: ProductId } | { kind: 'seller'; seller: SellerId }
 /** A line of the temporary prototype Cart: transient session state, never a canonical record (rule 3.12). */
-type CartLine = OrderLine
+type CartLine = OrderLine & {
+  /** The unit price (santim) the Buyer last saw for this line. A different price now is a material change that needs renewed review. */
+  seen?: number
+}
 /**
  * The conversation Chat opens, by Seller (one per Buyer and Seller, rule 12.1); the context its composer starts on: the
  * entry point's own record, otherwise General / Seller; and where Back returns. The context is the composer's, never the
@@ -187,6 +192,23 @@ function sellerCarts(cart: readonly CartLine[]): { seller: SellerId; lines: Cart
 
 const sameLine = (a: CartLine, b: CartLine) => a.product === b.product && a.options.join('\u0000') === b.options.join('\u0000')
 
+/**
+ * FIX-006: what changed under a Cart line since the Buyer built it, from the effective records. Each is a material change: checkout review
+ * stays closed until the Buyer has reviewed it (accepted the new price, reduced the quantity or removed the line). Nothing is held or ordered.
+ */
+type CartProblem = { kind: 'out' | 'unlisted' | 'short' | 'price'; max?: number; was?: number; now?: number }
+function cartProblem(line: CartLine, purchasable: (id: ProductId) => boolean): CartProblem | null {
+  const own = liveProductDetails(line.product)
+  const row = liveVariantRow(line.product, line.options)
+  if (own?.rows && !row) return { kind: 'unlisted' }
+  const stock = row ? row.stock : PRODUCTS[line.product].stock
+  if (!purchasable(line.product) || stock <= 0) return { kind: 'out' }
+  if (line.quantity > stock) return { kind: 'short', max: stock }
+  const now = unitPriceFor(line)
+  if (line.seen !== undefined && line.seen !== now) return { kind: 'price', was: line.seen, now }
+  return null
+}
+
 /** The cart without the given lines' quantities: a paid Seller Order's items leave the Cart (checked out). */
 function withoutLines(cart: readonly CartLine[], lines: readonly CartLine[]): CartLine[] {
   return cart
@@ -251,7 +273,8 @@ function upcomingClaim(orderId: OrderId, at: Moment): ClaimId | undefined {
 }
 
 /** A neutral stand-in for a Product or post image: DEMO_DATA defines no imagery, so it shows the record's initials. */
-function Placeholder({ label, initialsOf, className, dark }: { label: string; initialsOf?: string; className: string; dark?: boolean }) {
+function Placeholder({ label, initialsOf, className, dark, photo }: { label: string; initialsOf?: string; className: string; dark?: boolean; photo?: string }) {
+  if (photo) return <img src={photo} alt={label} className={`object-cover ${className}`} />
   return <div role="img" aria-label={label} className={`flex items-center justify-center font-display font-bold ${dark ? 'text-white/20' : 'bg-surface-raised text-text-muted'} ${className}`}>{initials(initialsOf ?? label)}</div>
 }
 
@@ -281,7 +304,11 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   // Switching to a guest clears a choice made while signed in.
   const [chosenArea, setChosenArea] = useState<string | null>(null)
   // Saves and removals made in this session, on top of the canonical default Saved Collection; DEMO_DATA never changes.
-  const [savedChanges, setSavedChanges] = useState<Partial<Record<SaveKey, boolean>>>({})
+  const { state: workspace, dispatch: workspaceDispatch } = useWorkspace()
+  const [savedChanges, setSavedChangesRaw] = useState<Partial<Record<SaveKey, boolean>>>(() => (workspace.buyerSaved ?? {}) as Partial<Record<SaveKey, boolean>>)
+  const savedTouched = useRef(false)
+  const setSavedChanges = (next: Partial<Record<SaveKey, boolean>> | ((c: Partial<Record<SaveKey, boolean>>) => Partial<Record<SaveKey, boolean>>)) => { savedTouched.current = true; setSavedChangesRaw(next) }
+  useEffect(() => { if (savedTouched.current) workspaceDispatch({ type: 'saved', changes: savedChanges as Record<string, boolean> }) }, [savedChanges])
   // Posts hidden from For You with Not Interested, for this session only (rule 3.9, specification §7). They're Maya's
   // personalization, so a guest's For You never applies them.
   const [hidden, setHidden] = useState<ShoppablePostId[]>([])
@@ -327,7 +354,8 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const authoredContent = useAuthoredBuyer(at)
   const [authored, setAuthored] = useState<AuthoredView | null>(null)
   const [authoredFrom, setAuthoredFrom] = useState<Screen>('feed')
-  const openAuthored = (view: AuthoredView) => { setStorySeller(null); setDiscoverySheet(null); setAuthored(view); if (screen !== 'authored') setAuthoredFrom(screen); setScreen('authored') }
+  // FIX-004: an authored Product or Scene opens the same screens as a seeded one.
+  const openAuthored = (view: AuthoredView) => { setStorySeller(null); setDiscoverySheet(null); if (view.kind === 'product') openProduct(view.id as ProductId); else openPost(view.id as ShoppablePostId) }
   const [postId, setPostId] = useState<ShoppablePostId>(focus?.post ?? SURFACE_DEFAULTS.post)
   const [productId, setProductId] = useState<ProductId>(focus?.product ?? SURFACE_DEFAULTS.product)
   const [sellerId, setSellerId] = useState<SellerId>(SHOPPABLE_POSTS[focus?.post ?? SURFACE_DEFAULTS.post].seller)
@@ -352,7 +380,12 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const [code, setCode] = useState('')
   // The temporary Cart is this session's own state, so signing in keeps it (rules 3.10, 3.12); a reset remounts the app.
   const [initial] = useState(() => initialCheckout(initialScreen))
-  const [cart, setCart] = useState<CartLine[]>(initial.cart)
+  // The Cart is session state; once the Buyer edits it, it is kept in the workspace store so it survives switching surfaces (and so a Seller's
+  // later price or stock change is noticed when the Buyer returns).
+  const cartTouched = useRef(false)
+  const [cart, setCartRaw] = useState<CartLine[]>(() => (workspace.buyerCart ? (workspace.buyerCart as CartLine[]) : initial.cart))
+  const setCart = (next: CartLine[] | ((lines: CartLine[]) => CartLine[])) => { cartTouched.current = true; setCartRaw(next) }
+  useEffect(() => { if (cartTouched.current) workspaceDispatch({ type: 'cart', lines: cart }) }, [cart])
   const [cartSeller, setCartSeller] = useState<SellerId>(ORDERS[DEMO_CARTS[0]].seller)
   const [checkoutSeller, setCheckoutSeller] = useState<SellerId>(ORDERS[DEMO_CARTS[0]].seller)
   // Checkout (WO-006), all transient session state that a reset removes (rule 3.12): each Seller cart's own fulfilment
@@ -450,6 +483,8 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
   const startCheckout = (seller: SellerId) => {
     const open = openOrderFor(seller)
     if (open) return retryPayment(open)
+    // Renewed review: a price, option or stock change keeps checkout review closed until the Cart lines are reviewed.
+    if (carts.find(item => item.seller === seller)?.lines.some(line => cartProblem(line, purchasable))) { setCartSeller(seller); setScreen('seller-cart'); return }
     setCheckoutSeller(seller)
     // Requirement 24's race: the run makes its Product unavailable once it is in this Seller cart, as checkout starts.
     const race = run && !run.raced && run.test.race && PRODUCTS[run.test.race].seller === seller && cart.some(line => line.product === run.test.race) ? run.test.race : undefined
@@ -629,7 +664,11 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
     setAuth('signed-in')
   }
   const addToCart = (line: CartLine) => {
-    setCart(lines => (lines.some(item => sameLine(item, line)) ? lines.map(item => (sameLine(item, line) ? { ...item, quantity: item.quantity + line.quantity } : item)) : [...lines, line]))
+    const exact = liveVariantRow(line.product, line.options)
+    const cap = Math.max(1, exact ? exact.stock : PRODUCTS[line.product].stock)
+    const seen = unitPriceFor(line)
+    // Quantity never exceeds what is available for the exact option; the Cart review shows anything that changes later.
+    setCart(lines => (lines.some(item => sameLine(item, line)) ? lines.map(item => (sameLine(item, line) ? { ...item, quantity: Math.min(cap, item.quantity + line.quantity) } : item)) : [...lines, { ...line, quantity: Math.min(cap, line.quantity), seen }]))
     setCartSeller(PRODUCTS[line.product].seller)
   }
 
@@ -663,7 +702,6 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'start' && <AppStart onExplore={() => { setAuth('guest'); setActiveTab('home'); setScreen('feed') }} onSignIn={() => startSignIn({ screen: 'feed', tab: 'home' })} />}
         {shown === 'sign-in-phone' && <SignInPhone phone={phone} setPhone={setPhone} onBack={() => setScreen(signInFrom)} onContinue={() => setScreen('sign-in-code')} />}
         {shown === 'sign-in-code' && <SignInCode phone={phone} code={code} setCode={setCode} onBack={() => setScreen('sign-in-phone')} onVerify={signIn} />}
-        {shown === 'authored' && authored && <AuthoredScreen view={authored} state={authoredContent.state} at={at} onBack={() => authored.kind === 'product' && authored.fromScene ? setAuthored({ kind: 'scene', id: authored.fromScene }) : setScreen(authoredFrom)} onOpen={setAuthored} onSeededProduct={id => openProduct(id as ProductId)} onSeller={openSeller} />}
         {shown === 'feed' && (
           <Home
             at={at}
@@ -771,7 +809,6 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onProduct={openProduct}
             onPost={openPost}
             onSeller={openSeller}
-            authored={<AuthoredSearchResults query={query} content={authoredContent} onOpen={openAuthored} />}
           />
         )}
         {shown === 'saved' && <Saved changes={savedChanges} onCollection={id => { setCollectionId(id); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
@@ -787,6 +824,8 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
             onAllCarts={() => setScreen('multi-cart')}
             onCheckout={() => startCheckout(cartSeller)}
             onQuantity={(line, quantity) => setCart(lines => lines.map(item => (sameLine(item, line) ? { ...item, quantity } : item)))}
+            onAcceptPrice={line => setCart(lines => lines.map(item => (sameLine(item, line) ? { ...item, seen: unitPriceFor(item) } : item)))}
+            problemOf={line => cartProblem(line, purchasable)}
             onRemove={line => setCart(lines => lines.filter(item => !sameLine(item, line)))}
           />
         )}
@@ -826,7 +865,7 @@ export default function MobileBuyer({ demoTarget }: { demoTarget?: string }) {
         {shown === 'claim-status' && <ClaimStatus orderId={orderId} claimId={claimId} at={at} onDone={() => setScreen('order-detail')} />}
         {shown === 'chats' && <ChatList at={at} sent={sentMessages} onBack={() => setScreen(chatsFrom)} onConversation={seller => openConversation({ seller, context: GENERAL_CONTEXT, from: 'chats' })} />}
         {(shown === 'conversation' || shown === 'chatbot') && <Conversation sellerId={chat.seller} startContext={chat.context} at={at} sent={sentMessages}
-          onProduct={id => (id in PRODUCTS ? openProduct(id as ProductId) : openAuthored({ kind: 'product', id }))}
+          onProduct={id => openProduct(id as ProductId)}
           onCart={() => { setCartSeller(chat.seller); setScreen('seller-cart') }}
           onBack={() => setScreen(shown === 'chatbot' ? 'product' : chat.from)} />}
         {shown === 'notifications' && <Notifications at={at} onBack={() => setScreen(notificationsFrom)} onOrder={openOrder} />}
@@ -1138,7 +1177,7 @@ function CartCheck({ unavailable, availabilityOf, afterSignIn, seller, sellerRea
         <div className="mt-5 flex flex-col gap-3">
           {unavailable.map(line => (
             <div key={`${line.product}-${line.options.join('-')}`} className="flex gap-3 rounded-xl border border-danger/20 bg-danger-bg p-3">
-              <Placeholder label={PRODUCTS[line.product].name} className="h-16 w-14 rounded-lg" />
+              <Placeholder label={PRODUCTS[line.product].name} photo={livePhoto(line.product)} className="h-16 w-14 rounded-lg" />
               <span className="flex-1">
                 <span className="block text-sm font-semibold">{PRODUCTS[line.product].name}</span>
                 <span className="mt-1 block text-xs text-text-muted">{SELLERS[PRODUCTS[line.product].seller].name} · {[lineOptions(line), `Quantity ${line.quantity}`].filter(Boolean).join(' · ')}</span>
@@ -1643,7 +1682,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
   // followed in this session (PR-004). A Scene hidden with More › Hide leaves every channel.
   const following = () => [
     ...followingAt(BUYER, at).filter(id => follows.includes(SHOPPABLE_POSTS[id].seller)),
-    ...follows.filter(id => !canonicalFollows.includes(id)).flatMap(id => sellerPostsAt(id, at).filter(post => isBuyerVisiblePostAt(post, at))),
+    ...follows.filter(id => !canonicalFollows.includes(id)).flatMap(id => liveSellerPostsAt(id, at).filter(post => isBuyerVisiblePostAt(post, at))),
   ]
   const posts = (channel === 'foryou' ? forYouAt(at).filter(id => !hidden.includes(id))
     : channel === 'following' ? (guest ? null : following())
@@ -1672,7 +1711,6 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
       <div id="home-channel-panel" role="tabpanel" aria-labelledby={`home-channel-${channel}`} className="flex min-h-0 flex-1 flex-col">
         <div ref={panel} onScroll={event => onScrolled(channel, event.currentTarget.scrollTop)} className={`min-h-0 flex-1 overflow-y-auto bg-background ${posts ? 'snap-y snap-mandatory' : ''}`}>
           {channel === 'nearby' && <div className="snap-start"><NearbyAreas area={area} chosen={areaChosen} onArea={onArea} /></div>}
-          {channel === 'foryou' && authoredScenes.map(scene => <AuthoredSceneCard key={scene.id} scene={scene} onExplore={() => onAuthoredScene(scene.id)} onSeller={() => onSeller(scene.seller)} />)}
           {posts?.map(id => (
             <ShoppablePostUnit
               key={id}
@@ -1911,7 +1949,7 @@ function ShoppablePostUnit({ postId, at, following, liked, saved, onExplore, onS
         </div>
         <div className="relative min-h-0 flex-1" style={{ background: 'linear-gradient(160deg, #6B5444 0%, #2E2520 100%)' }}>
           <div aria-hidden="true" className="absolute inset-0">
-            <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark className="h-full w-full text-6xl" />
+            <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark photo={liveScenePhoto(postId)} className="h-full w-full text-6xl" />
           </div>
           {/* The feed's media stays clean: no hotspots here. A Buyer enters Explore the Scene on purpose before choosing
               exact Product locations (Engagement System & Metrics Knowledge Base v1.0). The photo opens Explore the Scene;
@@ -1942,7 +1980,7 @@ function ProductPostCard({ productId, at, ends, onOpen }: { productId: ProductId
   const available = isPurchasableAt(productId, at)
   const body = (
     <>
-      <Placeholder label={product.name} className="h-24 w-20 flex-shrink-0 rounded-xl text-lg" />
+      <Placeholder label={product.name} photo={livePhoto(productId)} className="h-24 w-20 flex-shrink-0 rounded-xl text-lg" />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-xs text-text-muted">{SELLERS[product.seller].name} · {trustLabel(trustAt(product.seller, at))}</span>
         <span className="mt-1 text-sm font-semibold leading-snug text-text-primary">{product.name}</span>
@@ -2009,7 +2047,9 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
   const seller = SELLERS[post.seller]
   // The canonical hotspot count, hotspot n tied to the nth tagged Product. DEMO_DATA gives no coordinates, so where they
   // sit on the placeholder is illustrative; the list numbers its Products to match.
-  const markers = post.tags.slice(0, post.hotspots)
+  const media = liveSceneMedia(postId)
+  const markers = media ? media.spots.filter(sp => post.tags.includes(sp.product as ProductId)).map(sp => ({ product: sp.product as ProductId, n: sp.n, style: { left: `${sp.x}%`, top: `${sp.y}%`, transform: 'translate(-50%, -50%)' } as const }))
+    : post.tags.slice(0, post.hotspots).map((product, i) => ({ product, n: i + 1, style: EXPANDED_SPOTS[i] as CSSProperties }))
   const current = selected && post.tags.includes(selected) ? selected : null
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-surface">
@@ -2024,8 +2064,9 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
         <IconButton label="More options" onClick={onMore}>•••</IconButton>
       </div>
       <div className="relative min-h-0 flex-[70]" style={{ background: SCENE_MEDIA }}>
-        <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark className="absolute inset-0 h-full w-full text-6xl" />
-        {markers.map((product, i) => {
+        <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark photo={liveScenePhoto(postId)} className="absolute inset-0 h-full w-full text-6xl" />
+        {markers.map(marker => {
+          const { product } = marker
           const on = product === current
           return (
             <button
@@ -2033,10 +2074,10 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
               onClick={() => onSelect(product)}
               aria-label={PRODUCTS[product].name}
               aria-pressed={on}
-              style={{ ...EXPANDED_SPOTS[i], ...ON_PHOTO }}
+              style={{ ...marker.style, ...ON_PHOTO }}
               className={`absolute flex items-center justify-center rounded-full border-2 text-xs font-bold shadow-lg ${on ? 'h-11 w-11 border-brand bg-surface text-brand-text ring-4 ring-white/40' : 'h-9 w-9 border-white bg-brand text-on-brand'}`}
             >
-              {i + 1}
+              {marker.n}
             </button>
           )
         })}
@@ -2062,8 +2103,8 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
                       className={`flex w-44 items-center gap-2 rounded-xl border p-1.5 text-left ${on ? 'border-brand bg-brand-muted' : 'border-border bg-surface'}`}
                     >
                       <span className="relative flex-shrink-0">
-                        <Placeholder label={PRODUCTS[id].name} className="h-10 w-10 rounded-lg text-[10px]" />
-                        {i < markers.length && <span aria-hidden="true" className="absolute -left-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-on-brand">{i + 1}</span>}
+                        <Placeholder label={PRODUCTS[id].name} photo={livePhoto(id)} className="h-10 w-10 rounded-lg text-[10px]" />
+                        {markers.some(m => m.product === id) && <span aria-hidden="true" className="absolute -left-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-on-brand">{markers.find(m => m.product === id)!.n}</span>}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold text-text-primary">{PRODUCTS[id].name}</span>
@@ -2093,7 +2134,7 @@ function ScenePreview({ productId, at, onView }: { productId: ProductId | null; 
   const available = isPurchasableAt(productId, at)
   return (
     <div role="region" aria-label="Product preview" aria-live="polite" className="flex items-center gap-3 rounded-xl bg-surface-raised p-2">
-      <Placeholder label={product.name} className="h-14 w-14 flex-shrink-0 rounded-lg text-xs" />
+      <Placeholder label={product.name} photo={productId ? livePhoto(productId) : undefined} className="h-14 w-14 flex-shrink-0 rounded-lg text-xs" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-text-primary">{product.name}</div>
         <PriceTag productId={productId} />
@@ -2496,6 +2537,14 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
   const [choices, setChoices] = useState<string[]>(product.variants.map(group => group.options.find(option => buyingAgain?.line.options.includes(option)) ?? (group.name === 'Size' && group.options.includes('M') ? 'M' : group.options[0])))
   const boughtVariant = buyingAgain && lineOptions(buyingAgain.line)
   const [quantity, setQuantity] = useState(1)
+  // FIX-004/006: an exact Variant the Seller listed has its own price and stock; a combination that is not listed is NOT offered (never
+  // silently dropped or defaulted). Seeded Products keep one stock figure, which caps the quantity.
+  const rows = liveProductDetails(productId)?.rows ?? null
+  const row = rows ? liveVariantRow(productId, choices) : null
+  const unlisted = !!rows && !row
+  const optionOut = !!row && row.stock <= 0
+  const maxQuantity = Math.max(1, row ? row.stock : product.stock)
+  const shownQuantity = Math.min(quantity, maxQuantity)
   return (
     <>
       <Header title="Product" onBack={onBack} trailing={<><IconButton label="Share" onClick={onShare}>↗</IconButton><IconButton label="More options" onClick={onMore}>•••</IconButton></>} />
@@ -2521,10 +2570,14 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
           ))}
           <SectionLabel>Quantity</SectionLabel>
           <div className="inline-flex items-center rounded-lg border border-border">
-            <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="h-9 w-10 text-lg">−</button>
-            <span className="w-10 text-center text-sm font-semibold">{quantity}</span>
-            <button onClick={() => setQuantity(quantity + 1)} className="h-9 w-10 text-lg">+</button>
+            <button onClick={() => setQuantity(Math.max(1, shownQuantity - 1))} className="h-9 w-10 text-lg">−</button>
+            <span className="w-10 text-center text-sm font-semibold">{shownQuantity}</span>
+            <button onClick={() => setQuantity(Math.min(maxQuantity, shownQuantity + 1))} disabled={shownQuantity >= maxQuantity} className="h-9 w-10 text-lg disabled:opacity-40">+</button>
           </div>
+          {shownQuantity >= maxQuantity && !unlisted && !optionOut && maxQuantity < 50 && <p role="status" className="mt-1 text-xs text-text-muted">That is the most currently available{row ? ' for this option' : ''}.</p>}
+          {unlisted && <p role="status" className="mt-2 text-xs font-semibold text-warning">This combination is not offered. Choose another option.</p>}
+          {optionOut && <p role="status" className="mt-2 text-xs font-semibold text-warning">This option is out of stock. Choose another.</p>}
+          {row && row.price !== null && row.price !== currentPrice(productId) && <p className="mt-2 text-xs text-text-secondary">Price for this option: <span className="font-semibold text-text-primary">{formatEtb(row.price as never)}</span></p>}
 
           <button onClick={onSeller} className="mt-6 flex w-full items-center gap-3 rounded-xl bg-surface-raised p-3 text-left">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials(seller.name)}</span>
@@ -2550,7 +2603,7 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
       <div className="absolute bottom-0 left-0 right-0 flex gap-2 border-t border-border bg-surface p-3 pb-5">
         <Button variant="tertiary" size="lg" aria-pressed={saved} onClick={onSave}>{saved ? 'Saved' : 'Save'}</Button>
         <Button variant="tertiary" size="lg" onClick={onAskSeller}>Ask Seller</Button>
-        <Button size="lg" style={{ flex: 1 }} disabled={!purchasable} onClick={() => onOrder(choices, quantity)}>Add to Cart</Button>
+        <Button size="lg" style={{ flex: 1 }} disabled={!purchasable || unlisted || optionOut} onClick={() => onOrder(choices, shownQuantity)}>Add to Cart</Button>
       </div>
     </>
   )
@@ -2576,8 +2629,8 @@ function SellerProfile({ sellerId, at, following, sellerReviews, tab, onTab, onF
   const seller = SELLERS[sellerId]
   const service = sellerServiceAt(sellerId, at)
   // The Seller's Scenes that are public now: published, not restricted and not Private, as on the Storefront.
-  const scenes = sellerPostsAt(sellerId, at).filter(id => isBuyerVisiblePostAt(id, at))
-  const products = sellerProductsAt(sellerId, at)
+  const scenes = liveSellerPostsAt(sellerId, at).filter(id => isBuyerVisiblePostAt(id, at))
+  const products = liveSellerProductsAt(sellerId, at)
   return (
     <>
       <Header title="Seller" onBack={onBack} onSearch={onSearch} trailing={<IconButton label="Share">↗</IconButton>} />
@@ -2636,7 +2689,7 @@ function SceneTile({ postId, featured, onClick }: { postId: ShoppablePostId; fea
   const tagged = post.tags.length
   return (
     <button onClick={onClick} aria-label={`Scene: ${post.title}`} className="relative block w-full overflow-hidden rounded-xl text-left">
-      <Placeholder label={`Scene: ${post.title}`} initialsOf={post.title} className={`${featured ? 'h-72 text-4xl' : 'h-56 text-2xl'} w-full`} />
+      <Placeholder label={`Scene: ${post.title}`} initialsOf={post.title} photo={liveScenePhoto(postId)} className={`${featured ? 'h-72 text-4xl' : 'h-56 text-2xl'} w-full`} />
       <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white">{tagged === 0 ? 'Scene' : `${tagged} product${tagged === 1 ? '' : 's'} tagged`}</span>
       <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-3 pb-2.5 pt-8">
         <span className="block text-sm font-semibold text-white">{post.title}</span>
@@ -2654,8 +2707,8 @@ function SellerProducts({ products, onProduct }: { products: readonly ProductId[
       <div className="mb-3 flex items-end justify-between"><span className="text-xs text-text-muted">{products.length} product{products.length === 1 ? '' : 's'}</span><span className="text-xs font-semibold text-text-muted">Available first</span></div>
       <div className="grid grid-cols-2 gap-3">
         {sorted.map(id => PRODUCTS[id].availability === 'Out of Stock'
-          ? <div key={id} className="opacity-60"><ProductCard name={PRODUCTS[id].name} price={availabilityText(id)} onClick={() => onProduct(id)} /></div>
-          : <ProductCard key={id} name={PRODUCTS[id].name} price={<InlinePrice productId={id} />} onClick={() => onProduct(id)} />)}
+          ? <div key={id} className="opacity-60"><ProductCard id={id} name={PRODUCTS[id].name} price={availabilityText(id)} onClick={() => onProduct(id)} /></div>
+          : <ProductCard id={id} key={id} name={PRODUCTS[id].name} price={<InlinePrice productId={id} />} onClick={() => onProduct(id)} />)}
       </div>
     </>
   )
@@ -2728,37 +2781,83 @@ function SellerAbout({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   )
 }
 
-function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, onSeller, authored }: {
+/** FIX-005: the documents Search ranks, built from the effective records: seeded and authored Products and Scenes, Sellers Buyers can see. */
+function searchIndex(at: Moment) {
+  const products: ProductDoc[] = buyerVisibleProductsAt(at).map(id => {
+    const rec = PRODUCTS[id], own = liveProductDetails(id), tax = own?.category ? findTaxonomy(own.category)?.label : ''
+    return { id, name: rec.name, description: rec.description ?? '', sellerId: rec.seller, sellerName: SELLERS[rec.seller].name, category: tax || SELLERS[rec.seller].category || '',
+      attributes: own ? [...own.details] : [], details: own ? [] : [...rec.attributes], available: isPurchasableAt(id, at), locallyMade: rec.locallyMade }
+  })
+  const scenes: SceneDoc[] = buyerVisiblePostsAt(at).map(id => ({ id, title: SHOPPABLE_POSTS[id].title, caption: SHOPPABLE_POSTS[id].caption, sellerId: SHOPPABLE_POSTS[id].seller, sellerName: SELLERS[SHOPPABLE_POSTS[id].seller].name, productNames: SHOPPABLE_POSTS[id].tags.map(t => PRODUCTS[t].name) }))
+  const sellers: SellerDoc[] = buyerVisibleSellers().map(id => ({ id, name: SELLERS[id].name, handle: SELLERS[id].handle, bio: SELLERS[id].bio ?? '', area: SELLERS[id].area ?? '', category: SELLERS[id].category ?? '' }))
+  return { products, scenes, sellers }
+}
+
+function Search({ at, recent, query, setQuery, tab, setTab, onProduct, onPost, onSeller }: {
   at: Moment; recent: readonly string[]; query: string; setQuery: (q: string) => void; tab: SearchTab; setTab: (t: SearchTab) => void
-  onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void; authored?: ReactNode
+  onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void
 }) {
-  // Search behaves as before: any query other than the zero-result example shows the same results, which are the
-  // canonical Products, Scene Posts and Sellers that Buyers can see.
-  const zero = query.toLowerCase() === BUYERS[BUYER].zeroResultQuery
-  const active = query.length > 0
+  // Real search over the effective Products, Scenes and Sellers (published and not restricted only, seeded and authored alike).
+  const [filters, setFilters] = useState<ProductFilters>(NO_FILTERS)
+  const active = query.trim().length > 0
+  const index = searchIndex(at)
+  const matched = searchProducts(index.products, query)
+  const products = searchProducts(index.products, query, filters)
+  const scenes = searchScenes(index.scenes, query)
+  const sellers = searchSellers(index.sellers, query)
+  const none = !matched.length && !scenes.length && !sellers.length
+  const facet = facets(matched)
+  const filtering = filters.availableOnly || filters.locallyMade || !!filters.category || !!filters.attribute
+  const counts: Record<SearchTab, number> = { top: matched.length + scenes.length + sellers.length, products: matched.length, posts: scenes.length, sellers: sellers.length }
   return (
     <>
       <div className="border-b border-border bg-surface p-3">
-        <SearchInput
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onClear={() => setQuery('')}
-          placeholder="Search Products, Scenes, Sellers"
-        />
+        <SearchInput value={query} onChange={e => { setQuery(e.target.value); setFilters(NO_FILTERS) }} onClear={() => { setQuery(''); setFilters(NO_FILTERS) }} placeholder="Search Products, Scenes, Sellers" />
       </div>
-      {!active ? <SearchLanding recent={recent} onQuery={setQuery} /> : zero ? <ZeroSearch query={query} onClear={() => setQuery('')} /> : (
+      {!active ? <SearchLanding recent={recent} onQuery={setQuery} /> : none ? <ZeroSearch query={query} onClear={() => setQuery('')} /> : (
         <>
-          <div className="flex border-b border-border bg-surface">
+          <div role="tablist" aria-label="Result types" className="flex border-b border-border bg-surface">
             {(['top', 'products', 'posts', 'sellers'] as SearchTab[]).map(t => (
-              <button key={t} onClick={() => setTab(t)} className={`flex-1 py-3 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-brand text-brand-text' : 'text-text-muted'}`}>{t === 'posts' ? 'Scenes' : t}</button>
+              <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`flex-1 py-3 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-brand text-brand-text' : 'text-text-muted'}`}>{t === 'posts' ? 'Scenes' : t} {counts[t]}</button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-4">
-            {tab !== 'sellers' && authored}
-            {tab === 'top' && <TopResults at={at} onProduct={onProduct} onPost={onPost} onSeller={onSeller} />}
-            {tab === 'products' && <ProductResults at={at} onProduct={onProduct} />}
-            {tab === 'posts' && <PostResults at={at} onPost={onPost} />}
-            {tab === 'sellers' && <SellerResults at={at} onSeller={onSeller} />}
+            {tab === 'top' && (
+              <div>
+                <ResultHeading title="Products" count={String(matched.length)} />
+                {matched.length ? matched.slice(0, 3).map(d => <div key={d.id} className="mb-2"><ProductRow productId={d.id as ProductId} onClick={() => onProduct(d.id as ProductId)} /></div>) : <p className="text-xs text-text-muted">No Products match “{query}”.</p>}
+                {matched.length > 3 && <button onClick={() => setTab('products')} className="text-xs font-semibold text-brand-text">See all {matched.length} Products</button>}
+                <ResultHeading title="Scenes" count={String(scenes.length)} />
+                {scenes.length ? scenes.slice(0, 3).map(d => <div key={d.id} className="mb-2"><PostRow postId={d.id as ShoppablePostId} onClick={() => onPost(d.id as ShoppablePostId)} /></div>) : <p className="text-xs text-text-muted">No Scenes match “{query}”.</p>}
+                {scenes.length > 3 && <button onClick={() => setTab('posts')} className="text-xs font-semibold text-brand-text">See all {scenes.length} Scenes</button>}
+                <ResultHeading title="Sellers" count={String(sellers.length)} />
+                {sellers.length ? sellers.slice(0, 3).map(d => <div key={d.id} className="mb-2"><SellerRow sellerId={d.id as SellerId} at={at} onClick={() => onSeller(d.id as SellerId)} /></div>) : <p className="text-xs text-text-muted">No Sellers match “{query}”.</p>}
+              </div>
+            )}
+            {tab === 'products' && (
+              <div>
+                <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Product filters">
+                  <Choice active={filters.availableOnly} pressed={filters.availableOnly} onClick={() => setFilters(f => ({ ...f, availableOnly: !f.availableOnly }))}>{filters.availableOnly && <span aria-hidden="true">✓ </span>}Available</Choice>
+                  <Choice active={filters.locallyMade} pressed={filters.locallyMade} onClick={() => setFilters(f => ({ ...f, locallyMade: !f.locallyMade }))}>{filters.locallyMade && <span aria-hidden="true">✓ </span>}Locally made</Choice>
+                  {facet.categories.map(c => <Choice key={c.name} active={filters.category === c.name} pressed={filters.category === c.name} onClick={() => setFilters(f => ({ ...f, category: f.category === c.name ? '' : c.name }))}>{c.name} ({c.count})</Choice>)}
+                </div>
+                {facet.attributes.length > 0 && (
+                  <label className="mb-3 flex flex-col text-xs font-semibold text-text-muted">Detail
+                    <select value={filters.attribute ? `${filters.attribute.label}: ${filters.attribute.value}` : ''} onChange={e => { const hit = facet.attributes.find(a => `${a.label}: ${a.value}` === e.target.value); setFilters(f => ({ ...f, attribute: hit ? { label: hit.label, value: hit.value } : null })) }} className="mt-1 h-10 rounded-lg border border-border bg-surface px-2 text-sm font-normal text-text-primary">
+                      <option value="">Any detail</option>
+                      {facet.attributes.map(a => <option key={`${a.label}${a.value}`} value={`${a.label}: ${a.value}`}>{a.label}: {a.value} ({a.count})</option>)}
+                    </select>
+                  </label>
+                )}
+                {products.length ? <div className="flex flex-col gap-2">{products.map(d => <ProductRow key={d.id} productId={d.id as ProductId} onClick={() => onProduct(d.id as ProductId)} />)}</div> : (
+                  <div role="status" className="rounded-xl bg-surface-raised p-4 text-sm text-text-secondary">
+                    {filtering ? <>No Products match “{query}” with these filters. <button onClick={() => setFilters(NO_FILTERS)} className="font-semibold text-brand-text underline">Clear filters</button></> : <>No Products match “{query}”. Scenes or Sellers might.</>}
+                  </div>
+                )}
+              </div>
+            )}
+            {tab === 'posts' && (scenes.length ? <div className="grid grid-cols-2 gap-2">{scenes.map(d => <PostTile id={d.id as ShoppablePostId} key={d.id} title={d.title} label={`${SHOPPABLE_POSTS[d.id as ShoppablePostId].tags.length} product${SHOPPABLE_POSTS[d.id as ShoppablePostId].tags.length === 1 ? '' : 's'}`} onClick={() => onPost(d.id as ShoppablePostId)} />)}</div> : <div role="status" className="rounded-xl bg-surface-raised p-4 text-sm text-text-secondary">No Scenes match “{query}”.</div>)}
+            {tab === 'sellers' && (sellers.length ? <div className="flex flex-col gap-2">{sellers.map(d => <SellerRow key={d.id} sellerId={d.id as SellerId} at={at} onClick={() => onSeller(d.id as SellerId)} />)}</div> : <div role="status" className="rounded-xl bg-surface-raised p-4 text-sm text-text-secondary">No Sellers match “{query}”.</div>)}
           </div>
         </>
       )}
@@ -2780,45 +2879,6 @@ function SearchLanding({ recent, onQuery }: { recent: readonly string[]; onQuery
   )
 }
 
-// A Product as a Search result (§8): whether a Buyer can buy it now, by the module's rule at the story moment.
-type SearchProduct = { id: ProductId; available: boolean }
-
-/** Search's Product results (§8): the Products Buyers can see, currently available ones first, each group in its current
- * order. With the availability filter on, only the available ones. Top's Products preview and the Products tab read it. */
-function searchProducts(at: Moment, availableOnly: boolean): SearchProduct[] {
-  const all = buyerVisibleProductsAt(at).map(id => ({ id, available: isPurchasableAt(id, at) }))
-  return [...all.filter(p => p.available), ...(availableOnly ? [] : all.filter(p => !p.available))]
-}
-
-function TopResults({ at, onProduct, onPost, onSeller }: { at: Moment; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void; onSeller: (id: SellerId) => void }) {
-  const products = buyerVisibleProductsAt(at), posts = buyerVisiblePostsAt(at), sellers = buyerVisibleSellers()
-  // The Products preview is the first of Search's Product results, ranked as the Products tab ranks them (§8).
-  const first = searchProducts(at, false)[0].id
-  return (
-    <div>
-      <ResultHeading title="Products" count={String(products.length)} /><ProductRow productId={first} onClick={() => onProduct(first)} />
-      <ResultHeading title="Scenes" count={String(posts.length)} /><PostRow postId={posts[0]} onClick={() => onPost(posts[0])} />
-      <ResultHeading title="Sellers" count={String(sellers.length)} /><SellerRow sellerId={sellers[0]} at={at} onClick={() => onSeller(sellers[0])} />
-    </div>
-  )
-}
-
-function ProductResults({ at, onProduct }: { at: Moment; onProduct: (id: ProductId) => void }) {
-  // §8's availability filter: off by default, and with it on, unavailable Products are excluded. Its state shows as a
-  // check mark and as the pressed state, not by colour alone (§57). An unavailable Product shows "Currently unavailable"
-  // where the price would be, as the discovery lists present it (WO-004), and still opens its Product Post.
-  const [availableOnly, setAvailableOnly] = useState(false)
-  return <div><div className="mb-3 flex gap-2"><Choice active={availableOnly} pressed={availableOnly} onClick={() => setAvailableOnly(on => !on)}>{availableOnly && <span aria-hidden="true">✓ </span>}Available</Choice><Choice>Price</Choice><Choice>Category</Choice></div><div className="grid grid-cols-2 gap-3">{searchProducts(at, availableOnly).map(({ id, available }) => <ProductCard key={id} name={PRODUCTS[id].name} price={available ? <InlinePrice productId={id} /> : <span className="font-semibold text-text-muted">{availabilityText(id)}</span>} onClick={() => onProduct(id)} />)}</div></div>
-}
-
-function PostResults({ at, onPost }: { at: Moment; onPost: (id: ShoppablePostId) => void }) {
-  return <div className="grid grid-cols-2 gap-2">{buyerVisiblePostsAt(at).map(id => <PostTile key={id} title={SHOPPABLE_POSTS[id].title} label={`${SHOPPABLE_POSTS[id].tags.length} product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}`} onClick={() => onPost(id)} />)}</div>
-}
-
-function SellerResults({ at, onSeller }: { at: Moment; onSeller: (id: SellerId) => void }) {
-  return <div className="flex flex-col gap-2">{buyerVisibleSellers().map(id => <SellerRow key={id} sellerId={id} at={at} onClick={() => onSeller(id)} />)}</div>
-}
-
 function ZeroSearch({ query, onClear }: { query: string; onClear: () => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
@@ -2831,13 +2891,17 @@ function ZeroSearch({ query, onClear }: { query: string; onClear: () => void }) 
 }
 
 /** A Collection's items. The default Saved Collection also shows this session's Saves and removals (WO-004 requirement 11). */
+/** A saved item whose record no longer exists for Buyers (an authored Product or Scene was unpublished, a seeded Product returned to draft). It stays in the Collection, clearly marked. */
+const productGone = (id: ProductId) => !(id in PRODUCTS) || isUnpublishedSeeded(id)
+const postGone = (id: ShoppablePostId) => !(id in SHOPPABLE_POSTS)
+
 function collectionContents(id: CollectionId, changes: Partial<Record<SaveKey, boolean>> = {}) {
   const canonical = COLLECTIONS[id].items
   const added = (Object.keys(changes) as SaveKey[]).filter(key => changes[key] && !canonical.some(item => saveKeyOf(item) === key)).map(itemOf)
   const items = COLLECTIONS[id].isDefault ? [...canonical.filter(item => changes[saveKeyOf(item)] !== false), ...added] : canonical
   const products = items.flatMap(item => ('product' in item ? [item.product] : []))
   const posts = items.flatMap(item => ('post' in item ? [item.post] : []))
-  return { products, posts, unavailable: products.filter(p => PRODUCTS[p].availability === 'Out of Stock').length }
+  return { products, posts, unavailable: products.filter(p => productGone(p) || PRODUCTS[p].availability === 'Out of Stock').length + posts.filter(postGone).length }
 }
 
 function Saved({ changes, onCollection, onProduct, onPost }: { changes: Partial<Record<SaveKey, boolean>>; onCollection: (id: CollectionId) => void; onProduct: (id: ProductId) => void; onPost: (id: ShoppablePostId) => void }) {
@@ -2846,8 +2910,8 @@ function Saved({ changes, onCollection, onProduct, onPost }: { changes: Partial<
   // Collection's first of each.
   const recent = collectionContents(collections.find(id => COLLECTIONS[id].isDefault) ?? collections[0], changes)
   const latest = (prefix: 'product:' | 'post:') => (Object.keys(changes) as SaveKey[]).filter(key => changes[key] && key.startsWith(prefix)).map(itemOf).pop()
-  const recentProduct = (latest('product:') as { product: ProductId } | undefined)?.product ?? recent.products[0]
-  const recentPost = (latest('post:') as { post: ShoppablePostId } | undefined)?.post ?? recent.posts[0]
+  const recentProduct = [(latest('product:') as { product: ProductId } | undefined)?.product, ...recent.products].find(p => p && !productGone(p))
+  const recentPost = [(latest('post:') as { post: ShoppablePostId } | undefined)?.post, ...recent.posts].find(p => p && !postGone(p))
   return (
     <>
       <Header title="Saved" />
@@ -2855,7 +2919,7 @@ function Saved({ changes, onCollection, onProduct, onPost }: { changes: Partial<
         <div className="mb-4 flex items-end justify-between"><div><div className="font-display text-2xl font-semibold">Your finds</div><div className="text-xs text-text-muted">Private to you</div></div><Button size="sm">New collection</Button></div>
         {collections.map(id => {
           const { products, posts } = collectionContents(id, changes)
-          const tiles = [...products.map(p => PRODUCTS[p].name), ...posts.map(p => SHOPPABLE_POSTS[p].title)]
+          const tiles = [...products.map(p => (productGone(p) ? 'Unavailable' : PRODUCTS[p].name)), ...posts.map(p => (postGone(p) ? 'Unavailable' : SHOPPABLE_POSTS[p].title))]
           return (
             <button key={id} onClick={() => onCollection(id)} className="mb-3 w-full rounded-2xl border border-border bg-surface p-3 text-left shadow-sm">
               <div className="grid h-44 grid-cols-2 gap-1 overflow-hidden rounded-xl">
@@ -2868,8 +2932,8 @@ function Saved({ changes, onCollection, onProduct, onPost }: { changes: Partial<
         })}
         <SectionLabel>Recently saved</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
-          {recentProduct && <ProductCard name={PRODUCTS[recentProduct].name} price={PRODUCTS[recentProduct].availability === 'Out of Stock' ? availabilityText(recentProduct) : <InlinePrice productId={recentProduct} />} onClick={() => onProduct(recentProduct)} />}
-          {recentPost && <PostTile title={SHOPPABLE_POSTS[recentPost].title} onClick={() => onPost(recentPost)} label="Scene" />}
+          {recentProduct && <ProductCard id={recentProduct} name={PRODUCTS[recentProduct].name} price={PRODUCTS[recentProduct].availability === 'Out of Stock' ? availabilityText(recentProduct) : <InlinePrice productId={recentProduct} />} onClick={() => onProduct(recentProduct)} />}
+          {recentPost && <PostTile id={recentPost} title={SHOPPABLE_POSTS[recentPost].title} onClick={() => onPost(recentPost)} label="Scene" />}
         </div>
       </div>
     </>
@@ -2886,9 +2950,9 @@ function Collection({ collectionId, changes, onBack, onProduct, onPost }: { coll
         <div className="text-sm text-text-muted">A private collection · {total} saved item{total === 1 ? '' : 's'}</div>
         <div className="mt-4 flex gap-2"><Choice active>All {total}</Choice><Choice>Products {products.length}</Choice><Choice>Scenes {posts.length}</Choice></div>
         <SectionLabel>Products</SectionLabel>
-        <div className="grid grid-cols-2 gap-2">{products.map(id => <ProductCard key={id} name={PRODUCTS[id].name} price={PRODUCTS[id].availability === 'Out of Stock' ? availabilityText(id) : <InlinePrice productId={id} />} onClick={() => onProduct(id)} />)}</div>
+        <div className="grid grid-cols-2 gap-2">{products.map(id => productGone(id) ? <div key={id} role="status" className="rounded-xl bg-surface-raised p-3 text-xs text-text-muted">Saved Product · no longer available</div> : <ProductCard id={id} key={id} name={PRODUCTS[id].name} price={PRODUCTS[id].availability === 'Out of Stock' ? availabilityText(id) : <InlinePrice productId={id} />} onClick={() => onProduct(id)} />)}</div>
         <SectionLabel>Scenes</SectionLabel>
-        <div className="grid grid-cols-2 gap-2">{posts.map(id => <PostTile key={id} title={SHOPPABLE_POSTS[id].title} onClick={() => onPost(id)} label={`${SHOPPABLE_POSTS[id].tags.length} product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}`} />)}</div>
+        <div className="grid grid-cols-2 gap-2">{posts.map(id => postGone(id) ? <div key={id} role="status" className="rounded-xl bg-surface-raised p-3 text-xs text-text-muted">Saved Scene · no longer available</div> : <PostTile id={id} key={id} title={SHOPPABLE_POSTS[id].title} onClick={() => onPost(id)} label={`${SHOPPABLE_POSTS[id].tags.length} product${SHOPPABLE_POSTS[id].tags.length === 1 ? '' : 's'}`} />)}</div>
         {unavailable > 0 && <div className="mt-5 rounded-xl border border-warning/30 bg-warning-bg p-3"><div className="text-sm font-semibold text-warning">{unavailable} saved Product{unavailable === 1 ? ' is' : 's are'} unavailable</div><div className="mt-1 text-xs text-text-secondary">It remains in this Collection so you can find it again if it returns.</div></div>}
       </div>
     </>
@@ -3612,7 +3676,8 @@ function AddToCartConfirmation({ product, options, quantity, onClose, onCart }: 
   )
 }
 
-function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held, onBack, onAllCarts, onCheckout, onQuantity, onRemove }: {
+function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held, onBack, onAllCarts, onCheckout, onQuantity, onRemove, onAcceptPrice, problemOf }: {
+  onAcceptPrice: (line: CartLine) => void; problemOf: (line: CartLine) => CartProblem | null
   seller: SellerId; lines: readonly CartLine[]
   /** Whether the signed-in Buyer can buy a Product now; a guest's Cart is checked after sign-in instead (rule 3.11). */
   isAvailable: ((id: ProductId) => boolean) | null
@@ -3625,6 +3690,8 @@ function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held
   const seller = SELLERS[sellerId].name
   const subtotal = productsSubtotal(lines)
   const unavailable = isAvailable ? lines.filter(line => !isAvailable(line.product)) : []
+  const problems = lines.map(line => ({ line, problem: problemOf(line) })).filter((p): p is { line: CartLine; problem: CartProblem } => !!p.problem)
+  const problemFor = (line: CartLine) => problems.find(p => sameLine(p.line, line))?.problem
   const isHeld = (line: CartLine) => !!held && held.lines.some(item => sameLine(item, line))
   return (
     <>
@@ -3645,11 +3712,23 @@ function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held
           const locked = isHeld(line)
           return (
             <div key={`${line.product}-${line.options.join('-')}`} className="mt-4 flex gap-3 border-b border-border pb-5">
-              <Placeholder label={product.name} className="h-28 w-24 rounded-xl" />
+              <Placeholder label={product.name} photo={livePhoto(line.product)} className="h-28 w-24 rounded-xl" />
               <div className="flex flex-1 flex-col">
                 <div className="text-sm font-semibold leading-snug">{product.name}</div>
                 <div className="mt-1 text-xs text-text-muted">{lineOptions(line)}</div>
-                <div className={`mt-2 text-sm font-bold ${gone ? 'text-danger' : 'text-brand-text'}`}>{gone ? availabilityOf(line.product) : <InlinePrice productId={line.product} />}</div>
+                <div className={`mt-2 text-sm font-bold ${gone ? 'text-danger' : 'text-brand-text'}`}>{gone ? availabilityOf(line.product) : liveVariantRow(line.product, line.options) ? formatEtb(unitPriceFor(line)) : <InlinePrice productId={line.product} />}</div>
+                {(() => {
+                  const p = problemFor(line)
+                  if (!p) return null
+                  return (
+                    <div role="alert" className="mt-2 rounded-lg bg-warning-bg p-2 text-xs leading-relaxed text-text-secondary">
+                      {p.kind === 'price' && <><span className="font-semibold">Price changed</span> from {formatEtb(p.was as never)} to {formatEtb(p.now as never)}. <button onClick={() => onAcceptPrice(line)} className="font-semibold text-brand-text underline">Accept the new price</button></>}
+                      {p.kind === 'short' && <><span className="font-semibold">Not enough stock</span> for {line.quantity}: only {p.max} available for this option. <button onClick={() => onQuantity(line, p.max!)} className="font-semibold text-brand-text underline">Reduce to {p.max}</button></>}
+                      {p.kind === 'out' && <><span className="font-semibold">No longer available.</span> Remove it to continue.</>}
+                      {p.kind === 'unlisted' && <><span className="font-semibold">This option is no longer offered.</span> Remove it and choose another.</>}
+                    </div>
+                  )
+                })()}
                 <div className="mt-auto flex items-center justify-between">
                   <div className="inline-flex items-center rounded-lg border border-border">
                     <button onClick={() => onQuantity(line, Math.max(1, line.quantity - 1))} disabled={locked} aria-label={`Decrease ${product.name} quantity`} className={`h-8 w-8${locked ? ' opacity-40' : ''}`}>−</button>
@@ -3676,7 +3755,8 @@ function SellerCart({ seller: sellerId, lines, isAvailable, availabilityOf, held
             </>
           : <>
               {unavailable.length > 0 && <p role="alert" className="mb-3 text-xs leading-relaxed text-danger">Remove the unavailable item{unavailable.length === 1 ? '' : 's'} to check out this cart.</p>}
-              <Button size="lg" onClick={onCheckout} disabled={unavailable.length > 0} style={{ width: '100%' }}>Checkout this Seller cart</Button>
+              {problems.length > 0 && <p role="status" className="mb-3 text-xs leading-relaxed text-text-secondary">Something in this cart changed. Review it above before you continue. Nothing has been ordered, held or charged.</p>}
+              <Button size="lg" onClick={onCheckout} disabled={unavailable.length > 0 || problems.length > 0} style={{ width: '100%' }}>Checkout this Seller cart</Button>
             </>}
       </div>}
     </>
@@ -4043,12 +4123,12 @@ function ResultHeading({ title, count }: { title: string; count: string }) {
 
 function ProductRow({ productId, onClick }: { productId: ProductId; onClick: () => void }) {
   const product = PRODUCTS[productId]
-  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={product.name} className="h-20 w-20 rounded-lg" /><span className="flex-1 py-1"><span className="block text-sm font-semibold">{product.name}</span><span className="block text-xs text-text-muted">{SELLERS[product.seller].name}</span><span className="mt-2 block text-sm font-bold text-brand-text"><InlinePrice productId={productId} /></span></span></button>
+  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={product.name} photo={livePhoto(productId)} className="h-20 w-20 rounded-lg" /><span className="flex-1 py-1"><span className="block text-sm font-semibold">{product.name}</span><span className="block text-xs text-text-muted">{SELLERS[product.seller].name}</span><span className="mt-2 block text-sm font-bold text-brand-text"><InlinePrice productId={productId} /></span></span></button>
 }
 
 function PostRow({ postId, onClick }: { postId: ShoppablePostId; onClick: () => void }) {
   const post = SHOPPABLE_POSTS[postId]
-  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={post.title} className="h-20 w-20 rounded-lg" /><span className="py-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-brand-text">Scene</span><span className="mt-1 block text-sm font-semibold">{post.title}</span><span className="text-xs text-text-muted">{SELLERS[post.seller].name} · {post.tags.length} product{post.tags.length === 1 ? '' : 's'}</span></span></button>
+  return <button onClick={onClick} className="flex w-full gap-3 rounded-xl bg-surface-raised p-2 text-left"><Placeholder label={post.title} photo={liveScenePhoto(postId)} className="h-20 w-20 rounded-lg" /><span className="py-1"><span className="text-[10px] font-semibold uppercase tracking-wider text-brand-text">Scene</span><span className="mt-1 block text-sm font-semibold">{post.title}</span><span className="text-xs text-text-muted">{SELLERS[post.seller].name} · {post.tags.length} product{post.tags.length === 1 ? '' : 's'}</span></span></button>
 }
 
 function SellerRow({ sellerId, at, onClick }: { sellerId: SellerId; at: Moment; onClick: () => void }) {
@@ -4056,12 +4136,12 @@ function SellerRow({ sellerId, at, onClick }: { sellerId: SellerId; at: Moment; 
   return <button onClick={onClick} className="flex w-full items-center gap-3 rounded-xl bg-surface-raised p-3 text-left"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-muted font-bold text-brand-dark">{initials(seller.name)}</span><span className="flex-1"><span className="block text-sm font-semibold">{seller.name}</span><span className="text-xs text-text-muted">{seller.category} · {trustLabel(trustAt(sellerId, at))}</span></span><span className="text-xs font-semibold text-brand-text">View</span></button>
 }
 
-function ProductCard({ name, price, onClick }: { name: string; price: ReactNode; onClick: () => void }) {
-  return <button onClick={onClick} className="overflow-hidden rounded-xl bg-surface text-left"><Placeholder label={name} className="h-44 w-full rounded-xl text-2xl" /><span className="mt-2 block text-xs font-semibold leading-snug">{name}</span><span className="mt-1 block text-xs font-bold text-brand-text">{price}</span></button>
+function ProductCard({ id, name, price, onClick }: { id?: ProductId; name: string; price: ReactNode; onClick: () => void }) {
+  return <button onClick={onClick} className="overflow-hidden rounded-xl bg-surface text-left"><Placeholder label={name} photo={id ? livePhoto(id) : undefined} className="h-44 w-full rounded-xl text-2xl" /><span className="mt-2 block text-xs font-semibold leading-snug">{name}</span><span className="mt-1 block text-xs font-bold text-brand-text">{price}</span></button>
 }
 
-function PostTile({ title, label, onClick }: { title: string; label: string; onClick: () => void }) {
-  return <button onClick={onClick} className="relative overflow-hidden rounded-xl text-left"><Placeholder label={`Scene: ${title}`} initialsOf={title} className="h-52 w-full text-2xl" /><span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white"><TagIcon /> <span className="ml-1">{label}</span></span></button>
+function PostTile({ id, title, label, onClick }: { id?: ShoppablePostId; title: string; label: string; onClick: () => void }) {
+  return <button onClick={onClick} className="relative overflow-hidden rounded-xl text-left"><Placeholder label={`Scene: ${title}`} initialsOf={title} photo={id ? liveScenePhoto(id) : undefined} className="h-52 w-full text-2xl" /><span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white"><TagIcon /> <span className="ml-1">{label}</span></span></button>
 }
 
 function InfoBlock({ title, children }: { title: string; children: ReactNode }) {
