@@ -19,6 +19,8 @@ export interface SimComment { id: string; courierId: string; sellerId: string; o
 /** Visibility-allowed: shared with eligible Sellers and cleared by moderation. Only these count in any aggregate and only these reach other Sellers. */
 export const isShared = (c: SimComment) => c.visibility === SHARED && c.moderation === VISIBLE
 export const isPending = (c: SimComment) => c.moderation === PENDING
+/** Hidden by an Operator (moderation.ts): shown to nobody but its author, counted nowhere. */
+export const isHidden = (c: SimComment) => c.moderation === 'HIDDEN_MODERATION'
 
 /** Why a comment's provenance is invalid, or null when it matches a simulated Order that this Courier served for this Seller. */
 export function provenanceError(s: SimState, c: Pick<SimComment, 'courierId' | 'sellerId' | 'orderId'>): string | null {
@@ -39,8 +41,8 @@ export const servedSellers = (s: SimState, courierId: string) => new Set(Object.
  */
 export function commentsFor(s: SimState, viewer: Viewer, courierId: string): SimComment[] {
   const all = Object.values(s.comments).filter(c => c.courierId === courierId)
-  const rows = viewer.role === 'COURIER' ? (viewer.id === courierId ? all : [])
-    : viewer.role === 'SELLER' ? (servedSellers(s, courierId).has(viewer.id) ? all.filter(c => isShared(c) || (isPending(c) && c.sellerId === viewer.id)) : [])
+  const rows = viewer.role === 'COURIER' ? (viewer.id === courierId ? all.filter(c => !isHidden(c)) : [])
+    : viewer.role === 'SELLER' ? (servedSellers(s, courierId).has(viewer.id) ? all.filter(c => isShared(c) || ((isPending(c) || isHidden(c)) && c.sellerId === viewer.id)) : [])
     : []
   return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id))
 }

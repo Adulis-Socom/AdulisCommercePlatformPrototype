@@ -42,6 +42,8 @@
   "web003.test.mjs": { "runs": 2, "dataset": "marketplace" },
   "design001.test.mjs": { "runs": 2, "dataset": "marketplace" },
   "design002.test.mjs": { "runs": 2, "dataset": "marketplace" },
+  "op-marketplace.test.mjs": { "runs": 2, "dataset": "marketplace" },
+  "demo002.test.mjs": { "runs": 2, "dataset": "marketplace" },
   "media-editor.test.mjs": 1,
   "op.test.mjs": 1,
   "price-consistency.test.mjs": 1,

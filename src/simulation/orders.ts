@@ -6,7 +6,8 @@
 // methods are the dataset's own values.
 import type { OperationsCore } from '../marketplace/types.ts'
 import { SNAPSHOT, isoAt } from './clock.ts'
-import { relationshipAction } from './relationships.ts'
+import { relationshipAction, sellerCourierAction, type SellerCourierOp } from './relationships.ts'
+import { moderationAction } from './moderation.ts'
 import { commentAction, type SimComment } from './feedback.ts'
 import { GRANT_DELAY_MIN, issueGrant, reviewAction, type SimGrant, type SimRating, type SimReview } from './reviews.ts'
 export { SNAPSHOT, isoAt }
@@ -14,7 +15,7 @@ export { SNAPSHOT, isoAt }
 export type Mode = 'BUYER_COLLECTION' | 'COURIER_DELIVERY' | 'SELLER_DELIVERY'
 export type Status = 'PAID' | 'PREPARING' | 'READY_FOR_COLLECTION' | 'READY_FOR_DELIVERY' | 'COURIER_ASSIGNED' | 'PICKUP_VERIFIED' | 'OUT_FOR_DELIVERY' | 'FINAL_DELIVERY_VERIFIED' | 'COMPLETED' | 'DELIVERY_FAILED' | 'RETURNED_TO_SELLER' | 'CANCELLED'
 export type Stage = 'PICKUP' | 'DELIVERY' | 'RETURN'
-export type Role = 'SELLER' | 'BUYER' | 'COURIER'
+export type Role = 'SELLER' | 'BUYER' | 'COURIER' | 'OPERATOR'
 export interface Party { role: Role; id: string }
 export type Availability = 'AVAILABLE' | 'BUSY' | 'UNAVAILABLE'
 export type OfferStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED'
@@ -74,10 +75,12 @@ export interface World {
   settings: Record<string, { enabled: boolean; approved: string[]; fee: number }>
   opportunities: Record<string, { compensation: number; terms: string }> // key `${courier}|${seller}`
   sellers: Record<string, { id: string; name: string; lifecycle: string; city: string }>
+  /** Seller team members (team_members): the identity a Seller Console action is checked against (DEMO-002, OB-12). */
+  members: Record<string, { id: string; sellerId: string; name: string; roles: string[]; status: string }>
   products: Record<string, { id: string; sellerId: string; name: string; price: number; stock: number; published: boolean; variants: boolean }>
   buyers: Record<string, { id: string; name: string; city: string; area: string }>
   scenes: Record<string, { id: string; title: string }>
-  claims: Record<string, { id: string; orderId: string; buyerId: string; sellerId: string; outcome: string; basis: string }>
+  claims: Record<string, { id: string; orderId: string; buyerId: string; sellerId: string; outcome: string; basis: string; remedy: string; decidedAt: string }>
   sellerRep: Record<string, { sellerId: string; published: number; rating: number | null; pqCount: number; pqMean: number | null }>
   productRep: Record<string, { productId: string; sellerId: string; count: number; average: number | null }>
 }
@@ -92,10 +95,11 @@ export function buildWorld(ops: OperationsCore, cat: { sellers: Row[]; products:
     settings: Object.fromEntries((ops.simulation_courier_settings as Row[]).map(s => [s.seller_id, { enabled: !!s.courier_delivery_enabled, approved: s.approved_courier_ids, fee: s.example_fee_etb }])),
     opportunities: Object.fromEntries((ops.opportunities as Row[]).map(o => [`${o.courier_id}|${o.seller_id}`, { compensation: o.simulated_compensation_etb, terms: o.terms }])),
     sellers: Object.fromEntries(cat.sellers.map(s => [s.seller_id, { id: s.seller_id, name: s.name, lifecycle: s.lifecycle, city: s.city }])),
+    members: Object.fromEntries((ops.team_members as Row[]).map(m => [m.member_id, { id: m.member_id, sellerId: m.seller_id, name: m.display_name, roles: m.roles, status: m.membership_status }])),
     products: Object.fromEntries(cat.products.map(p => [p.product_id, { id: p.product_id, sellerId: p.seller_id, name: p.name, price: p.current_etb, stock: p.stock, published: p.publication === 'PUBLISHED', variants: variantProducts.has(p.product_id) }])),
     buyers: Object.fromEntries((ops.buyers as Row[]).map(b => [b.buyer_id, { id: b.buyer_id, name: b.display_name, city: b.city, area: b.area }])),
     scenes: Object.fromEntries(cat.scenes.map(s => [s.scene_id, { id: s.scene_id, title: s.title }])),
-    claims: Object.fromEntries((ops.claims as Row[]).map(c => [c.claim_id, { id: c.claim_id, orderId: c.order_id, buyerId: c.buyer_id, sellerId: c.seller_id, outcome: c.outcome, basis: c.basis }])),
+    claims: Object.fromEntries((ops.claims as Row[]).map(c => [c.claim_id, { id: c.claim_id, orderId: c.order_id, buyerId: c.buyer_id, sellerId: c.seller_id, outcome: c.outcome, basis: c.basis, remedy: c.remedy_state, decidedAt: c.decided_at }])),
     sellerRep: Object.fromEntries((ops.seller_reputation as Row[]).map(r => [r.seller_id, { sellerId: r.seller_id, published: r.published_service_reviews, rating: r.service_rating ?? null, pqCount: r.product_rating_count, pqMean: r.product_rating_mean ?? null }])),
     productRep: Object.fromEntries((ops.product_reputation as Row[]).map(r => [r.product_id, { productId: r.product_id, sellerId: r.seller_id, count: r.rating_count, average: r.average_stars ?? null }])),
   }
@@ -231,6 +235,8 @@ export type Action =
   | { type: 'APPLY'; actor: Party; sellerId: string }
   | { type: 'ACCEPT_INVITATION'; actor: Party; sellerId: string }
   | { type: 'WITHDRAW'; actor: Party; sellerId: string }
+  | { type: 'SELLER_COURIER'; actor: Party; member: string; courierId: string; op: SellerCourierOp }
+  | { type: 'MODERATE'; actor: Party; kind: 'COMMENT' | 'REVIEW'; id: string; decision: 'APPROVE' | 'HIDE' }
   | { type: 'COMMENT'; actor: Party; orderId: string; sentiment: string; topic: string; text: string }
   | { type: 'SUBMIT_REVIEW'; actor: Party; grantId: string; serviceStars: number; serviceText: string; ratings: { orderLineId: string; stars: number; text: string }[] }
 export type Result = { ok: true; state: SimState; note: string } | { ok: false; code: string; reason: string }
@@ -256,6 +262,8 @@ function freeCourier(s: SimState, courierId: string | null, orderId: string): Si
 
 export function apply(w: World, s: SimState, a: Action): Result {
   if (a.type === 'APPLY' || a.type === 'ACCEPT_INVITATION' || a.type === 'WITHDRAW') return relationshipAction(w, s, a)
+  if (a.type === 'SELLER_COURIER') return sellerCourierAction(w, s, a)
+  if (a.type === 'MODERATE') return moderationAction(s, a)
   if (a.type === 'COMMENT') return commentAction(w, s, a)
   if (a.type === 'SUBMIT_REVIEW') return reviewAction(w, s, a, isoAt(s.now))
   if (a.type === 'ADVANCE_TIME') {

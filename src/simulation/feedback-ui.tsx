@@ -6,8 +6,8 @@ import { Button } from '../components/ui/Button'
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { useSim, WORLD } from './store'
 import { canReceiveOffers, ordersOfCourier, type Party, type SimOrder } from './orders'
-import { GROUP_LABEL, STATUS_LABEL, historyOf, poolsOf, privateNote, visibleRelationships, type PoolGroup, type PoolStatus } from './relationships'
-import { EXPERIMENT_LABEL, MAX_TEXT, SENTIMENTS, SENTIMENT_LABEL, TOPICS, TOPIC_LABEL, commentableOrders, commentsFor, isPending, servedSellers, summary, type SimComment } from './feedback'
+import { GROUP_LABEL, OP_LABEL, STATUS_LABEL, historyOf, inviteCandidates, opsFor, poolsOf, privateNote, visibleRelationships, type PoolGroup, type PoolStatus, type SellerCourierOp } from './relationships'
+import { EXPERIMENT_LABEL, MAX_TEXT, SENTIMENTS, SENTIMENT_LABEL, TOPICS, TOPIC_LABEL, commentableOrders, commentsFor, isHidden, isPending, servedSellers, summary, type SimComment } from './feedback'
 import { Page } from '../sections/console/kit'
 import { Msg, Section, etb, fmtAt, partyName, useRun } from './ui'
 
@@ -109,7 +109,7 @@ function CommentCard({ c, seller, own, children }: { c: SimComment; seller: bool
       <div className="flex flex-wrap items-center gap-1.5">
         <Pill tone={SENTIMENT_TONE[c.sentiment]}>{SENTIMENT_LABEL[c.sentiment]}</Pill>
         <span className="font-semibold">{TOPIC_LABEL[c.topic] ?? c.topic}</span>
-        {pending ? <Pill tone="bg-warning-bg text-text-primary" data-pending>Pending moderation · not counted</Pill> : <Pill tone="bg-success-bg text-text-primary">Visible</Pill>}
+        {pending ? <Pill tone="bg-warning-bg text-text-primary" data-pending>Pending moderation · not counted</Pill> : isHidden(c) ? <Pill tone="bg-danger-bg text-text-primary" data-hidden>Hidden by moderation · not counted</Pill> : <Pill tone="bg-success-bg text-text-primary">Visible</Pill>}
       </div>
       <p className="mt-1 text-sm leading-snug">{c.text}</p>
       <p className="mt-1 text-[11px] text-text-muted">{seller ? (own ? 'Your comment' : 'Another Seller') : `${partyName(c.sellerId)} (${c.sellerId})`}{!seller || own ? ` · Order ${c.orderId}` : ''} · {fmtAt(c.createdAt)}{!seller && ` · ${pending ? 'Not shared yet' : 'Shared with eligible Sellers'}`}</p>
@@ -192,14 +192,25 @@ const SELLER_GROUPS: { label: string; statuses: PoolStatus[] }[] = [
 export function SellerCouriers({ sellerId }: { sellerId: string }) {
   const { sim } = useSim()
   const { simulation } = usePrototypeMode()
+  const { msg, run } = useRun()
   const viewer = { role: 'SELLER' as const, id: sellerId }
+  // DEMO-002 (OB-12): the Console acts as the Seller's Owner unless another team member is chosen; the permission model (src/marketplace/permissions.ts) decides.
+  const team = Object.values(WORLD.members).filter(m => m.sellerId === sellerId)
+  const [member, setMember] = useState(() => (team.find(m => m.status === 'OWNER_RELATIONSHIP') ?? team[0])?.id ?? '')
+  const act = (courierId: string, op: SellerCourierOp) => run({ type: 'SELLER_COURIER', actor: { role: 'SELLER', id: sellerId }, member, courierId, op })
+  const candidates = inviteCandidates(WORLD, sim, sellerId)
   const mine = visibleRelationships(WORLD, sim, viewer)
   const seller = WORLD.sellers[sellerId]
   const served = Object.values(WORLD.couriers).filter(c => servedSellers(sim, c.id).has(sellerId))
   return (
     <div data-seller-couriers={sellerId}>
-      <Page title="Couriers" subtitle={`Private Courier relationships for ${seller.name} only. No other Seller's relationships appear here. Approving, inviting and removing Couriers is not part of this prototype.`}>
+      <Page title="Couriers" subtitle={`Private Courier relationships for ${seller.name} only. No other Seller's relationships appear here. Approving, rejecting, inviting, suspending and removing a Courier are session actions for the Owner or an Admin.`}>
       <div className="grid gap-4">
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <label htmlFor="couriers-actor" className="text-xs font-semibold text-text-secondary">Acting as (prototype)</label>
+          <select id="couriers-actor" data-couriers-actor value={member} onChange={e => setMember(e.target.value)} className="mt-1 block h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm">{team.map(m => <option key={m.id} value={m.id}>{m.name} · {m.roles.join(' + ').replace(/_/g, ' ').toLowerCase()} · {m.status === 'OWNER_RELATIONSHIP' ? 'owner' : m.status.toLowerCase()}</option>)}</select>
+          <Msg msg={msg} />
+        </div>
         {mine.length === 0 && <p data-no-pool className="rounded-2xl border border-dashed border-border-strong bg-surface p-6 text-center text-sm text-text-muted">{seller.name} has no Courier relationships{seller.lifecycle !== 'ACTIVE' ? ` (the Seller is ${seller.lifecycle.toLowerCase()})` : ''}.</p>}
         {SELLER_GROUPS.map(g => {
           const rows = mine.filter(r => g.statuses.includes(r.status!))
@@ -212,13 +223,20 @@ export function SellerCouriers({ sellerId }: { sellerId: string }) {
                   <li key={r.courierId} data-seller-pool-row={r.courierId} data-pool-status={r.status} className="py-2.5 text-sm">
                     <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{c.name}</span><span className="font-mono text-xs text-text-muted">{c.id}</span><Pill tone={STATUS_TONE[r.status!]}>{STATUS_LABEL[r.status!]}</Pill></div>
                     <div className="text-xs text-text-muted">{c.vehicle} · {c.verification === 'VERIFIED' ? 'Verified' : `Verification ${c.verification.toLowerCase()}`} · covers {c.cities.join(', ')}{last ? ` · ${STATUS_LABEL[last.status as PoolStatus] ?? last.status} ${fmtAt(last.at)}` : ''}</div>
-                    {r.status === 'APPROVED' && simulation && <div className="text-xs text-text-secondary">{offers.ok ? 'Can receive an offer now.' : `Cannot receive an offer now: ${offers.reason}.`}</div>}
+                    {r.status === 'APPROVED' && simulation && <div data-can-receive={offers.ok} className="text-xs text-text-secondary">{offers.ok ? 'Can receive an offer now.' : `Cannot receive an offer now: ${offers.reason}.`}</div>}
+                    <div className="mt-1.5 flex flex-wrap gap-2">{opsFor(r.status).map(op => <Button key={op} variant={op === 'APPROVE' || op === 'REINSTATE' ? 'primary' : 'secondary'} size="sm" data-courier-op={op} onClick={() => act(r.courierId, op)}>{OP_LABEL[op]}</Button>)}</div>
                   </li>
                 )
               })}</ul>
             </section>
           )
         })}
+        <section data-invite-candidates className="rounded-2xl border border-border bg-surface p-4"><h2 className="font-display text-lg font-semibold">Invite a Courier · {candidates.length}</h2>
+          <p className="mt-1 text-xs text-text-muted">Couriers {seller.name} does not work with now. Only a VERIFIED Courier who covers {seller.city} can be invited. The Courier accepts in their app.</p>
+          <ul className="mt-2 divide-y divide-border">{candidates.map(k => { const c = WORLD.couriers[k.courierId]; return (
+            <li key={k.courierId} data-candidate={k.courierId} className="flex flex-wrap items-center gap-2 py-2.5 text-sm"><span className="font-semibold">{c.name}</span><span className="font-mono text-xs text-text-muted">{c.id}</span><span className="text-xs text-text-muted">{k.status ? `${STATUS_LABEL[k.status]} · ` : ''}{k.blocker ?? 'Can be invited'}</span><span className="flex-1" /><Button variant="secondary" size="sm" data-courier-op="INVITE" onClick={() => act(k.courierId, 'INVITE')}>Invite</Button></li>
+          ) })}</ul>
+        </section>
         <section className="rounded-2xl border border-border bg-surface p-4" data-seller-feedback>
           <h2 className="font-display text-lg font-semibold">Shared Courier feedback</h2>
           {!simulation ? <p className="mt-2 text-sm text-text-muted">Shared Courier feedback comes from simulated Orders, so it is part of the internal simulation. There is none in the current MVP.</p> : (

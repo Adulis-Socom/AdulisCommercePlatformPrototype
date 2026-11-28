@@ -17,7 +17,6 @@ import { ThemeLab } from './theme/ThemeLab'
 import { PrototypeModeProvider, SimulationBadge } from './prototype-mode'
 import { SellerWorkspaceProvider } from './seller-workspace'
 import { SimulationProvider } from './simulation/store'
-import { DatasetNote } from './marketplace/DatasetNote'
 import { parsePublicLink, type PublicLink } from './public-web'
 
 export type SectionKey =
@@ -263,7 +262,6 @@ export default function App() {
           <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} link={publicLink} onHome={() => { setJourney(null); setPublicLink(undefined); setActive('03-website') }} />
         </StoryProvider>
         <SimulationBadge />
-        <DatasetNote section={active} />
       </main>
 
       {/* The guided-flow card. On desktop it floats over the bottom-right corner. Below desktop widths index.css docks it

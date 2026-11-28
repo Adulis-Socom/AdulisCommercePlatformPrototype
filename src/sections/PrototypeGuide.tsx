@@ -1,5 +1,7 @@
 import { Suspense, lazy, useState } from 'react'
 import { AdulisLogo } from '../App'
+import { isLegacy } from '../marketplace/registry'
+import { INDEX } from '../marketplace/import'
 import { BUYERS, CANONICAL_FLOW_STAGES, COURIERS, DEMO_CARTS, GUEST_STATE, ORDERS, ORDER_TIMELINES, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, firstName, paymentAttempts, stageFor } from '../demo-data'
 
 // The Lab is code-split: it carries the model catalogue and is only fetched when someone opens it.
@@ -8,13 +10,15 @@ const BackgroundLab = lazy(() => import('./BackgroundLab'))
 // Demo personas and record names are read from the canonical module (WO-001).
 const BUYER_NAME = BUYERS[SURFACE_DEFAULTS.buyer].name
 const SELLER_NAME = SELLERS[SURFACE_DEFAULTS.seller].name
-const COURIER_NAME = COURIERS[SURFACE_DEFAULTS.courier].name
-const [CART_SELLER, SECOND_CART_SELLER] = DEMO_CARTS.map(order => SELLERS[ORDERS[order].seller].name)
+// DEMO-002: the marketplace dataset's first Courier (CR-01); the historical default Courier belongs to the legacy dataset.
+const COURIER_NAME = isLegacy ? COURIERS[SURFACE_DEFAULTS.courier].name : INDEX.courier.get('CR-01')!.name
+// The canonical flows A-M below are the historical dataset's, so these names are read only there (the marketplace Guide points to the legacy environment instead).
+const [CART_SELLER, SECOND_CART_SELLER] = isLegacy ? DEMO_CARTS.map(order => SELLERS[ORDERS[order].seller].name) : ['', '']
 // Flow D's two Seller Orders, and the second one's failed attempt and its retry (DEMO_DATA › Seller Orders).
 const [CART_ORDER, SECOND_CART_ORDER] = DEMO_CARTS
-const [FAILED_ATTEMPT, RETRY_ATTEMPT] = paymentAttempts(SECOND_CART_ORDER).map(attempt => attempt.ref)
+const [FAILED_ATTEMPT, RETRY_ATTEMPT] = isLegacy ? paymentAttempts(SECOND_CART_ORDER).map(attempt => attempt.ref) : ['', '']
 // Flow M's Buyer, who collects the Buyer Collection Order and scans its final QR (WO-006A).
-const COLLECTOR = firstName(BUYERS[ORDERS[stageFor('M', 0).focus!.order!].buyer].name)
+const COLLECTOR = isLegacy ? firstName(BUYERS[ORDERS[stageFor('M', 0).focus!.order!].buyer].name) : ''
 // The canonical demo flows, A–M (DEMO_DATA › Demo flows and the records they use). The Master Demo and the auxiliary E2
 // run are presentation paths, not among them.
 const CANONICAL_FLOWS = Object.keys(CANONICAL_FLOW_STAGES)
@@ -896,6 +900,11 @@ const DEMO_FLOWS = [
 ]
 
 function DemoFlowsList() {
+  if (!isLegacy) return (
+    <GuideSection number="5" title="Prototype Demo Flows">
+      <p data-guide-flows-pointer className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>The canonical demo flows A to M were built on the historical seeded dataset and its Orders, so they are not offered on the marketplace dataset. They run in the legacy regression environment, which is this same prototype opened with <span className="font-mono">?dataset=legacy</span>.</p>
+    </GuideSection>
+  )
   return (
     <GuideSection number="5" title="Prototype Demo Flows (SIM = internal simulation, not the current MVP)">
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(420px, 100%), 1fr))' }}>

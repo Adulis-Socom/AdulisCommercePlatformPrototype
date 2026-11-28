@@ -233,7 +233,7 @@ const DEFAULT_STAGE = { BUYER: 'DELIVERY', COURIER: 'PICKUP', SELLER: 'RETURN' }
 export function ScanPanel({ order, actor, editableOrder }: { order: SimOrder; actor: Party; editableOrder?: boolean }) {
   const { msg, run } = useRun()
   const exp = expectedHandoff(order)
-  const natural: Stage = !editableOrder && exp && exp.scanner.role === actor.role ? exp.stage : DEFAULT_STAGE[actor.role]
+  const natural: Stage = !editableOrder && exp && exp.scanner.role === actor.role ? exp.stage : DEFAULT_STAGE[actor.role as keyof typeof DEFAULT_STAGE]
   const [stage, setStage] = useState<Stage>(natural)
   const [token, setToken] = useState('')
   const [target, setTarget] = useState(order.id)

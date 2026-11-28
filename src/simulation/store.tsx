@@ -58,3 +58,10 @@ export function useSim(): SimContext {
   if (!c || !c.sim) throw new Error('useSim is only available on the marketplace dataset')
   return c
 }
+
+/** The simulation state, or null on the legacy dataset (which has no store). isLegacy is a module constant, so the hook order never changes. */
+export function useSimOrNull(): SimState | null {
+  if (isLegacy) return null
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return useSim().sim
+}

@@ -34,7 +34,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       const text = await main(page)
       t.ck(`${label} renders`, text.trim().length > 50, text.length)
       if (/^0[3-6]|^08/.test(label)) t.ck(`${label} names no legacy Seller`, !LEGACY.test(text), text.match(LEGACY)?.[0])
-      if (/^09|^11/.test(label)) t.ck(`${label} carries the labelled historical-fixture note`, /MARKETPLACE DATASET/.test(text))
+      // DEMO-002: the Operator Console and System States read the marketplace dataset now, so the historical-fixture note is gone and no historical identity may appear.
+      if (/^09|^11/.test(label)) t.ck(`${label} reads the marketplace dataset: no historical-fixture note, no legacy Seller`, !/MARKETPLACE DATASET/.test(text) && !LEGACY.test(text))
     }
 
     // Public Storefront: ACTIVE Sellers only.

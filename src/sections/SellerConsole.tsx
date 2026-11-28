@@ -37,7 +37,11 @@ import {
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { chargeText, effectiveCoverage, sellerMethods } from '../fulfilment'
 import { isLegacy } from '../marketplace/registry'
-import { SellerOrders, useSellerActions } from '../simulation/surfaces'
+import { SellerClaims, SellerOrders, useSellerActions } from '../simulation/surfaces'
+import { WORLD, useSimOrNull } from '../simulation/store'
+import { sellerBrief, type SellerBrief } from '../simulation/brief'
+import { STATUS_LABEL as SIM_STATUS, type SimOrder } from '../simulation/orders'
+import { isoAt } from '../simulation/clock'
 import { SellerCouriers } from '../simulation/feedback-ui'
 import MarketplaceInsights from './console/Insights'
 import { SellerReviews } from '../simulation/reviews-ui'
@@ -188,14 +192,14 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
     setSellerId(id)
     setSelectedOrder(null)
   }
-  const sellerOptions = showcaseSellers().map(id => ({ id, name: SELLERS[id].name, detail: `${SELLERS[id].category} · ${SELLERS[id].handle}` }))
+  const sellerOptions = showcaseSellers().map(id => ({ id, name: SELLERS[id].name, detail: `${SELLERS[id].category} · ${SELLERS[id].handle}${(SELLERS[id].lifecycle ?? 'ACTIVE') !== 'ACTIVE' ? ` · ${(SELLERS[id].lifecycle ?? '').toLowerCase()}` : ''}` }))
 
   // Sidebar counts: Paid Orders needing action, conversations awaiting a reply, and open Claims.
   const simActions = useSellerActions(sellerId) // SIM-001: the marketplace dataset counts Orders from the shared simulation store
   const badges: Partial<Record<NavKey, number>> = {
     orders: isLegacy ? sellerOrders(sellerId, at).filter(id => bucketOf(orderStateAt(id, at)!) === 'needs-action').length : simActions.length,
     inbox: sellerThreads(sellerId, at).filter(({ id }) => awaitingSellerReplyAt(id, at)).length,
-    claims: sellerClaims(sellerId, at).filter(id => claimStateAt(id, at) !== 'Resolved').length,
+    claims: isLegacy ? sellerClaims(sellerId, at).filter(id => claimStateAt(id, at) !== 'Resolved').length : Object.values(WORLD.claims).filter(c => c.sellerId === sellerId && c.remedy === 'SIMULATED_PENDING').length,
   }
   if (!simulation) { delete badges.orders; delete badges.claims }
 
@@ -227,7 +231,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
           {activeNav === 'products' && <ProductAuthoring sellerId={sellerId} at={at} />}
           {activeNav === 'content' && <ContentHub sellerId={sellerId} at={at} demoTarget={demoTarget} />}
           {activeNav === 'inbox' && <InboxPanel sellerId={sellerId} at={at} />}
-          {activeNav === 'claims' && (simulation ? <ClaimsPanel sellerId={sellerId} at={at} /> : <SimulationGate title="Claims">Payment and refund Claims are deferred. Release 1 has no paid Orders to raise a Claim against.</SimulationGate>)}
+          {activeNav === 'claims' && (simulation ? (isLegacy ? <ClaimsPanel sellerId={sellerId} at={at} /> : <SellerClaims sellerId={sellerId} />) : <SimulationGate title="Claims">Payment and refund Claims are deferred. Release 1 has no paid Orders to raise a Claim against.</SimulationGate>)}
           {activeNav === 'insights' && (isLegacy ? <InsightsPanel sellerId={sellerId} at={at} /> : <MarketplaceInsights sellerId={sellerId} whoSees={Object.fromEntries(INSIGHTS_TABS.map(item => [item.key, rolesWith(item.capability)])) as Record<InsightsTab, string>} />)}
           {activeNav === 'reviews' && (isLegacy ? <ReviewsPanel sellerId={sellerId} at={at} /> : <SellerReviews sellerId={sellerId} />)}
           {activeNav === 'trust' && <TrustPanel sellerId={sellerId} at={at} />}
@@ -295,6 +299,11 @@ function DailyOperations({ sellerId, at, onOpenOrder, onOpenOrders, onOpenConten
   const { simulation } = usePrototypeMode()
   // The specification §29 priorities, counted from the Seller's records at the story moment. Deadlines are each
   // record's own demo timestamps, not Adulis-wide preparation or Claim policy.
+  // DEMO-002: on the marketplace dataset the Order, Claim and exception figures come from the shared simulation store (src/simulation/brief.ts), not the historical fixtures.
+  const sim = useSimOrNull()
+  const brief = sim ? sellerBrief(WORLD, sim, sellerId) : null
+  const simNow = sim ? isoAt(sim.now) : at.at
+  const simOldest = (rows: SimOrder[]) => (rows.length ? `Oldest waiting ${formatAge(rows.map(o => o.paidAt).sort()[0], simNow)}` : '—')
   const orders = sellerOrders(sellerId, at)
   // Paid or Preparing: an Order requires preparation until it reaches its mode's Ready state. Most recently paid first.
   const toPrepare = ordersRequiringPreparationAt(sellerId, at).sort((a, b) => paidAt(b).localeCompare(paidAt(a)))
@@ -311,10 +320,10 @@ function DailyOperations({ sellerId, at, onOpenOrder, onOpenOrders, onOpenConten
   const exceptions = Object.values(HANDOFF_REVIEWS).filter(review => ORDERS[review.order].seller === sellerId && happenedBefore(review.escalated.at, at))
   const oldest = (time?: string) => (time ? `Oldest waiting ${formatAge(time, at.at)}` : '—')
   const allPriorities = [
-    { rank: 1, label: 'Orders requiring preparation', count: toPrepare.length, detail: `${oldest(toPrepare.map(paidAt).sort()[0])}${prepareBy ? ` · prepare by ${dueLabel(prepareBy)}` : ''}`, tone: 'brand', action: () => onOpenOrders() },
-    { rank: 2, label: 'Claims', count: claims.length, detail: dueClaim ? `${dueClaim} · response due ${dueLabel(CLAIMS[dueClaim].responseDeadline!)}` : '—', tone: 'danger' },
-    { rank: 3, label: 'Orders ready for fulfilment', count: ready.length, detail: [...new Set(ready.map(id => orderStateAt(id, at)!))].join(' · ') || '—', tone: 'info' },
-    { rank: 4, label: 'Delivery exceptions', count: exceptions.length, detail: exceptions.length ? 'Handoff manual review' : '—', tone: 'warning' },
+    { rank: 1, label: 'Orders requiring preparation', count: brief ? brief.toPrepare.length : toPrepare.length, detail: brief ? simOldest(brief.toPrepare) : `${oldest(toPrepare.map(paidAt).sort()[0])}${prepareBy ? ` · prepare by ${dueLabel(prepareBy)}` : ''}`, tone: 'brand', action: () => onOpenOrders() },
+    { rank: 2, label: 'Claims', count: brief ? brief.claims.length : claims.length, detail: brief ? brief.claims.map(c => `${c.id} · ${c.outcome.replace(/_/g, ' ').toLowerCase()}`).join(' · ') || '—' : dueClaim ? `${dueClaim} · response due ${dueLabel(CLAIMS[dueClaim].responseDeadline!)}` : '—', tone: 'danger' },
+    { rank: 3, label: 'Orders ready for fulfilment', count: brief ? brief.ready.length : ready.length, detail: brief ? [...new Set(brief.ready.map(o => SIM_STATUS[o.status]))].join(' · ') || '—' : [...new Set(ready.map(id => orderStateAt(id, at)!))].join(' · ') || '—', tone: 'info' },
+    { rank: 4, label: 'Delivery exceptions', count: brief ? brief.exceptions.length : exceptions.length, detail: (brief ? brief.exceptions.length : exceptions.length) ? (brief ? brief.exceptions.map(o => o.id).join(' · ') : 'Handoff manual review') : '—', tone: 'warning' },
     { rank: 5, label: 'Inventory risks', count: stockRisks.length, detail: stockRisks.map(id => PRODUCTS[id].name).join(' · ') || '—', tone: 'warning' },
     { rank: 6, label: 'Unanswered messages', count: awaiting.length, detail: oldest(awaiting.map(t => t.last.at).sort()[0]), tone: 'brand' },
     { rank: 7, label: 'Scene Posts needing action', count: posts.length, detail: posts.map(id => SHOPPABLE_POSTS[id].title).join(' · ') || '—', tone: 'warning', action: posts.length ? onOpenContent : undefined },
@@ -334,10 +343,11 @@ function DailyOperations({ sellerId, at, onOpenOrder, onOpenOrders, onOpenConten
         {!simulation && <div className="rounded-2xl border border-border bg-surface p-5"><div className="font-semibold">Start here</div><p className="mt-1 text-xs text-text-muted">Your storefront is built from Products, Scene Posts and Stories.</p><div className="mt-3 flex flex-col gap-2">{([['products', 'Manage Products'], ['content', 'Create or edit a Scene Post'], ['inbox', 'Reply to Buyers']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => onNavigate(key)} className="flex min-h-11 items-center justify-between rounded-xl border border-border px-3 text-left text-sm font-semibold text-text-primary">{label}<span aria-hidden="true" className="text-text-muted">→</span></button>)}</div></div>}
         {simulation && <div className="rounded-2xl border border-border bg-surface p-5">
           <div className="mb-4 flex items-center justify-between"><div className="font-semibold">Next Paid Orders</div><button onClick={onOpenOrders} className="text-xs font-semibold text-brand-text">View all</button></div>
-          {toPrepare.slice(0, 3).map(id => <button key={id} onClick={() => onOpenOrder(id)} className="flex w-full items-center gap-3 border-b border-border py-3 text-left last:border-b-0"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted font-mono text-[9px] font-bold text-brand-dark">{id.slice(-3)}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{orderItems(id)}</span><span className="text-[10px] text-text-muted">{shortName(BUYERS[ORDERS[id].buyer].name)} · {formatAge(paidAt(id), at.at)}</span></span><StatusBadge {...stateBadge(orderStateAt(id, at)!)} size="sm" /></button>)}
-          {toPrepare.length === 0 && <p className="py-2 text-xs text-text-muted">No Orders requiring preparation.</p>}
+          {brief && brief.toPrepare.slice(0, 3).map(o => <button key={o.id} onClick={onOpenOrders} data-home-order={o.id} className="flex w-full items-center gap-3 border-b border-border py-3 text-left last:border-b-0"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted font-mono text-[9px] font-bold text-brand-dark">{o.id.slice(-3)}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{o.id}</span><span className="text-[10px] text-text-muted">{WORLD.buyers[o.buyerId]?.name} · {formatAge(o.paidAt, simNow)}</span></span><span className="text-[10px] font-semibold text-text-secondary">{SIM_STATUS[o.status]}</span></button>)}
+          {!brief && toPrepare.slice(0, 3).map(id => <button key={id} onClick={() => onOpenOrder(id)} className="flex w-full items-center gap-3 border-b border-border py-3 text-left last:border-b-0"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted font-mono text-[9px] font-bold text-brand-dark">{id.slice(-3)}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{orderItems(id)}</span><span className="text-[10px] text-text-muted">{shortName(BUYERS[ORDERS[id].buyer].name)} · {formatAge(paidAt(id), at.at)}</span></span><StatusBadge {...stateBadge(orderStateAt(id, at)!)} size="sm" /></button>)}
+          {(brief ? brief.toPrepare.length : toPrepare.length) === 0 && <p className="py-2 text-xs text-text-muted">No Orders requiring preparation.</p>}
         </div>}
-        {simulation && <PerformanceCard sellerId={sellerId} />}
+        {simulation && <PerformanceCard sellerId={sellerId} brief={brief} />}
       </div>
     </div>
   )
@@ -359,9 +369,19 @@ function PriorityRow({ rank, label, count, detail, tone, action }: { rank: numbe
   return <button onClick={action} className="flex w-full items-center gap-3 py-3 text-left"><span className="w-5 font-mono text-[10px] text-text-muted">{String(rank).padStart(2, '0')}</span><span className={`h-2 w-2 rounded-full ${colors[tone]}`} /><span className="flex-1"><span className="block text-sm font-semibold">{label}</span><span className="text-xs text-text-muted">{detail}</span></span><span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-surface-raised px-2 font-mono text-xs font-bold">{count}</span></button>
 }
 
-function PerformanceCard({ sellerId }: { sellerId: SellerId }) {
-  // DEMO_DATA's 7-day Insights; it defines no on-time preparation rate.
+function PerformanceCard({ sellerId, brief }: { sellerId: SellerId; brief: SellerBrief | null }) {
+  // DEMO_DATA's 7-day Insights; it defines no on-time preparation rate. On the marketplace dataset the figures are the Seller's simulated paid Orders of the last seven simulated days.
   const insights = INSIGHTS_7D[sellerId]
+  if (brief) {
+    const peak = Math.max(1, ...brief.week.days)
+    return (
+      <div data-home-performance className="rounded-2xl border border-border bg-surface p-5">
+        <div className="flex items-center justify-between"><div><div className="font-semibold">7-day performance</div><div className="text-xs text-text-muted">Simulated paid Seller Orders only (internal simulation)</div></div></div>
+        <div className="mt-5 grid grid-cols-3 gap-3"><Metric label="Paid Orders" value={String(brief.week.paid)} /><Metric label="GMV" value={formatEtb(brief.week.gmv * 100)} /><Metric label="On-time prep" value="—" /></div>
+        <div className="mt-4 flex h-16 items-end gap-2">{brief.week.days.map((n, index) => <span key={index} title={`${n} Orders`} className="flex-1 rounded-t bg-brand-muted" style={{ height: `${Math.max(4, (n / peak) * 100)}%` }}><span className="block h-1/3 rounded-t bg-brand" /></span>)}</div>
+      </div>
+    )
+  }
   return (
     <div className="rounded-2xl border border-border bg-surface p-5">
       <div className="flex items-center justify-between"><div><div className="font-semibold">7-day performance</div><div className="text-xs text-text-muted">Paid Seller Orders only</div></div></div>

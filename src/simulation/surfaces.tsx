@@ -202,3 +202,32 @@ function CourierHistory({ courierId }: { courierId: string }) {
     </ul>
   )
 }
+
+/** Seller Console > Claims on the marketplace dataset (internal simulation only; the MVP shows the gate). The dataset records its Claims as already decided: read-only, no response form. */
+export function SellerClaims({ sellerId }: { sellerId: string }) {
+  const { sim } = useSim()
+  const claims = Object.values(WORLD.claims).filter(c => c.sellerId === sellerId)
+  const pretty = (t: string) => t.replace(/_/g, ' ').toLowerCase()
+  return (
+    <div data-sim-surface="seller-claims">
+      <SimBar />
+      <Page title="Claims" subtitle={`${partyName(sellerId)} · ${claims.length} simulated Claim${claims.length === 1 ? '' : 's'}. Claims belong to the internal simulation: they concern simulated paid Orders.`}>
+        {claims.length === 0 && <p data-no-claims className="rounded-2xl border border-dashed border-border-strong bg-surface p-8 text-center text-sm text-text-muted">No Claims</p>}
+        <div className="flex flex-col gap-4">{claims.map(c => {
+          const o = sim.orders[c.orderId]
+          return (
+            <Card key={c.id} title={`${c.id} · ${pretty(c.basis)}`}>
+              <div data-claim={c.id} className="grid gap-2 text-sm">
+                <div>Order <span className="font-mono">{c.orderId}</span>{o ? ` · ${MODE_LABEL[o.mode]} · ${STATUS_LABEL[o.status]} · ${etb(o.total)}` : ''}</div>
+                <div>Buyer: {partyName(c.buyerId)} ({c.buyerId})</div>
+                <div data-claim-outcome>Outcome decided in the dataset: {pretty(c.outcome)} · {fmtAt(c.decidedAt)}</div>
+                <div data-claim-remedy>Remedy: {pretty(c.remedy)}</div>
+                <p className="text-xs text-text-muted">The dataset records this Claim as decided. This prototype has no response or resolution workflow for it.</p>
+              </div>
+            </Card>
+          )
+        })}</div>
+      </Page>
+    </div>
+  )
+}

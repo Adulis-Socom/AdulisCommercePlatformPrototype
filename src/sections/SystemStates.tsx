@@ -3,6 +3,8 @@ import { Button } from '../components/ui/Button'
 import { SystemStatePanel, type SystemStateKind } from '../components/ui/Overlay'
 import { ORDERS, ORDER_IDS, PRODUCTS, SELLERS, SURFACE_DEFAULTS, formatEtb, orderTotals, sellerProductsAt } from '../demo-data'
 import { usePrototypeMode } from '../prototype-mode'
+import { isLegacy } from '../marketplace/registry'
+import { OPERATIONS } from '../marketplace/import'
 
 type Surface = 'Buyer' | 'Courier' | 'Seller' | 'Operator' | 'Platform'
 
@@ -26,11 +28,14 @@ const SURFACES: Array<'All' | Surface> = ['All', 'Buyer', 'Courier', 'Seller', '
 // Order's payment, the default Seller's out-of-stock Product and the Order verified by OTP fallback. A state that never
 // happens to a canonical record names an example instead. The failed payment attempt says only that the attempt failed
 // and the Seller Order remains for the retry (rule 5.9; WO-017's approved wording).
-const ORDER = SURFACE_DEFAULTS.order
-const SELLER = SELLERS[ORDERS[ORDER].seller].name
-const TOTAL = formatEtb(orderTotals(ORDER).total)
+// DEMO-002: on the marketplace dataset the Order sample is the default Seller's first supplied Order (no historical Order or Seller is named).
+const MP_ORDER = isLegacy ? null : OPERATIONS.orders.find(o => o.seller_id === SURFACE_DEFAULTS.seller)!
+const ORDER = MP_ORDER ? MP_ORDER.order_id : SURFACE_DEFAULTS.order
+const SELLER = MP_ORDER ? SELLERS[SURFACE_DEFAULTS.seller].name : SELLERS[ORDERS[SURFACE_DEFAULTS.order].seller].name
+const TOTAL = MP_ORDER ? `ETB ${MP_ORDER.total_etb.toLocaleString('en-US')}` : formatEtb(orderTotals(SURFACE_DEFAULTS.order).total)
 const OUT_OF_STOCK = sellerProductsAt(SURFACE_DEFAULTS.seller).find(id => PRODUCTS[id].availability === 'Out of Stock')!
-const OTP_ORDER = ORDER_IDS.find(id => ORDERS[id].finalHandoff?.method === 'OTP fallback')!
+// No supplied Order was verified by OTP fallback (every final handoff is a QR), so the marketplace scenario names none.
+const OTP_ORDER = isLegacy ? ORDER_IDS.find(id => ORDERS[id].finalHandoff?.method === 'OTP fallback')! : null
 
 const SCENARIOS: Scenario[] = [
   {
@@ -186,7 +191,7 @@ const SCENARIOS: Scenario[] = [
     outcome: {
       kind: 'success',
       title: 'OTP verified',
-      description: `Final handoff is confirmed for Seller Order ${OTP_ORDER}.`,
+      description: OTP_ORDER ? `Final handoff is confirmed for Seller Order ${OTP_ORDER}.` : 'Final handoff is confirmed for the Seller Order.',
     },
   },
   {

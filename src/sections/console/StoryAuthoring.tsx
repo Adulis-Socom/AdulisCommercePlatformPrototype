@@ -4,6 +4,8 @@ import { TextInput } from '../../components/ui/Input'
 import { type Moment, type SellerId } from '../../demo-data'
 import { STORY_LIFETIME_HOURS, linkableProducts, readiness, sceneVisibility, storyPhase, toThumbnail, useWorkspace, type StoryPhase, type WsStory } from '../../seller-workspace'
 import { Card, Notice, SelectField, Thumb } from './kit'
+import { isLegacy } from '../../marketplace/registry'
+import { CATALOGUE } from '../../marketplace/import'
 
 /** SC-005: Seller Stories (ADU-STORY-01). One still photo, optional short text, at most one same-Seller Product or Scene link, 24 simulated hours. */
 
@@ -30,6 +32,7 @@ export default function StoryAuthoring({ sellerId, at }: { sellerId: SellerId; a
         <Button size="sm" variant="tertiary" onClick={() => dispatch({ type: 'clock', hours: -state.clockHours })} disabled={state.clockHours === 0} title="Rewinds the clock. Stories that already expired stay expired; live ones keep their remaining time.">Reset clock</Button>
       </div>
       {notice && <div className="mb-4"><Notice tone="success" role="status">{notice}</Notice></div>}
+      {!isLegacy && <CatalogueStories sellerId={sellerId} clockHours={state.clockHours} />}
       {stories.length === 0
         ? <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-10 text-center"><div className="font-display text-lg font-semibold">No Stories yet</div><p className="mt-1 text-sm text-text-muted">Share a photo that links to a Product or Scene. It disappears after {STORY_LIFETIME_HOURS} hours.</p></div>
         : <ul className="overflow-hidden rounded-2xl border border-border bg-surface">{stories.map(story => {
@@ -126,5 +129,28 @@ function StoryEditor({ sellerId, at, id, onBack }: { sellerId: SellerId; at: Mom
         </aside>
       </div>
     </div>
+  )
+}
+
+/** DEMO-002: the Stories the dataset supplies for this Seller, each with the dataset's own state (Live, Expired, Withdrawn, Draft, or Hidden and why). Read-only; a Live Story ages with the prototype clock. */
+function CatalogueStories({ sellerId, clockHours }: { sellerId: string; clockHours: number }) {
+  const mine = CATALOGUE.stories.filter(s => s.seller_id === sellerId)
+  if (mine.length === 0) return null
+  const name = (id: string) => CATALOGUE.products.find(p => p.product_id === id)?.name ?? CATALOGUE.scenes.find(x => x.scene_id === id)?.title ?? id
+  return (
+    <section data-catalogue-stories className="mb-4 rounded-2xl border border-border bg-surface p-4">
+      <h3 className="font-display text-lg font-semibold">Stories from your catalogue</h3>
+      <p className="mt-1 text-xs text-text-muted">These Stories come with your catalogue and are read-only. Each shows the state the catalogue gives it; a Live Story expires 24 hours after it was posted.</p>
+      <ul className="mt-2 divide-y divide-border">{mine.map(s => {
+        const hours = s.age_hours === null ? null : s.age_hours + clockHours
+        const state = s.expected_state === 'Live' && hours !== null && hours >= STORY_LIFETIME_HOURS ? 'Expired' : s.expected_state
+        return (
+          <li key={s.story_id} data-catalogue-story={s.story_id} data-story-state={state} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+            <span className="min-w-0 flex-1"><span className="block font-semibold">{s.text || 'No text'}</span><span className="text-xs text-text-muted"><span className="font-mono">{s.story_id}</span> · {s.link_id ? `links to ${name(s.link_id)} (${s.link_id})` : 'no link yet'}{hours === null ? ' · not posted' : ` · posted ${s.age_hours} h before the snapshot`}</span></span>
+            <span data-story-pill className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${state === 'Live' ? 'bg-success-bg' : state.startsWith('Hidden') ? 'bg-warning-bg' : 'bg-surface-raised text-text-muted'}`}>{state}</span>
+          </li>
+        )
+      })}</ul>
+    </section>
   )
 }

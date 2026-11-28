@@ -5,6 +5,8 @@
 
 import { useState } from 'react'
 import { ORDERS, PRODUCTS, REFERENCE_SAMPLES, SELLERS, SURFACE_DEFAULTS, formatClock12, formatEtb, orderStateAt, orderTotals, stateTime } from '../demo-data'
+import { isLegacy } from '../marketplace/registry'
+import { OPERATIONS } from '../marketplace/import'
 
 export default function Foundations() {
   return (
@@ -283,9 +285,20 @@ function ColorTokens() {
 
 // Samples that name demo records read them from the canonical module (WO-001): the default Seller, Product and Order at
 // the 10:25 snapshot, and the reference sample Products.
-const SAMPLE_ORDER = SURFACE_DEFAULTS.order
-const SAMPLE_TOTAL = formatEtb(orderTotals(SAMPLE_ORDER).total)
-const BODY_PRODUCT = PRODUCTS[REFERENCE_SAMPLES.bodyProduct]
+// DEMO-002: on the marketplace dataset the Order samples are the first completed Courier Delivery Order of the supplied dataset and the Product samples are the primary Seller's
+// first two Products, so no historical identity reaches this board.
+const MP_ORDER = isLegacy ? null : OPERATIONS.orders.find(o => o.fulfilment_mode === 'COURIER_DELIVERY' && o.status === 'COMPLETED' && o.delivery_etb > 0)!
+const MP_PICKUP = MP_ORDER && OPERATIONS.order_events.find(e => e.order_id === MP_ORDER.order_id && e.state === 'PICKUP_VERIFIED')!.at
+// shortcut: the marketplace order id is cast to the seeded id union here, once; the legacy-only branches below never read it on the marketplace dataset
+const SAMPLE_ORDER = (isLegacy ? SURFACE_DEFAULTS.order : MP_ORDER!.order_id) as typeof SURFACE_DEFAULTS.order
+const SAMPLE_TOTAL = MP_ORDER ? `ETB ${MP_ORDER.total_etb.toLocaleString('en-US')}` : formatEtb(orderTotals(SAMPLE_ORDER).total)
+const MP_PRODUCTS = isLegacy ? [] : Object.values(PRODUCTS).filter(p => p.seller === SURFACE_DEFAULTS.seller).slice(0, 2)
+const BODY_PRODUCT = isLegacy ? PRODUCTS[REFERENCE_SAMPLES.bodyProduct] : MP_PRODUCTS[1]
+const BODY_SAMPLE = isLegacy ? `${BODY_PRODUCT.name} — ${BODY_PRODUCT.description}` : `${BODY_PRODUCT.name} — ${SELLERS[SURFACE_DEFAULTS.seller].name}, ${SELLERS[SURFACE_DEFAULTS.seller].area}`
+const TITLE_SAMPLE = isLegacy ? PRODUCTS[REFERENCE_SAMPLES.titleProduct].name : MP_PRODUCTS[0].name
+const PICKUP_SAMPLE = isLegacy ? `Pickup confirmed — ${formatClock12(stateTime(SAMPLE_ORDER, 'Pickup Verified')!)} · Courier is delivering your order` : `Pickup confirmed — ${MP_PICKUP!.slice(11, 16)} · Courier is delivering your order`
+const FULFILMENT_SAMPLE = isLegacy ? `${ORDERS[SAMPLE_ORDER].fulfilment} · ${formatEtb(orderTotals(SAMPLE_ORDER).delivery)}` : `Courier Delivery · ETB ${MP_ORDER!.delivery_etb.toLocaleString('en-US')}`
+const ORDER_STATE_SAMPLE = isLegacy ? orderStateAt(SAMPLE_ORDER)!.toUpperCase() : MP_ORDER!.status.replace(/_/g, ' ')
 
 const TYPE_SCALE = [
   {
@@ -340,7 +353,7 @@ const TYPE_SCALE = [
     fontWeight: 600,
     lineHeight: 1.4,
     letterSpacing: '0',
-    sample: PRODUCTS[REFERENCE_SAMPLES.titleProduct].name,
+    sample: TITLE_SAMPLE,
     usage: 'Card titles, list item primary text, modal headings.',
   },
   {
@@ -362,7 +375,7 @@ const TYPE_SCALE = [
     fontWeight: 400,
     lineHeight: 1.6,
     letterSpacing: '0',
-    sample: `${BODY_PRODUCT.name} — ${BODY_PRODUCT.description}`,
+    sample: BODY_SAMPLE,
     usage: 'Default body copy, product descriptions, order detail text.',
   },
   {
@@ -373,7 +386,7 @@ const TYPE_SCALE = [
     fontWeight: 400,
     lineHeight: 1.55,
     letterSpacing: '0',
-    sample: `Pickup confirmed — ${formatClock12(stateTime(SAMPLE_ORDER, 'Pickup Verified')!)} · Courier is delivering your order`,
+    sample: PICKUP_SAMPLE,
     usage: 'Secondary copy, timestamps, compact list metadata.',
   },
   {
@@ -384,7 +397,7 @@ const TYPE_SCALE = [
     fontWeight: 600,
     lineHeight: 1.4,
     letterSpacing: '0.01em',
-    sample: `${ORDERS[SAMPLE_ORDER].fulfilment} · ${formatEtb(orderTotals(SAMPLE_ORDER).delivery)}`,
+    sample: FULFILMENT_SAMPLE,
     usage: 'Form labels, badge text, navigation items, action labels.',
   },
   {
@@ -406,7 +419,7 @@ const TYPE_SCALE = [
     fontWeight: 500,
     lineHeight: 1.4,
     letterSpacing: '0.08em',
-    sample: `${SAMPLE_ORDER} · ${orderStateAt(SAMPLE_ORDER)!.toUpperCase()} · ${SAMPLE_TOTAL}`,
+    sample: `${SAMPLE_ORDER} · ${ORDER_STATE_SAMPLE} · ${SAMPLE_TOTAL}`,
     usage: 'Order references, status badges, data labels, tokens, timestamps in console.',
   },
   {

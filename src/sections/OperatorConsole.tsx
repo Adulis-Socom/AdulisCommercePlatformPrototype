@@ -25,10 +25,15 @@ import { ReputationReadout } from '../simulation/reviews-ui'
 import { TAXONOMY, TAXONOMY_GAPS, findTaxonomy } from '../demo-data/taxonomy'
 import { useWorkspace } from '../seller-workspace'
 import { DECISION_LABEL, validateReview, type ReviewDecision } from '../chatbot/feedback'
+import { CourierDirectoryPanel, MarketplaceCase, MarketplaceFounderDecisions, OrdersEvidencePanel, SellerDirectoryPanel, SessionDecisions, useMarketplaceWork } from './operator-marketplace'
+import { WORLD, useSimOrNull } from '../simulation/store'
+import { MODE_LABEL, STATUS_LABEL as ORDER_STATUS, sortNewest, type SimState } from '../simulation/orders'
+import { OPERATIONS } from '../marketplace/import'
 
 type NavKey =
   | 'overview'
   | 'work-queue' | 'wq-support' | 'wq-moderation' | 'wq-claims' | 'wq-verification' | 'wq-trust-appeals' | 'wq-handoff'
+  | 'dir-sellers' | 'dir-couriers' | 'dir-orders'
   | 'search-global' | 'search-sellers' | 'search-accounts'
   | 'gov-config' | 'gov-taxonomy' | 'gov-chatbot' | 'gov-reputation' | 'gov-access' | 'gov-approvals' | 'gov-audit' | 'gov-health'
 
@@ -51,6 +56,15 @@ const NAV_STRUCTURE: { group?: string; items: NavItem[] }[] = [
       { key: 'wq-handoff', label: 'Manual Handoff', icon: <IconCheck size={14} /> },
     ],
   },
+  // DEMO-002: the marketplace dataset's directories (every Seller and Courier inspectable, simulated Orders and Handoff evidence). Not offered on the legacy dataset.
+  ...(isLegacy ? [] : [{
+    group: 'DIRECTORY',
+    items: [
+      { key: 'dir-sellers' as const, label: 'Sellers', icon: <IconUsers size={14} /> },
+      { key: 'dir-couriers' as const, label: 'Couriers', icon: <IconKey size={14} /> },
+      { key: 'dir-orders' as const, label: 'Orders and Handoffs', icon: <IconOrders size={14} /> },
+    ],
+  }]),
   {
     group: 'SEARCH',
     items: [
@@ -75,19 +89,19 @@ const NAV_STRUCTURE: { group?: string; items: NavItem[] }[] = [
 ]
 
 const ALL_NAV_ITEMS = NAV_STRUCTURE.flatMap(group => group.items)
-const BG = 'var(--color-operator-bg)'
-const SURFACE = 'var(--color-operator-surface)'
-const RAISED = 'var(--color-operator-raised)'
-const BORDER = 'var(--color-operator-border)'
-const TEXT = 'var(--color-operator-text)'
-const MUTED = 'var(--color-operator-muted)'
-const ACCENT = 'var(--color-operator-accent)'
+export const BG = 'var(--color-operator-bg)'
+export const SURFACE = 'var(--color-operator-surface)'
+export const RAISED = 'var(--color-operator-raised)'
+export const BORDER = 'var(--color-operator-border)'
+export const TEXT = 'var(--color-operator-text)'
+export const MUTED = 'var(--color-operator-muted)'
+export const ACCENT = 'var(--color-operator-accent)'
 // Cautions, alerts and warning states. The Baseline shows them in the accent; a Theme Lab system keeps them amber.
 const WARNING = 'var(--color-operator-warning)'
 
 const keys = <T extends string>(record: Readonly<Record<T, unknown>>) => Object.keys(record) as T[]
 
-interface WorkItem {
+export interface WorkItem {
   priority: string
   queue: Exclude<QueueFilter, 'All'>
   caseRef: string
@@ -98,6 +112,8 @@ interface WorkItem {
   minutes: number
   assigned: string
   state: string
+  /** Marketplace dataset: the case exists only in the internal simulation (hidden in the current MVP). */
+  simulation?: boolean
 }
 
 /**
@@ -144,6 +160,7 @@ function whenLabel(time: Timestamp, at: Moment) {
 
 /** Founder decisions proposed and awaiting the other Founder's approval at the story moment. */
 function pendingDecisions(at: Moment) {
+  if (!isLegacy) return [] // the historical Founder-decision fixtures belong to the legacy dataset
   return keys(DECISIONS).filter(id => happenedBefore(DECISIONS[id].proposed, at) && !happenedBefore(DECISIONS[id].approved, at))
 }
 
@@ -184,7 +201,8 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
   const { moment: at } = useStory()
   // FE-001: payment Claims and Manual Handoff cases belong to the internal simulation (no paid Orders or handoff in Release 1).
   const { simulation } = usePrototypeMode()
-  const work = workItems(at).filter(item => simulation || (item.queue !== 'Claims' && item.queue !== 'Manual Handoff'))
+  const marketplaceWork = useMarketplaceWork(at)
+  const work = (isLegacy ? workItems(at) : marketplaceWork).filter(item => simulation || !(item.simulation ?? (item.queue === 'Claims' || item.queue === 'Manual Handoff')))
   const queueCount = (queue: QueueFilter) => work.filter(item => queue === 'All' || item.queue === queue).length
   const badges: Partial<Record<NavKey, number>> = {
     'work-queue': queueCount('All'), 'wq-support': queueCount('Support'), 'wq-moderation': queueCount('Moderation'), 'wq-claims': queueCount('Claims'),
@@ -229,6 +247,9 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
           {isQueueNav(activeNav) && (!simulation && (activeNav === 'wq-claims' || activeNav === 'wq-handoff')
             ? <div className="mx-auto my-8 max-w-lg rounded-2xl border border-border bg-surface"><SimulationGate title={activeNav === 'wq-claims' ? 'Claims queue' : 'Manual Handoff queue'} compact>{activeNav === 'wq-claims' ? 'Payment and refund Claims are deferred: Release 1 has no paid Orders to dispute.' : 'Manual Handoff review needs live delivery handoff, which Release 1 does not include.'}</SimulationGate></div>
             : <WorkQueuePanel key={activeNav} at={at} work={work} initialQueue={queueForNav(activeNav)} />)}
+          {activeNav === 'dir-sellers' && <SellerDirectoryPanel />}
+          {activeNav === 'dir-couriers' && <CourierDirectoryPanel />}
+          {activeNav === 'dir-orders' && <OrdersEvidencePanel />}
           {activeNav === 'search-global' && <SearchPanel at={at} mode="global" />}
           {activeNav === 'search-sellers' && <SearchPanel at={at} mode="seller" />}
           {activeNav === 'search-accounts' && <SearchPanel at={at} mode="account" />}
@@ -237,7 +258,7 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
           {activeNav === 'gov-chatbot' && <ChatbotFeedbackPanel />}
           {activeNav === 'gov-reputation' && <ReputationReadout />}
           {activeNav === 'gov-access' && <OperatorAccessPanel at={at} live={live} session={session} setSession={setSession} />}
-          {activeNav === 'gov-approvals' && (simulation ? <FounderDecisionsPanel at={at} /> : <div className="mx-auto my-8 max-w-lg rounded-2xl border border-border bg-surface"><SimulationGate title="Founder Decisions" compact>The demonstration decision is a payment Claim on a paid Order, which Release 1 does not have. The dual-Founder approval workflow is shown in the internal simulation.</SimulationGate></div>)}
+          {activeNav === 'gov-approvals' && (simulation ? (isLegacy ? <FounderDecisionsPanel at={at} /> : <MarketplaceFounderDecisions />) : <div className="mx-auto my-8 max-w-lg rounded-2xl border border-border bg-surface"><SimulationGate title="Founder Decisions" compact>The demonstration decision is a payment Claim on a paid Order, which Release 1 does not have. The dual-Founder approval workflow is shown in the internal simulation.</SimulationGate></div>)}
           {activeNav === 'gov-audit' && <AuditPanel at={at} />}
           {activeNav === 'gov-health' && <SystemHealthPanel />}
         </div>
@@ -309,6 +330,7 @@ function WorkQueuePanel({ at, work, initialQueue }: { at: Moment; work: WorkItem
   return (
     <div className="mx-auto max-w-[1500px] p-8">
       <OperatorHeader title="Unified Work Queue" description="Prioritized operational cases across named workflows. Claiming assigns work only." />
+      {!isLegacy && <SessionDecisions />}
       <div className="mb-4 grid grid-cols-6 gap-2">
         <DarkSelect label="Priority" value={priority} options={['All', 'P0', 'P1', 'P2']} onChange={setPriority} />
         <DarkSelect label="Market" value={market} options={['All', MARKET.id]} onChange={setMarket} />
@@ -325,7 +347,8 @@ function WorkQueuePanel({ at, work, initialQueue }: { at: Moment; work: WorkItem
         })}
       </div>
       <div className="mt-4 rounded-xl border p-3 text-xs" style={{ borderColor: BORDER, background: SURFACE, color: MUTED }}>Claim Work Item changes assignment to the current Operator. It does not alter payment, Order, claim, moderation, verification, Trust, or handoff business state.</div>
-      {opened && <CaseWorkspace item={opened} at={at} onClose={() => setOpened(null)} />}
+      {!isLegacy && rows.length === 0 && <p data-op-empty className="mt-4 text-xs" style={{ color: MUTED }}>No open cases in this queue in the supplied dataset.</p>}
+      {opened && (isLegacy ? <CaseWorkspace item={opened} at={at} onClose={() => setOpened(null)} /> : <MarketplaceCase item={opened} onClose={() => setOpened(null)} />)}
     </div>
   )
 }
@@ -583,13 +606,13 @@ type SearchEntity = 'Account' | 'Seller' | 'Order' | 'Claim' | 'Content'
 interface SearchResult { type: SearchEntity; ref: string; title: string; detail: string; restricted: boolean }
 
 /** Every searchable canonical record at the story moment: Buyer accounts, Sellers, Orders, Claims and Scene Posts. */
-function searchRecords(at: Moment): SearchResult[] {
+function searchRecords(at: Moment, sim: SimState | null): SearchResult[] {
   const post = (id: (typeof SHOPPABLE_POST_IDS)[number]) => (SHOPPABLE_POSTS[id].publication !== 'Published' ? SHOPPABLE_POSTS[id].publication : restrictionAt(id, at) || SHOPPABLE_POSTS[id].restricted ? 'Restricted' : 'Published')
   return [
     ...BUYER_IDS.map(id => ({ type: 'Account' as const, ref: id, title: BUYERS[id].name, detail: `Buyer account · ${MARKET.city}`, restricted: true })),
     ...SELLER_IDS.map(id => ({ type: 'Seller' as const, ref: id, title: SELLERS[id].name, detail: `${SELLERS[id].handle} · ${trustLabel(trustAt(id, at))}${SELLERS[id].storeOpen ? ' · Store open' : ''}`, restricted: true })),
-    ...ORDER_IDS.filter(id => orderStateAt(id, at) !== null).map(id => ({ type: 'Order' as const, ref: id, title: `${SELLERS[ORDERS[id].seller].name} → ${shortName(BUYERS[ORDERS[id].buyer].name)}`, detail: `${orderStateAt(id, at)} · ${MARKET.id}`, restricted: false })),
-    ...CLAIM_IDS.filter(id => claimStateAt(id, at) !== null).map(id => ({ type: 'Claim' as const, ref: id, title: CLAIMS[id].issue, detail: `${claimStateAt(id, at)} · ${CLAIMS[id].order}`, restricted: false })),
+    ...(sim ? sortNewest(Object.values(sim.orders)).map(o => ({ type: 'Order' as const, ref: o.id, title: `${WORLD.sellers[o.sellerId].name} → ${WORLD.buyers[o.buyerId].name}`, detail: `${ORDER_STATUS[o.status]} · ${MODE_LABEL[o.mode]} · ${MARKET.id}`, restricted: false })) : ORDER_IDS.filter(id => orderStateAt(id, at) !== null).map(id => ({ type: 'Order' as const, ref: id, title: `${SELLERS[ORDERS[id].seller].name} → ${shortName(BUYERS[ORDERS[id].buyer].name)}`, detail: `${orderStateAt(id, at)} · ${MARKET.id}`, restricted: false }))),
+    ...(sim ? (OPERATIONS.claims as unknown as { claim_id: string; order_id: string; basis: string; outcome: string }[]).map(k => ({ type: 'Claim' as const, ref: k.claim_id, title: `${k.basis.replace(/_/g, ' ').toLowerCase()} · Order ${k.order_id}`, detail: `${k.outcome.replace(/_/g, ' ').toLowerCase()} · ${k.order_id}`, restricted: false })) : CLAIM_IDS.filter(id => claimStateAt(id, at) !== null).map(id => ({ type: 'Claim' as const, ref: id, title: CLAIMS[id].issue, detail: `${claimStateAt(id, at)} · ${CLAIMS[id].order}`, restricted: false }))),
     ...SHOPPABLE_POST_IDS.filter(id => happenedBefore(SHOPPABLE_POSTS[id].created, at)).map(id => ({ type: 'Content' as const, ref: id, title: SHOPPABLE_POSTS[id].title, detail: `${post(id)} · ${SELLERS[SHOPPABLE_POSTS[id].seller].name}`, restricted: false })),
   ]
 }
@@ -602,7 +625,7 @@ function SearchPanel({ at, mode }: { at: Moment; mode: 'global' | 'seller' | 'ac
   const [opened, setOpened] = useState<SearchResult | null>(null)
   const { simulation } = usePrototypeMode()
   const hiddenTypes: SearchEntity[] = simulation ? [] : ['Order', 'Claim']
-  const results = searchRecords(at).filter(result => {
+  const results = searchRecords(at, useSimOrNull()).filter(result => {
     if (hiddenTypes.includes(result.type)) return false
     const scopeMatch = (type === 'All' || result.type === type) && (mode === 'global' || result.type.toLowerCase() === mode)
     const queryMatch = !query || `${result.ref} ${result.title} ${result.detail}`.toLowerCase().includes(query.toLowerCase())
@@ -1247,11 +1270,11 @@ function ProposeButton({ children, onClick }: { children: ReactNode; onClick: ()
   return <button onClick={onClick} className="mt-3 text-xs font-semibold" style={{ color: ACCENT }}>{children} →</button>
 }
 
-function OperatorHeader({ title, description, trailing }: { title: string; description: string; trailing?: ReactNode }) {
+export function OperatorHeader({ title, description, trailing }: { title: string; description: string; trailing?: ReactNode }) {
   return <div className="mb-6 flex items-start justify-between"><div><h1 className="font-display text-3xl font-semibold" style={{ color: TEXT }}>{title}</h1><p className="mt-1 text-xs font-mono" style={{ color: MUTED }}>{description}</p></div>{trailing}</div>
 }
 
-function DarkPanel({ title, trailing, children }: { title: string; trailing?: ReactNode; children: ReactNode }) {
+export function DarkPanel({ title, trailing, children }: { title: string; trailing?: ReactNode; children: ReactNode }) {
   return <section className="rounded-2xl border p-5" style={{ borderColor: BORDER, background: SURFACE }}><div className="mb-4 flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>{title}</h2>{trailing}</div>{children}</section>
 }
 
@@ -1260,12 +1283,12 @@ function OperatorMetric({ label, value, detail, tone }: { label: string; value: 
   return <div className="rounded-xl border p-4" style={{ borderColor: BORDER, background: SURFACE }}><div className="text-xs" style={{ color: MUTED }}>{label}</div><div className="mt-2 font-mono text-2xl font-bold" style={{ color }}>{value}</div><div className="mt-1 text-[10px]" style={{ color: MUTED }}>{detail}</div></div>
 }
 
-function OperatorState({ children, tone }: { children: ReactNode; tone: 'danger' | 'warning' | 'success' | 'neutral' }) {
+export function OperatorState({ children, tone }: { children: ReactNode; tone: 'danger' | 'warning' | 'success' | 'neutral' }) {
   const color = tone === 'danger' ? 'var(--color-danger)' : tone === 'warning' ? WARNING : tone === 'success' ? 'var(--color-success)' : MUTED
   return <span className="inline-flex w-fit rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color, background: `${color}18` }}>{children}</span>
 }
 
-function OperatorButton({ children, onClick, variant = 'primary', disabled }: { children: ReactNode; onClick?: () => void; variant?: 'primary' | 'secondary'; disabled?: boolean }) {
+export function OperatorButton({ children, onClick, variant = 'primary', disabled }: { children: ReactNode; onClick?: () => void; variant?: 'primary' | 'secondary'; disabled?: boolean }) {
   return <button onClick={onClick} disabled={disabled} className="rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ background: variant === 'primary' ? ACCENT : RAISED, color: variant === 'primary' ? BG : TEXT, border: `1px solid ${variant === 'secondary' ? BORDER : 'transparent'}` }}>{children}</button>
 }
 
@@ -1274,7 +1297,7 @@ function DarkSelect({ label, value, options, onChange }: { label: string; value:
   return <div className="relative"><button onClick={() => setOpen(!open)} className="w-full rounded-lg border px-3 py-2 text-left" style={{ borderColor: BORDER, background: SURFACE }}><span className="block text-[9px] uppercase" style={{ color: MUTED }}>{label}</span><span className="mt-0.5 block truncate text-xs font-semibold" style={{ color: TEXT }}>{value} ▾</span></button>{open && <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border shadow-xl" style={{ borderColor: BORDER, background: RAISED }}>{options.map(option => <button key={option} onClick={() => { onChange(option); setOpen(false) }} className="w-full border-b px-3 py-2 text-left text-xs last:border-b-0" style={{ borderColor: BORDER, color: option === value ? ACCENT : TEXT }}>{option}</button>)}</div>}</div>
 }
 
-function DarkField({ label, value }: { label: string; value: string }) {
+export function DarkField({ label, value }: { label: string; value: string }) {
   return <div><div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>{label}</div><div className="mt-1 text-sm" style={{ color: TEXT }}>{value}</div></div>
 }
 
