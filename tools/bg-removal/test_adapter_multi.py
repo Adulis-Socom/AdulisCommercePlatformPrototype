@@ -234,6 +234,13 @@ class SessionLogicTest(unittest.TestCase):
         self.assertIn("free memory", caught.exception.message)
         self.assertEqual(self.fake.created, [])
 
+    def test_resident_model_is_evicted_before_the_memory_check(self):
+        """ADM-BGR-04: the resident model's memory counts as free once it is replaced, so a second model can load."""
+        self.run_model("birefnet-general-lite")
+        with mock.patch.object(adapter, "free_ram_mb", lambda: 300.0 if adapter._sessions else 8000.0):
+            self.assertTrue(self.run_model("silueta")["cold"])
+        self.assertEqual(list(adapter._sessions), ["silueta"])
+
     def test_a_failure_is_isolated_and_recorded(self):
         self.fake.fail = True
         with self.assertRaises(adapter.Refused) as caught:

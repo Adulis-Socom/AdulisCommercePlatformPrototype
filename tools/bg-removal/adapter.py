@@ -442,12 +442,13 @@ def load_session(model):
     missing = dependencies(model)["missing"]
     if missing:
         raise Refused(503, f"This model cannot run here: the Python module {', '.join(missing)} cannot be imported ({', '.join(PACKAGE_OF.get(m, m) for m in missing)} is not installed).")
-    check = preflight(entry, "run")
-    if not check["ok"]:
-        raise Refused(507, f"Not enough free memory to load this model safely: {check['freeRamMb']} MB free, about {check['needRamMb']} MB needed. Close other programs or choose a smaller model.")
+    # Evict first, then check RAM: the resident model is about to be replaced, so its memory counts as available (ADM-BGR-04).
     while len(_sessions) >= MAX_SESSIONS:  # bounded cache: evict the oldest before loading another
         _forget(next(iter(_sessions)))
     gc.collect()
+    check = preflight(entry, "run")
+    if not check["ok"]:
+        raise Refused(507, f"Not enough free memory to load this model safely: {check['freeRamMb']} MB free, about {check['needRamMb']} MB needed. Close other programs or choose a smaller model.")
     started = time.perf_counter()
     from rembg import new_session
     kwargs = {"model_path": str(resolve_custom_path(entry))} if entry.get("custom") else {}
