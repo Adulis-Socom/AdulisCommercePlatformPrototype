@@ -92,6 +92,11 @@ type CartLine = OrderLine & {
  * conversation's.
  */
 type ChatEntry = { seller: SellerId; context: MessageContext; from: Screen }
+/**
+ * BUYER-010: one step of the Buyer's navigation history: the screen the Buyer left and the records it showed. Back pops it, so it returns to the actual
+ * origin (Saved > Cart > Back is Saved, whatever else was opened in between). No router and no browser history: it is in-app state only.
+ */
+type NavSnap = { screen: Screen; postId: ShoppablePostId; productId: ProductId; sellerId: SellerId; sellerTab: SellerTab; collectionId: string; chat: ChatEntry; orderId: OrderId; orderStage: OrderState; sceneProduct: ProductId | null }
 /** A payment attempt made in this session, by its PAY- or TESTPAY- reference. Processing until the outcome shows. */
 type Attempt = { ref: string; status: 'Processing' | 'Paid' | 'Failed' }
 /**
@@ -130,6 +135,13 @@ const REPORT_CATEGORIES = [
   'Other',
 ]
 
+/** The bottom navigation's destinations: the screens that ARE a tab. Arriving on one ends any history (it is the base of the stack). */
+const ROOT_SCREENS: readonly Screen[] = ['feed', 'search', 'saved', 'orders', 'you']
+/** Screens that are not part of the Buyer's history: the start and sign-in steps. Leaving them pushes nothing. */
+const UNTRACKED: readonly Screen[] = ['start', 'sign-in-phone', 'sign-in-code', 'cart-check', 'checkout-coordinator', 'seller-checkout', 'payment-transition', 'payment-processing', 'payment-success', 'payment-failed', 'payment-checking']
+/** The tab a root screen belongs to: the bottom navigation highlights this, never a remembered value. */
+const TAB_OF: Partial<Record<Screen, TabKey>> = { feed: 'home', search: 'shop', saved: 'saved', orders: 'orders', you: 'you' }
+
 const TABS = [
   { key: 'home' as TabKey, label: 'Home', icon: <IconHome size={22} /> },
   { key: 'shop' as TabKey, label: 'Shop', icon: <IconShop size={22} /> },
@@ -157,10 +169,6 @@ const INSET_FOCUS = { outlineOffset: '-5px' }
 // The surcharge row's label names its basis: 0.5% of the Products subtotal, never of a delivery charge (rules 5.6–5.8).
 // Non-breaking spaces keep "0.5% of products" together when a narrow phone wraps the label.
 const SURCHARGE_LABEL = 'Adulis surcharge — 0.5% of products'
-
-// How far the channel bar's overflow shadow reaches in from its right edge, in px. At 360 px the bar ends 11 px after the
-// "Discounts" label, so 10 px covers no fully visible label at rest.
-const CHANNEL_CUE_WIDTH = 10
 
 // The screens that hold the signed-in Buyer's own data or actions (rules 3.2–3.4, 3.7). A guest sees the sign-in
 // requirement on them instead; the cart screens stay public (rule 3.6).
@@ -318,9 +326,15 @@ function upcomingClaim(orderId: OrderId, at: Moment): ClaimId | undefined {
 }
 
 /** A neutral stand-in for a Product or post image: DEMO_DATA defines no imagery, so it shows the record's initials. */
-function Placeholder({ label, initialsOf, className, dark, photo }: { label: string; initialsOf?: string; className: string; dark?: boolean; photo?: string }) {
+function Placeholder({ label, initialsOf, className, dark, photo, pending }: { label: string; initialsOf?: string; className: string; dark?: boolean; photo?: string; pending?: boolean }) {
   if (photo) return <img src={photo} alt={label} className={`object-cover ${className}`} />
-  return <div role="img" aria-label={label} className={`flex items-center justify-center font-display font-bold ${dark ? 'text-white/20' : 'bg-surface-raised text-text-muted'} ${className}`}>{initials(initialsOf ?? label)}</div>
+  // BUYER-009: a feed placeholder takes the shape its photo will have (the caller sets an aspect ratio) and says so visibly.
+  return (
+    <div role="img" aria-label={label} className={`flex items-center justify-center font-display font-bold ${pending ? 'flex-col gap-1' : ''} ${dark ? 'text-white/20' : 'bg-surface-raised text-text-muted'} ${className}`}>
+      {initials(initialsOf ?? label)}
+      {pending && <span className={`font-sans text-[10px] font-semibold uppercase tracking-wider ${dark ? 'text-white/75' : 'text-text-muted'}`}>Photo pending</span>}
+    </div>
+  )
 }
 
 /** The Product's availability as Buyers see it: an out-of-stock Product is "Currently unavailable". */
@@ -362,7 +376,7 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
   const BUYER = buyerId
   const initialScreen = (demoTarget && ['start', 'feed', 'post', 'product', 'seller', 'seller-shop', 'search', 'saved', 'collection', 'seller-cart', 'multi-cart', 'checkout-coordinator', 'seller-checkout', 'payment-transition', 'payment-processing', 'payment-success', 'payment-failed', 'payment-checking', 'orders', 'order-detail', 'delegated-recipient', 'qr-scanner', 'qr-camera', 'qr-verifying', 'delivery-confirmed', 'otp', 'completed', 'review', 'claim-start', 'claim-form', 'claim-status', 'chats', 'conversation', 'chatbot', 'notifications'].includes(demoTarget) ? demoTarget : resume ?? 'start') as Screen
   const initialTab: TabKey = initialScreen === 'orders' ? 'orders' : initialScreen === 'saved' ? 'saved' : initialScreen === 'search' ? 'shop' : initialScreen === 'you' ? 'you' : 'home'
-  const [screen, setScreen] = useState<Screen>(initialScreen)
+  const [screen, setScreenState] = useState<Screen>(initialScreen)
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
   // Home discovery state: transient session state, as is the rest of this app's; a reset remounts it at the baseline.
   const [channel, setChannel] = useState<Channel>('foryou')
@@ -514,10 +528,38 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
   const [handoffMethod, setHandoffMethod] = useState<HandoffMethod>()
   const [repeatScan, setRepeatScan] = useState(false)
   const [codeFrom, setCodeFrom] = useState<Screen>('qr-scanner')
+  // BUYER-010: navigation history. `setScreen` is a forward move: it pushes where the Buyer was (unless that is a start or sign-in step) and arriving on a
+  // tab's root screen clears the history. `goBack` pops the last step and restores its screen and records; `fallback` is where Back goes with no history
+  // (a guided-flow step that opened mid-app). The ref keeps several moves in one handler in order.
+  const history = useRef<NavSnap[]>([])
+  const screenRef = useRef<Screen>(initialScreen)
+  const snapshot = (): NavSnap => ({ screen: screenRef.current, postId, productId, sellerId, sellerTab, collectionId, chat, orderId, orderStage, sceneProduct })
+  const jump = (next: Screen) => { screenRef.current = next; setScreenState(next) }
+  const setScreen = (next: Screen) => {
+    const from = screenRef.current
+    if (next !== from) {
+      if (ROOT_SCREENS.includes(next)) history.current = []
+      else if (!UNTRACKED.includes(from)) history.current.push(snapshot())
+    }
+    jump(next)
+  }
+  // Opening a record from the screen that already shows one of its kind (a Product from a Product) is also a forward move.
+  const pushSame = (kind: Screen, differs: boolean) => { if (screenRef.current === kind && differs) history.current.push(snapshot()) }
+  const sameStep = (a: NavSnap, b: NavSnap) => a.screen === b.screen && a.postId === b.postId && a.productId === b.productId && a.sellerId === b.sellerId && a.collectionId === b.collectionId
+  const goBack = (fallback: Screen) => {
+    // Steps equal to where the Buyer is now are leftovers of a flow that came back by its own control: skip them.
+    const now = snapshot()
+    let to = history.current.pop()
+    while (to && sameStep(to, now)) to = history.current.pop()
+    if (!to) return jump(fallback)
+    setPostId(to.postId); setProductId(to.productId); setSellerId(to.sellerId); setSellerTab(to.sellerTab); setCollectionId(to.collectionId)
+    setChat(to.chat); setOrderId(to.orderId); setOrderStage(to.orderStage); setSceneProduct(to.sceneProduct)
+    jump(to.screen)
+  }
   // Opening a Scene opens Explore the Scene (PR-004), with no Product selected: the Buyer chooses one there.
-  const openPost = (id: ShoppablePostId) => { setDiscoverySheet(null); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); setSceneProduct(null); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
-  const openProduct = (id: ProductId) => { setDiscoverySheet(null); setBuyingAgain(null); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
-  const openSeller = (id: SellerId) => { if (screen !== 'seller' && screen !== 'seller-shop') setSellerFrom(screen === 'following-list' || screen === 'you' ? screen : 'feed'); setSellerId(id); setSellerTab('scenes'); setScreen('seller') }
+  const openPost = (id: ShoppablePostId) => { setDiscoverySheet(null); pushSame('post', id !== postId); setPostId(id); setSellerId(SHOPPABLE_POSTS[id].seller); setSceneProduct(null); if (screen !== 'post') setPostFrom(screen); setScreen('post') }
+  const openProduct = (id: ProductId) => { setDiscoverySheet(null); setBuyingAgain(null); pushSame('product', id !== productId); setProductId(id); setSellerId(PRODUCTS[id].seller); if (screen !== 'product') setProductFrom(screen); setScreen('product') }
+  const openSeller = (id: SellerId) => { if (screen !== 'seller' && screen !== 'seller-shop') setSellerFrom(screen === 'following-list' || screen === 'you' ? screen : 'feed'); pushSame(screen === 'seller-shop' ? 'seller-shop' : 'seller', id !== sellerId); setSellerId(id); setSellerTab('scenes'); setScreen('seller') }
   const openOrder = (id: OrderId) => { setOrderId(id); setOrderStage(orderStateAt(id, at) ?? 'Paid'); setScreen('order-detail') }
   const openConversation = (entry: ChatEntry) => { setChat(entry); setScreen('conversation') }
   const openClaim = () => { setClaimId(upcomingClaim(orderId, at)); setScreen('claim-start') }
@@ -830,7 +872,32 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
     if (key === 'you') setScreen('you')
   }
 
-  const showNav = ['feed', 'search', 'saved', 'orders', 'you'].includes(screen)
+  const showNav = ROOT_SCREENS.includes(screen)
+
+  // BUYER-010: the device's Back (Android back, Alt+Left, or a keyboard's Back key) does what the screen's own Back does: it closes the topmost sheet first, then uses
+  // the on-screen Back, and on a tab other than Home it returns to Home. There is no router and no browser history.
+  const frame = useRef<HTMLDivElement>(null)
+  const deviceBack = () => {
+    if (storySeller) return setStorySeller(null)
+    if (signInPrompt) return setSignInPrompt(null)
+    if (collectionSheet) return setCollectionSheet(null)
+    if (addedToCart) return setAddedToCart(null)
+    if (reportOpen) return setReportOpen(false)
+    if (discoverySheet) return setDiscoverySheet(null)
+    if (accountMenu) return setAccountMenu(false)
+    const back = frame.current?.querySelector<HTMLButtonElement>('button[aria-label="Back"]')
+    if (back) return back.click()
+    if (screen !== 'feed' && screen !== 'start') goTab('home')
+  }
+  const deviceBackRef = useRef(deviceBack)
+  deviceBackRef.current = deviceBack
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'GoBack' || event.key === 'BrowserBack' || (event.altKey && event.key === 'ArrowLeft')) { event.preventDefault(); deviceBackRef.current() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const gate = signedIn ? null : signInGate(screen)
   const shown: Screen | 'gated' | 'simulation-only' = gate ? 'gated' : !simulation && SIMULATION_SCREENS.includes(screen) ? 'simulation-only' : screen
 
@@ -844,7 +911,7 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
         </PrototypeSignInSwitch>
       }
     >
-      <div className="relative flex flex-1 flex-col overflow-hidden">
+      <div ref={frame} className="relative flex flex-1 flex-col overflow-hidden">
         {run && <TestRunBanner label={run.test.label} />}
         {gate && <SignInRequired title={gate.title} message={gate.message} onSignIn={() => startSignIn({ screen, tab: activeTab, then: gate.then })} />}
         {shown === 'start' && <AppStart onExplore={() => { setAuth('guest'); setActiveTab('home'); setScreen('feed') }} onSignIn={() => startSignIn({ screen: 'feed', tab: 'home' })} />}
@@ -878,6 +945,7 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
             onLike={post => like(post, { screen: 'feed', tab: 'home', channel })}
             onSave={post => toggleSave(`post:${post}`, { screen: 'feed', tab: 'home', channel })}
             onShare={post => { setPostId(post); setDiscoverySheet({ kind: 'share' }) }}
+            onChat={post => { setChat({ seller: SHOPPABLE_POSTS[post].seller, context: { post }, from: 'feed' }); requireSignIn('Sign in to chat with sellers', { screen: 'conversation' }, () => setScreen('conversation')) }}
             onReviews={post => { setPostId(post); setDiscoverySheet({ kind: 'reviews' }) }}
             onMore={post => { setPostId(post); setDiscoverySheet({ kind: 'more', channel }) }}
             stories={authoredContent.mergeStoryGroups(storyGroupsAt(at))}
@@ -893,7 +961,7 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
             at={at}
             selected={sceneProduct}
             onSelect={setSceneProduct}
-            onBack={() => setScreen(postFrom)}
+            onBack={() => goBack(postFrom)}
             onSeller={() => openSeller(SHOPPABLE_POSTS[postId].seller)}
             onMore={() => setDiscoverySheet({ kind: 'more' })}
             onReviews={() => setDiscoverySheet({ kind: 'reviews', product: sceneProduct ?? undefined })}
@@ -909,7 +977,7 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
             saved={isSaved(`product:${productId}`)}
             onSave={() => toggleSave(`product:${productId}`, { screen: 'product' })}
             onShare={() => setDiscoverySheet({ kind: 'share', product: productId })}
-            onBack={() => setScreen(productFrom)}
+            onBack={() => goBack(productFrom)}
             onSeller={() => openSeller(PRODUCTS[productId].seller)}
             onReviews={() => setDiscoverySheet({ kind: 'product-reviews' })}
             onMore={() => setDiscoverySheet({ kind: 'product-more' })}
@@ -940,7 +1008,7 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
               setChat({ seller: sellerId, context: GENERAL_CONTEXT, from: shown })
               requireSignIn('Sign in to chat with sellers', { screen: 'conversation' }, () => setScreen('conversation'))
             }}
-            onBack={() => setScreen(sellerFrom)}
+            onBack={() => goBack(sellerFrom)}
             onSearch={() => setScreen('search')}
             onPost={openPost}
             onProduct={openProduct}
@@ -960,7 +1028,7 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
           />
         )}
         {shown === 'saved' && <Saved collections={collections} onNew={() => setCollectionSheet({ kind: 'create' })} cartCount={cart.length} onCart={() => { if (carts[0]) setCartSeller(carts[0].seller); setScreen(carts.length > 1 || (carts.length === 0 && orphans.length > 0) ? 'multi-cart' : 'seller-cart') }} onCollection={id => { setCollectionId(id); setCollectionFrom('saved'); setScreen('collection') }} onProduct={openProduct} onPost={openPost} />}
-        {shown === 'collection' && (() => { const current = collections.find(c => c.id === collectionId); return current ? <Collection key={current.id} collection={current} onBack={() => setScreen(collectionFrom)} onMore={() => setCollectionSheet({ kind: 'menu', id: current.id })} onRemove={key => { setCollections(removeItem(collections, current.id, key)); setToast(`Removed from ${current.name}`) }} onProduct={openProduct} onPost={openPost} /> : <><Header title="Collection" onBack={() => setScreen(collectionFrom)} /><p role="status" className="p-6 text-sm text-text-secondary">This Collection no longer exists.</p></> })()}
+        {shown === 'collection' && (() => { const current = collections.find(c => c.id === collectionId); return current ? <Collection key={current.id} collection={current} onBack={() => goBack(collectionFrom)} onMore={() => setCollectionSheet({ kind: 'menu', id: current.id })} onRemove={key => { setCollections(removeItem(collections, current.id, key)); setToast(`Removed from ${current.name}`) }} onProduct={openProduct} onPost={openPost} /> : <><Header title="Collection" onBack={() => goBack(collectionFrom)} /><p role="status" className="p-6 text-sm text-text-secondary">This Collection no longer exists.</p></> })()}
         {shown === 'seller-cart' && (
           <SellerCart
             seller={cartSeller}
@@ -968,7 +1036,7 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
             isAvailable={signedIn ? purchasable : null}
             availabilityOf={availabilityOf}
             held={openOrderFor(cartSeller)}
-            onBack={() => setScreen('product')}
+            onBack={() => goBack('product')}
             onAllCarts={() => setScreen('multi-cart')}
             onCheckout={() => startCheckout(cartSeller)}
             onQuantity={(line, quantity) => setCart(lines => lines.map(item => (sameLine(item, line) ? { ...item, quantity } : item)))}
@@ -979,7 +1047,7 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
             fulfilmentNone={simulation ? null : fulfilmentOf(cartSeller, carts.find(item => item.seller === cartSeller)?.lines ?? []).none}
           />
         )}
-        {shown === 'multi-cart' && <MultiCart orphans={orphans} onRemove={line => setCart(lines => lines.filter(item => !sameLine(item, line)))} carts={carts} first={cartSeller} isAvailable={signedIn ? purchasable : null} openOrderFor={openOrderFor} progress={progress} onBack={() => setScreen('seller-cart')} onCheckout={startCheckout} />}
+        {shown === 'multi-cart' && <MultiCart orphans={orphans} onRemove={line => setCart(lines => lines.filter(item => !sameLine(item, line)))} carts={carts} first={cartSeller} isAvailable={signedIn ? purchasable : null} openOrderFor={openOrderFor} progress={progress} onBack={() => goBack('seller-cart')} onCheckout={startCheckout} />}
         {shown === 'cart-check' && <CartCheck unavailable={unavailable} availabilityOf={availabilityOf} afterSignIn={checkAfterSignIn} seller={checkoutSeller} sellerReady={checkoutLines.length > 0 && checkoutLines.every(line => purchasable(line.product))} onContinue={() => setScreen('checkout-coordinator')} onReview={seller => { setCartSeller(seller); setScreen('seller-cart') }} onAllCarts={() => setScreen('multi-cart')} />}
         {shown === 'checkout-coordinator' && <CheckoutCoordinator seller={checkoutSeller} lines={checkoutLines} others={carts.filter(item => item.seller !== checkoutSeller).map(item => item.seller)} onBack={() => setScreen('multi-cart')} onContinue={() => setScreen('seller-checkout')} />}
         {shown === 'seller-checkout' && <SellerCheckout at={at} seller={checkoutSeller} lines={checkoutLines} fulfilment={checkoutFulfilment} mode={checkoutMode} onMode={mode => setModeChoice(choices => ({ ...choices, [checkoutSeller]: mode }))} note={'note' in checkoutPlan ? checkoutPlan.note : undefined} onBack={() => setScreen('checkout-coordinator')} onPay={() => { setPayingRef(null); setScreen('payment-transition') }} />}
@@ -1013,12 +1081,12 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
         {shown === 'claim-start' && <ClaimStart orderId={orderId} issue={claimIssue} setIssue={setClaimIssue} onBack={() => setScreen('order-detail')} onContinue={() => setScreen('claim-form')} />}
         {shown === 'claim-form' && <ClaimForm claimId={claimId} issue={claimIssue} onBack={() => setScreen('claim-start')} onSubmit={() => { if (claimId) advanceTo(claimSubmitted(claimId)); setScreen('claim-status') }} />}
         {shown === 'claim-status' && <ClaimStatus orderId={orderId} claimId={claimId} at={at} onDone={() => setScreen('order-detail')} />}
-        {shown === 'chats' && <ChatList at={at} sent={sentMessages} onBack={() => setScreen(chatsFrom)} onConversation={seller => openConversation({ seller, context: GENERAL_CONTEXT, from: 'chats' })} />}
+        {shown === 'chats' && <ChatList at={at} sent={sentMessages} onBack={() => goBack(chatsFrom)} onConversation={seller => openConversation({ seller, context: GENERAL_CONTEXT, from: 'chats' })} />}
         {(shown === 'conversation' || shown === 'chatbot') && <Conversation sellerId={chat.seller} startContext={chat.context} at={at} sent={sentMessages}
           onProduct={id => openProduct(id as ProductId)}
           onCart={() => { setCartSeller(chat.seller); setScreen('seller-cart') }}
-          onBack={() => setScreen(shown === 'chatbot' ? 'product' : chat.from)} />}
-        {shown === 'notifications' && <Notifications at={at} onBack={() => setScreen(notificationsFrom)} onOrder={openOrder} />}
+          onBack={() => goBack(shown === 'chatbot' ? 'product' : chat.from)} />}
+        {shown === 'notifications' && <Notifications at={at} onBack={() => goBack(notificationsFrom)} onOrder={openOrder} />}
         {shown === 'you' && (
           <YouProfile
             at={at} name={displayName} area={savedArea} follows={follows} collections={collections} purchased={purchased.length}
@@ -1060,7 +1128,7 @@ function BuyerApp({ demoTarget, buyerId, resume, onSwitchAccount }: { demoTarget
         {shown === 'delete-account' && <DeleteAccount at={at} onBack={() => setScreen(deleteFrom)} onDone={() => setScreen('you')} />}
 
         {showNav && (
-          <BottomNav items={TABS} active={activeTab} onSelect={k => goTab(k as TabKey)} />
+          <BottomNav items={TABS} active={TAB_OF[screen] ?? activeTab} onSelect={k => goTab(k as TabKey)} />
         )}
 
         {/* The You tab's account menu (PR-006): Purchases, Profile, Preferences and Account, each a labelled screen. */}
@@ -1921,7 +1989,7 @@ function GuestStrip({ onSignIn }: { onSignIn: () => void }) {
   )
 }
 
-function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden, hiddenScenes, follows, canonicalFollows, isSaved, isLiked, scroll, onScrolled, onSignIn, onSignInFollowing, onNotifications, onSearch, onPost, onProduct, onSeller, onFollow, onLike, onSave, onShare, onReviews, onMore, stories, seenStories, onStory, authoredScenes, onAuthoredScene }: {
+function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden, hiddenScenes, follows, canonicalFollows, isSaved, isLiked, scroll, onScrolled, onSignIn, onSignInFollowing, onNotifications, onSearch, onPost, onProduct, onSeller, onFollow, onLike, onSave, onShare, onChat, onReviews, onMore, stories, seenStories, onStory, authoredScenes, onAuthoredScene }: {
   at: Moment; guest: boolean; channel: Channel; onChannel: (channel: Channel) => void
   area: string | null; areaChosen: boolean; onArea: (area: string) => void
   hidden: readonly ShoppablePostId[]; hiddenScenes: readonly ShoppablePostId[]
@@ -1931,7 +1999,7 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
   onSignIn: () => void; onSignInFollowing: () => void; onNotifications: () => void; onSearch: () => void
   onPost: (id: ShoppablePostId) => void; onProduct: (id: ProductId) => void
   onSeller: (id: SellerId) => void; onFollow: (seller: SellerId) => void; onLike: (post: ShoppablePostId) => void
-  onSave: (post: ShoppablePostId) => void; onShare: (post: ShoppablePostId) => void
+  onSave: (post: ShoppablePostId) => void; onShare: (post: ShoppablePostId) => void; onChat: (post: ShoppablePostId) => void
   onReviews: (post: ShoppablePostId) => void; onMore: (post: ShoppablePostId) => void
   stories: readonly SellerStoryGroup[]; seenStories: readonly StoryId[]; onStory: (group: SellerStoryGroup) => void
   authoredScenes: ReturnType<typeof useAuthoredBuyer>['scenes']; onAuthoredScene: (id: string) => void
@@ -1955,23 +2023,25 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
   useLayoutEffect(() => {
     if (panel.current) panel.current.scrollTop = scroll[channel] ?? 0
   }, [channel, scroll])
-  // The discovery layout (PR-003): a compact top area (the channels, Search and Notifications, then Seller Stories), the
-  // Scene as a structured card that leads the screen without filling it, and a short caption under it.
+  // BUYER-009: a continuous photo-first feed. A compact top area: the five channels in one row, then the Stories strip (it scrolls) beside Search and
+  // Notifications (they stay put). Scenes follow one another in natural proportions, with no snapping, cards, borders or shadows.
   return (
     <>
       <h1 className="sr-only">Home</h1>
       <div className="flex-shrink-0 border-b border-border bg-surface">
-        <div className="flex items-center gap-1 pr-2">
-          <div className="min-w-0 flex-1"><ChannelBar channel={channel} onSelect={onChannel} /></div>
-          <IconButton label="Search" onClick={onSearch}><IconSearch size={17} /></IconButton>
-          <IconButton label="Notifications" onClick={onNotifications}><BellIcon /></IconButton>
+        <ChannelBar channel={channel} onSelect={onChannel} />
+        <div className="flex items-center">
+          <div className="min-w-0 flex-1">{stories.length > 0 && <StoriesRow groups={stories} seen={seenStories} onOpen={onStory} />}</div>
+          <div data-home-actions role="group" aria-label="Search and notifications" className="flex flex-shrink-0 items-center gap-1 px-2">
+            <IconButton label="Search" onClick={onSearch}><IconSearch size={17} /></IconButton>
+            <IconButton label="Notifications" onClick={onNotifications}><BellIcon /></IconButton>
+          </div>
         </div>
-        {stories.length > 0 && <StoriesRow groups={stories} seen={seenStories} onOpen={onStory} />}
       </div>
       {guest && <GuestStrip onSignIn={onSignIn} />}
       <div id="home-channel-panel" role="tabpanel" aria-labelledby={`home-channel-${channel}`} className="flex min-h-0 flex-1 flex-col">
-        <div ref={panel} onScroll={event => onScrolled(channel, event.currentTarget.scrollTop)} className={`min-h-0 flex-1 overflow-y-auto bg-background ${posts ? 'snap-y snap-mandatory' : ''}`}>
-          {channel === 'nearby' && <div className="snap-start"><NearbyAreas area={area} chosen={areaChosen} city={guest ? undefined : BUYERS[BUYER].city} onArea={onArea} /></div>}
+        <div ref={panel} onScroll={event => onScrolled(channel, event.currentTarget.scrollTop)} className="min-h-0 flex-1 overflow-y-auto bg-background">
+          {channel === 'nearby' && <NearbyAreas area={area} chosen={areaChosen} city={guest ? undefined : BUYERS[BUYER].city} onArea={onArea} />}
           {posts?.map(id => (
             <ShoppablePostUnit
               key={id}
@@ -1986,21 +2056,22 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
               onLike={() => onLike(id)}
               onSave={() => onSave(id)}
               onShare={() => onShare(id)}
+              onChat={() => onChat(id)}
               onReviews={() => onReviews(id)}
               onMore={() => onMore(id)}
             />
           ))}
           {channel === 'foryou' && (
-            <div className="h-48 snap-start p-5">
+            <div className="p-5">
               <div className="mb-3 text-xs font-semibold text-text-muted">Finding more Scenes for you</div>
               <Skeleton height={112} radius="var(--radius-xl)" />
             </div>
           )}
           {channel === 'following' && guest && <ChannelMessage message="Sign in to see Scenes from Sellers you follow." action="Sign in / Create account" onAction={onSignInFollowing} />}
           {products && (
-            <div className="p-4">
+            <div className="px-3 py-4">
               <p className="mb-3 text-xs text-text-muted">{channel === 'discounts' ? 'Active discounts, the largest first.' : 'Products their Sellers mark as locally made.'}</p>
-              <div role="list" className="flex flex-col gap-3">
+              <div role="list" className="flex flex-col gap-5">
                 {products.map(id => <div key={id} role="listitem"><ProductPostCard productId={id} at={at} ends={channel === 'discounts'} onOpen={() => onProduct(id)} /></div>)}
               </div>
             </div>
@@ -2011,70 +2082,39 @@ function Home({ at, guest, channel, onChannel, area, areaChosen, onArea, hidden,
   )
 }
 
-/** Home's channel tabs: For You first and selected by default (rule 2.3). Arrow keys move between them (WAI-ARIA tabs). */
+/** Home's channel tabs: For You first and selected by default (rule 2.3). Arrow keys move between them (WAI-ARIA tabs). All five fit one row (BUYER-009). */
 function ChannelBar({ channel, onSelect }: { channel: Channel; onSelect: (channel: Channel) => void }) {
-  const list = useRef<HTMLDivElement>(null)
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const selected = CHANNELS.findIndex(c => c.key === channel)
-  // While channels continue past the bar's right edge, a narrow shadow there says so (decorative: hidden from assistive
-  // technology, and taps pass through it). It goes once the bar is scrolled to its end.
-  const [more, setMore] = useState(false)
-  const measure = () => {
-    const bar = list.current
-    if (bar) setMore(bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 1)
-  }
-  useEffect(() => {
-    const bar = list.current
-    if (!bar) return
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(bar)
-    return () => observer.disconnect()
-  }, [])
-  // Bring a tab fully into view, clear of the shadow, so the shadow never lies over a selected or focused tab. The first
-  // and last tabs take the row to its ends, padding included; at the end the shadow goes.
-  const reveal = (index: number) => {
-    const bar = list.current, tab = tabs.current[index]
-    if (!bar || !tab) return
-    const left = index === 0 ? 0 : tab.offsetLeft
-    const right = index === CHANNELS.length - 1 ? bar.scrollWidth : tab.offsetLeft + tab.offsetWidth + CHANNEL_CUE_WIDTH
-    if (left < bar.scrollLeft) bar.scrollLeft = left
-    else if (right > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = right - bar.clientWidth
-  }
-  useEffect(() => reveal(selected), [selected])
   const move = (index: number) => {
     const next = (index + CHANNELS.length) % CHANNELS.length
     onSelect(CHANNELS[next].key)
     tabs.current[next]?.focus()
   }
   return (
-    <div className="relative flex-shrink-0">
-      <div ref={list} role="tablist" aria-label="Home channels" onScroll={measure} className="flex overflow-x-auto bg-surface px-2">
-        {CHANNELS.map((c, i) => (
-          <button
-            key={c.key}
-            ref={el => { tabs.current[i] = el }}
-            id={`home-channel-${c.key}`}
-            role="tab"
-            aria-selected={i === selected}
-            aria-controls="home-channel-panel"
-            tabIndex={i === selected ? 0 : -1}
-            style={INSET_FOCUS}
-            onClick={() => onSelect(c.key)}
-            onFocus={() => reveal(i)}
-            onKeyDown={event => {
-              const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: CHANNELS.length - 1 }[event.key]
-              if (to === undefined) return
-              event.preventDefault()
-              move(to)
-            }}
-            className={`flex-shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm ${i === selected ? 'border-brand font-semibold text-text-primary' : 'border-transparent text-text-muted'}`}
-          >
-            {c.label}
-          </button>
-        ))}
-      </div>
-      {more && <div aria-hidden="true" style={{ width: CHANNEL_CUE_WIDTH }} className="pointer-events-none absolute bottom-px right-0 top-0 bg-gradient-to-l from-text-primary/25 to-transparent" />}
+    <div role="tablist" aria-label="Home channels" className="flex bg-surface px-1 text-[13px]">
+      {CHANNELS.map((c, i) => (
+        <button
+          key={c.key}
+          ref={el => { tabs.current[i] = el }}
+          id={`home-channel-${c.key}`}
+          role="tab"
+          aria-selected={i === selected}
+          aria-controls="home-channel-panel"
+          tabIndex={i === selected ? 0 : -1}
+          style={INSET_FOCUS}
+          onClick={() => onSelect(c.key)}
+          onKeyDown={event => {
+            const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: CHANNELS.length - 1 }[event.key]
+            if (to === undefined) return
+            event.preventDefault()
+            move(to)
+          }}
+          className={`flex-auto whitespace-nowrap border-b-2 px-1 py-2.5 ${i === selected ? 'border-brand font-semibold text-text-primary' : 'border-transparent text-text-muted'}`}
+        >
+          {c.label}
+        </button>
+      ))}
     </div>
   )
 }
@@ -2181,56 +2221,54 @@ function StoryViewer({ group, at, onClose, onProduct, onPost, onAuthored }: {
 }
 
 /**
- * A Scene as a For You unit (specification §7; PR-003): a structured card that leads the screen without filling it.
- * The Seller and actual public Trust level (rule 14.6) with Follow and More above the photo; the photo itself, with no
- * hotspots; under it the Scene's actions, then a short caption. Prices, stock and variants stay with the Products.
- * Its actions (PR-004): Like, Save, Share and Reviews, and Explore the Scene, the primary one; Follow (Seller-level) and
- * More above. No comments, reposts or public Like counts.
+ * A Scene as a feed item (specification §7; PR-003; BUYER-009): the Seller and actual public Trust level (rule 14.6) with Follow and More above the photo; the
+ * photo itself in its natural proportions (a pending photo is a 4:5 placeholder labelled "Photo pending"), with no hotspots; under it the Scene's actions,
+ * then a short caption. No card: no border, shadow or fixed height, so Scenes follow one another in a continuous feed. Prices, stock and variants stay with the
+ * Products. Actions (PR-004): Like, Save, Chat with the Seller, Share and Reviews, and Explore the Scene, the primary one; Follow (Seller-level) and More above.
+ * No reposts or public Like counts.
  */
-function ShoppablePostUnit({ postId, at, following, liked, saved, onExplore, onSeller, onFollow, onLike, onSave, onShare, onReviews, onMore }: {
+function ShoppablePostUnit({ postId, at, following, liked, saved, onExplore, onSeller, onFollow, onLike, onSave, onShare, onChat, onReviews, onMore }: {
   postId: ShoppablePostId; at: Moment; following: boolean; liked: boolean; saved: boolean
   onExplore: () => void; onSeller: () => void; onFollow: () => void
-  onLike: () => void; onSave: () => void; onShare: () => void; onReviews: () => void; onMore: () => void
+  onLike: () => void; onSave: () => void; onShare: () => void; onChat: () => void; onReviews: () => void; onMore: () => void
 }) {
   const post = SHOPPABLE_POSTS[postId]
   const seller = SELLERS[post.seller]
-  // A little shorter than the feed, so the next Scene's card shows below it: a feed of Scenes, not one full-screen video.
+  const photo = liveScenePhoto(postId)
+  const label = `${seller.name} Scene: ${post.title}`
   return (
-    <article aria-label={`${post.title}, by ${seller.name}`} className="h-[calc(100%-20px)] min-h-[360px] snap-start px-3 pt-2.5">
-      <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-        {/* Buttons take their text size from their row (index.css sets `font: inherit` on buttons). */}
-        <div className="flex flex-shrink-0 items-center gap-2 px-3 py-1 text-xs">
-          <button onClick={onSeller} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand-muted text-xs font-bold text-brand-dark">{initials(seller.name)}</span>
-            <span className="truncate text-sm font-semibold text-text-primary">{seller.name}</span>
-            <span className="flex-shrink-0 rounded-full bg-success-bg px-2 py-0.5 text-[10px] font-semibold text-success">{trustLabel(trustAt(post.seller, at))}</span>
-          </button>
-          <button onClick={onFollow} className="flex-shrink-0 rounded-full border border-border-strong px-3 py-1 text-xs font-semibold text-text-primary">{following ? 'Following' : 'Follow'}</button>
-          <button onClick={onMore} aria-label="More options" className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold text-text-secondary">•••</button>
-        </div>
-        <div className="relative min-h-0 flex-1" style={{ background: 'linear-gradient(160deg, #6B5444 0%, #2E2520 100%)' }}>
-          <div aria-hidden="true" className="absolute inset-0">
-            <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark photo={liveScenePhoto(postId)} className="h-full w-full text-6xl" />
-          </div>
-          {/* The feed's media stays clean: no hotspots here. A Buyer enters Explore the Scene on purpose before choosing
-              exact Product locations (Engagement System & Metrics Knowledge Base v1.0). The photo opens Explore the Scene;
-              its focus outline is drawn inside the edge, because the card clips anything outside. */}
-          <button onClick={onExplore} aria-label={`Explore the Scene: ${post.title}, by ${seller.name}`} style={{ ...ON_PHOTO, ...INSET_FOCUS }} className="absolute inset-0 h-full w-full" />
-        </div>
-        {/* The Scene's actions. Like and Save are toggles (Like is the Scene's, never its Products'; Save keeps the Scene
-            itself); no counts are shown. Explore the Scene is the primary action. */}
-        <div className="flex flex-shrink-0 items-center gap-1 px-2 pt-1.5 text-xs font-semibold">
-          <button onClick={onLike} aria-label="Like" aria-pressed={liked} className={`flex h-9 w-9 items-center justify-center rounded-full ${liked ? 'text-brand-text' : 'text-text-secondary'}`}><HeartIcon filled={liked} /></button>
-          <button onClick={onSave} aria-label="Save" aria-pressed={saved} className={`flex h-9 w-9 items-center justify-center rounded-full ${saved ? 'text-brand-text' : 'text-text-secondary'}`}><BookmarkIcon filled={saved} /></button>
-          <button onClick={onShare} aria-label="Share" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><ShareIcon /></button>
-          <button onClick={onReviews} aria-label="Reviews" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><StarIcon /></button>
-          <span className="flex-1" />
-          <button onClick={onExplore} className="whitespace-nowrap rounded-full bg-brand px-3.5 py-2 text-on-brand">Explore the Scene</button>
-        </div>
-        {/* One line of caption: the whole caption is on the Scene itself. Margins, not padding, around it: a clamped line
-            would show through padding. */}
-        <p className="mx-3 mb-2.5 mt-1 line-clamp-1 flex-shrink-0 text-[13px] leading-snug text-text-secondary">{post.caption}</p>
+    <article aria-label={`${post.title}, by ${seller.name}`} data-feed-item className="pb-5">
+      {/* Buttons take their text size from their row (index.css sets `font: inherit` on buttons). */}
+      <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
+        <button onClick={onSeller} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand-muted text-xs font-bold text-brand-dark">{initials(seller.name)}</span>
+          <span className="truncate text-sm font-semibold text-text-primary">{seller.name}</span>
+          <span className="flex-shrink-0 rounded-full bg-success-bg px-2 py-0.5 text-[10px] font-semibold text-success">{trustLabel(trustAt(post.seller, at))}</span>
+        </button>
+        <button onClick={onFollow} className="flex-shrink-0 rounded-full border border-border-strong px-3 py-1 text-xs font-semibold text-text-primary">{following ? 'Following' : 'Follow'}</button>
+        <button onClick={onMore} aria-label="More options" className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold text-text-secondary">•••</button>
       </div>
+      {/* The feed's media stays clean: no hotspots here. A Buyer enters Explore the Scene on purpose before choosing exact Product locations
+          (Engagement System & Metrics Knowledge Base v1.0). The photo opens Explore the Scene; its focus outline is drawn inside the edge. */}
+      <div className="relative w-full" style={{ background: SCENE_MEDIA }}>
+        {photo
+          ? <img src={photo} alt={label} className="block h-auto w-full" />
+          : <Placeholder label={label} initialsOf={post.title} dark pending className="aspect-[4/5] w-full text-6xl" />}
+        <button onClick={onExplore} aria-label={`Explore the Scene: ${post.title}, by ${seller.name}`} style={{ ...ON_PHOTO, ...INSET_FOCUS }} className="absolute inset-0 h-full w-full" />
+      </div>
+      {/* The Scene's actions. Like and Save are toggles (Like is the Scene's, never its Products'; Save keeps the Scene itself); no counts are shown.
+          Explore the Scene is the primary action. */}
+      <div className="flex items-center px-1.5 pt-1.5 text-xs font-semibold">
+        <button onClick={onLike} aria-label="Like" aria-pressed={liked} className={`flex h-9 w-9 items-center justify-center rounded-full ${liked ? 'text-brand-text' : 'text-text-secondary'}`}><HeartIcon filled={liked} /></button>
+        <button onClick={onSave} aria-label="Save" aria-pressed={saved} className={`flex h-9 w-9 items-center justify-center rounded-full ${saved ? 'text-brand-text' : 'text-text-secondary'}`}><BookmarkIcon filled={saved} /></button>
+        <button onClick={onChat} aria-label="Chat with seller" title="Chat with seller" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><ChatBubbleIcon /></button>
+        <button onClick={onShare} aria-label="Share" title="Share" data-share className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><ShareIcon /></button>
+        <button onClick={onReviews} aria-label="Reviews" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><StarIcon /></button>
+        <span className="flex-1" />
+        <button onClick={onExplore} className="mr-1.5 whitespace-nowrap rounded-full bg-brand px-3.5 py-2 text-on-brand">Explore the Scene</button>
+      </div>
+      {/* One line of caption: the whole caption is on the Scene itself. Margins, not padding, around it: a clamped line would show through padding. */}
+      <p className="mx-3 mb-1 mt-1 line-clamp-1 text-[13px] leading-snug text-text-secondary">{post.caption}</p>
     </article>
   )
 }
@@ -2241,7 +2279,7 @@ function ProductPostCard({ productId, at, ends, onOpen }: { productId: ProductId
   const available = isPurchasableAt(productId, at)
   const body = (
     <>
-      <Placeholder label={product.name} photo={livePhoto(productId)} className="h-24 w-20 flex-shrink-0 rounded-xl text-lg" />
+      <Placeholder label={product.name} photo={livePhoto(productId)} pending className="aspect-[4/5] w-24 flex-shrink-0 rounded-xl text-lg" />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-xs text-text-muted">{SELLERS[product.seller].name} · {trustLabel(trustAt(product.seller, at))}</span>
         <span className="mt-1 text-sm font-semibold leading-snug text-text-primary">{product.name}</span>
@@ -2253,7 +2291,7 @@ function ProductPostCard({ productId, at, ends, onOpen }: { productId: ProductId
   // Post, which offers nothing for purchase: not purchasable doesn't mean not viewable. The scroll margin leaves room for
   // the keyboard focus outline when focus scrolls a card into view at the edge of the list.
   return (
-    <button onClick={onOpen} className={`flex w-full scroll-my-2 items-center gap-3 rounded-2xl border border-border p-3 text-left ${available ? 'bg-surface shadow-sm' : 'bg-surface-raised'}`}>
+    <button data-feed-item onClick={onOpen} className="flex w-full scroll-my-2 items-center gap-3 py-1 text-left">
       {body}<IconChevronRight size={16} />
     </button>
   )
@@ -2880,7 +2918,7 @@ function ProductDetail({ productId, at, withdrawn, buyingAgain, onBack, onSeller
   const shownQuantity = Math.min(quantity, maxQuantity)
   return (
     <>
-      <Header title="Product" onBack={onBack} trailing={<><IconButton label="Share" onClick={onShare}>↗</IconButton><IconButton label="More options" onClick={onMore}>•••</IconButton></>} />
+      <Header title="Product" onBack={onBack} trailing={<><IconButton label="Share" onClick={onShare}><ShareIcon /></IconButton><IconButton label="More options" onClick={onMore}>•••</IconButton></>} />
       <div className="flex-1 overflow-y-auto pb-24">
         <ProductGallery productId={productId} name={product.name} />
         <div className="p-5">
@@ -2965,7 +3003,7 @@ function SellerProfile({ sellerId, at, following, sellerReviews, tab, onTab, onF
   const products = liveSellerProductsAt(sellerId, at)
   return (
     <>
-      <Header title="Seller" onBack={onBack} onSearch={onSearch} trailing={<IconButton label="Share">↗</IconButton>} />
+      <Header title="Seller" onBack={onBack} onSearch={onSearch} trailing={<IconButton label="Share"><ShareIcon /></IconButton>} />
       <div className="flex-1 overflow-y-auto">
         <div className="px-5 pt-5">
           <div className="flex items-center gap-4">
@@ -3419,8 +3457,9 @@ function orderStages(orderId: OrderId) {
 }
 
 /**
- * The Buyer's Orders on the marketplace dataset (SIM-001): the shared internal-simulation store, shown only in the simulation (the MVP shows the gate).
- * List by group, then Order detail with timeline, Handoffs and the Buyer's scan. The layout redesign is BUYER-010.
+ * The Buyer's Orders on the marketplace dataset (SIM-001, BUYER-010): the shared internal-simulation store, shown only in the simulation (the MVP shows the gate).
+ * A clean list in status groups (Active, Completed, Cancelled, returned or failed), each row with its Seller, fulfilment mode, date and simulated total; an Order
+ * opens its detail (lines, timeline, Handoffs, Review). The signed-in Buyer with no Orders sees why instead of an empty list.
  */
 function DatasetOrders({ onBack, onChats, onNotifications }: { onBack?: () => void; onChats: () => void; onNotifications: () => void }) {
   const BUYER = useBuyer()
@@ -3432,11 +3471,18 @@ function DatasetOrders({ onBack, onChats, onNotifications }: { onBack?: () => vo
     <>
       <Header title="Orders" onBack={open ? () => setOpen(null) : onBack} trailing={<div className="flex gap-1"><IconButton label="Chats" onClick={onChats}><ChatIcon /></IconButton><IconButton label="Notifications" onClick={onNotifications}><BellIcon /></IconButton></div>} />
       <SimBar />
-      <div className="flex-1 overflow-y-auto" data-sim-surface="buyer-orders">
+      <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden" data-sim-surface="buyer-orders">
         {open ? <SimOrderDetail orderId={open} actor={{ role: 'BUYER', id: BUYER }} onBack={() => setOpen(null)} /> : (
           <div className="p-4">
             <div className="font-display text-2xl font-semibold">Your Seller Orders</div>
-            <p className="mt-1 text-sm text-text-muted">{orders.length === 0 ? 'No Orders for this account.' : `${orders.length} simulated Orders, newest first.`}</p>
+            <p className="mt-1 text-sm text-text-muted">{orders.length === 0 ? 'No Orders for this account.' : `${orders.length} simulated Order${orders.length === 1 ? '' : 's'}, newest first. Totals are simulated: nothing was charged.`}</p>
+            {orders.length === 0 && (
+              <div data-orders-empty className="mt-6 flex flex-col items-center rounded-2xl bg-surface-raised px-5 py-8 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface text-text-muted"><IconOrders size={22} /></span>
+                <div className="mt-3 font-display text-lg font-semibold">No Orders yet</div>
+                <p className="mt-1 text-sm text-text-secondary">This account has no simulated Orders. Orders appear here once a Seller records one for this Buyer in the simulation.</p>
+              </div>
+            )}
             {(BUYER as string) !== 'BY-02' && !orders.some(isOpen) && <PrototypeNote>This account has no active Orders. Hana (BY-02) is the primary simulation Buyer: choose her in the account selector to follow an active Order.</PrototypeNote>}
             {groups.filter(g => g.rows.length).map(group => (
               <section key={group.title} aria-label={group.title}>
@@ -4682,7 +4728,11 @@ function BookmarkIcon({ filled }: { filled?: boolean }) {
 }
 
 function ShareIcon() {
-  return <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 12.5V3.5M6.5 7 10 3.5 13.5 7M4.5 11v5.5h11V11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  return <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><circle cx="15" cy="4.5" r="2.2" /><circle cx="5" cy="10" r="2.2" /><circle cx="15" cy="15.5" r="2.2" /><path d="m7 8.9 6-3.3M7 11.1l6 3.3" /></svg>
+}
+
+function ChatBubbleIcon() {
+  return <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3.5 4.5h13v9H9l-3.5 3v-3h-2z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
 }
 
 function StarIcon() {

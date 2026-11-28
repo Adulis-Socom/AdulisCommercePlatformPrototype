@@ -4,6 +4,8 @@
   "bot005.test.mjs": 1,
   "bot006.test.mjs": 2,
   "buyer-unified.test.mjs": 3,
+  "buyer009.test.mjs": { "runs": 2, "dataset": "marketplace" },
+  "buyer010.test.mjs": { "runs": 2, "dataset": "marketplace" },
   "chat-fix01.test.mjs": 3,
   "buyer-fix01.test.mjs": 4,
   "buyer-fix02.test.mjs": 4,

@@ -1341,3 +1341,9 @@ textarea {
 .font-display { font-family: var(--font-display); }
 .font-body    { font-family: var(--font-body); }
 .font-mono    { font-family: var(--font-mono); }
+
+/* While the internal simulation is on, its badge sits at the bottom-left of the content area: the page scrolls on past the phone app, so the badge never covers
+   the bottom navigation (BUYER-010, at every width). */
+.app-main[data-simulation] .phone-stage {
+  padding-bottom: 56px !important;
+}

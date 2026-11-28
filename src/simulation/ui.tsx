@@ -64,7 +64,8 @@ export function OrderRows({ orders, onOpen, who }: { orders: SimOrder[]; onOpen:
               <span className="mt-1 block truncate text-sm font-semibold">{itemsOf(o.id, sim.lines)}</span>
               <span className="block text-xs text-text-muted">{who === 'seller' ? partyName(o.buyerId) : partyName(o.sellerId)} · {MODE_LABEL[o.mode]} · {fmtAt(o.paidAt)}</span>
             </span>
-            <span className="text-sm font-semibold">{etb(o.total)}</span>
+            {/* BUYER-010: the Buyer's total says it is simulated; the Seller Console's rows keep their own wording. */}
+            <span className="flex-shrink-0 text-right"><span className="block text-sm font-semibold">{etb(o.total)}</span>{who === 'buyer' && <span className="block text-[10px] text-text-muted">simulated total</span>}</span>
           </button>
         </li>
       ))}

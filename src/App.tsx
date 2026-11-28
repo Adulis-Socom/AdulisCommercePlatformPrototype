@@ -255,7 +255,7 @@ export default function App() {
       </div>
 
       {/* Main content. `data-section` lets index.css's responsive rules address a section without changing it. */}
-      <main ref={mainArea} data-section={active} className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}`}>
+      <main ref={mainArea} data-section={active} data-simulation={simulation ? 'on' : undefined} className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}`}>
         <StoryProvider stage={stageFor(journey?.id, journey?.stage ?? 0)}>
           <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} />
         </StoryProvider>
