@@ -39,6 +39,7 @@ import { chargeText, effectiveCoverage, sellerMethods } from '../fulfilment'
 import { isLegacy } from '../marketplace/registry'
 import { SellerOrders, useSellerActions } from '../simulation/surfaces'
 import { SellerCouriers } from '../simulation/feedback-ui'
+import MarketplaceInsights from './console/Insights'
 import { SellerReviews } from '../simulation/reviews-ui'
 import { Notice } from './console/kit'
 import { getSelectedSeller, setSelectedSeller } from '../selected-seller'
@@ -227,7 +228,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
           {activeNav === 'content' && <ContentHub sellerId={sellerId} at={at} demoTarget={demoTarget} />}
           {activeNav === 'inbox' && <InboxPanel sellerId={sellerId} at={at} />}
           {activeNav === 'claims' && (simulation ? <ClaimsPanel sellerId={sellerId} at={at} /> : <SimulationGate title="Claims">Payment and refund Claims are deferred. Release 1 has no paid Orders to raise a Claim against.</SimulationGate>)}
-          {activeNav === 'insights' && <InsightsPanel sellerId={sellerId} at={at} />}
+          {activeNav === 'insights' && (isLegacy ? <InsightsPanel sellerId={sellerId} at={at} /> : <MarketplaceInsights sellerId={sellerId} whoSees={Object.fromEntries(INSIGHTS_TABS.map(item => [item.key, rolesWith(item.capability)])) as Record<InsightsTab, string>} />)}
           {activeNav === 'reviews' && (isLegacy ? <ReviewsPanel sellerId={sellerId} at={at} /> : <SellerReviews sellerId={sellerId} />)}
           {activeNav === 'trust' && <TrustPanel sellerId={sellerId} at={at} />}
           {activeNav === 'store' && <StorePanel sellerId={sellerId} at={at} onOpenCouriers={() => navigate('couriers')} />}

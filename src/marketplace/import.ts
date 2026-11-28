@@ -47,5 +47,5 @@ export const INDEX = {
   chatByBuyer: group(OPERATIONS.chat_messages, r => r.buyer_id),
 } as const
 
-/** The weekly analytics series, loaded only when a surface asks for them (a separate chunk). */
-export const loadAnalytics = async (): Promise<Analytics> => (await import('./data/analytics.json', { with: { type: 'json' } })).default as unknown as Analytics
+/** The weekly analytics series, loaded only when a surface asks for them (a separate chunk). No import attribute: Vite's dev server serves JSON as a script module and rejects one. */
+export const loadAnalytics = async (): Promise<Analytics> => (await import('./data/analytics.json')).default as unknown as Analytics

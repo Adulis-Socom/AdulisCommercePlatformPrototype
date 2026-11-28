@@ -1392,3 +1392,51 @@ textarea {
     display: none;
   }
 }
+
+/* DESIGN-002: marketplace Insights. Stage colours are theme tokens, so every Theme Lab palette restates them: discovery = info, interest = brand,
+   response = Courier teal. Growth and decline use the success and danger tokens in the change chips only. The grid answers the console's own width
+   (container queries), not the window's: one column, two from 520 px, four from 900 px; the hero metric spans two columns and two rows. Own class
+   names (no grid-cols-[...]) so the console's narrow-panel stacking rule above does not reflow them. */
+.ins-root {
+  --ins-discovery: var(--color-info);
+  --ins-interest: var(--color-brand-text);
+  --ins-response: var(--color-courier);
+  --ins-neutral: var(--color-text-muted);
+}
+
+.ins-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ins-multiples {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+}
+
+.ins-dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.375rem 1rem;
+}
+
+@container (min-width: 520px) {
+  .ins-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ins-grid > .ins-span-all,
+  .ins-grid > .ins-span-2,
+  .ins-grid > .ins-hero { grid-column: span 2; }
+}
+
+@container (min-width: 900px) {
+  .ins-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ins-grid > .ins-span-all { grid-column: 1 / -1; }
+  .ins-grid > .ins-hero { grid-row: span 2; }
+}
+
+@media (max-width: 640px) {
+  .ins-root { padding: 1rem; }
+}
+
+.ins-grid > .ins-sim { align-self: start; }
