@@ -106,6 +106,21 @@ class AdmissionSchemaTest(unittest.TestCase):
             subprocess.run([sys.executable, str(HERE / "build_registry.py"), "-", str(target)], check=True, capture_output=True)
             self.assertEqual(target.read_text(encoding="utf-8").replace("\r\n", "\n"), (HERE / "models.json").read_text(encoding="utf-8").replace("\r\n", "\n"))
 
+    def test_regenerating_the_registry_keeps_a_reviewed_admission(self):
+        registry = copy.deepcopy(REGISTRY)
+        entry = registry["models"]["silueta"]
+        entry.update(status="admitted", statusNote="reviewed note", blocker="", admission=copy.deepcopy(ADMISSION), installPermitted=True, assets=[dict(entry["assets"][0], pinnedSha256="a" * 64)])
+        registry["models"]["u2net"]["admission"] = copy.deepcopy(ADMISSION)  # an admission record without an admitted status does not admit anything
+        with tempfile.TemporaryDirectory() as tmp:
+            previous, out = Path(tmp) / "previous.json", Path(tmp) / "out.json"
+            previous.write_text(json.dumps(registry), encoding="utf-8")
+            subprocess.run([sys.executable, str(HERE / "build_registry.py"), "-", str(out), str(previous)], check=True, capture_output=True)
+            kept = json.loads(out.read_text(encoding="utf-8"))["models"]
+            self.assertEqual({k: kept["silueta"][k] for k in ("status", "statusNote", "blocker", "installPermitted")}, {"status": "admitted", "statusNote": "reviewed note", "blocker": "", "installPermitted": True})
+            self.assertEqual((kept["silueta"]["admission"], kept["silueta"]["assets"][0]["pinnedSha256"]), (ADMISSION, "a" * 64))
+            self.assertEqual(kept["u2net"]["status"], "unresolved")
+            self.assertEqual(adapter.load_registry(out)["models"]["silueta"]["status"], "admitted")
+
     def forged(self, **mutations):
         """models.json written with one model set to "admitted" and then altered; returns that model's status after adapter.load_registry."""
         registry = copy.deepcopy(REGISTRY)
