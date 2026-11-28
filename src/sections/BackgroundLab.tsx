@@ -11,7 +11,7 @@ import {
  * Nothing here is part of Seller authoring. Photos stay in this browser tab and go only to the loopback adapter. A model that is
  * not cleared by the registry is listed with its reasons and cannot be selected or run; nothing is ever fabricated.
  */
-const MAX_PHOTOS = 6
+const MAX_PHOTOS = 30 // the founder's benchmark is 30 photographs; was 6 (PROTO-BGR-RESEARCH-001)
 type Photo = { id: number; name: string; blob: Blob; url: string; width: number; height: number }
 type Row = {
   key: string; photo: number; model: string; status: 'queued' | 'running' | 'done' | 'error' | 'cancelled'; blob?: Blob; url?: string; maskUrl?: string
@@ -92,7 +92,7 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
       setPointsByPhoto(map => { const { [target]: _gone, ...rest } = map; return rest }) // a replaced photo starts with no points
       return
     }
-    if (photos.length >= MAX_PHOTOS) { release(url); setNotice(`Up to ${MAX_PHOTOS} photos at a time.`); return }
+    if (photosRef.current.length >= MAX_PHOTOS) { release(url); setNotice(`Up to ${MAX_PHOTOS} photos at a time.`); return }
     const id = next.current++
     setPhotos(list => [...list, { id, name: file.name, blob: file, url, ...size }]); setActivePhoto(id)
   }
@@ -227,7 +227,7 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="mx-auto max-w-6xl p-6 text-text-primary" aria-label="Background Removal Lab">
-      <input ref={fileInput} type="file" accept={ACCEPT.join(',')} className="sr-only" tabIndex={-1} aria-hidden="true" onChange={event => { void addPhoto(event.target.files?.[0]); event.target.value = '' }} />
+      <input ref={fileInput} type="file" multiple accept={ACCEPT.join(',')} className="sr-only" tabIndex={-1} aria-hidden="true" onChange={event => { const files = [...(event.target.files ?? [])]; event.target.value = ''; void (async () => { for (const file of replacing.current !== null ? files.slice(0, 1) : files) await addPhoto(file) })() }} />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">Experimental tool · not part of Seller authoring</p>

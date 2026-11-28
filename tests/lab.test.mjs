@@ -229,4 +229,10 @@ await suite('lab', { width: 1440, height: 900 }, async (page, t) => {
   state.calls.length = 0
   await page.getByRole('button', { name: /^Run/ }).click(); await t.settle(1500)
   t.ck('[mock] the admitted custom checkpoint is run by id and its row says so', state.calls.length >= 1 && /model=custom%3Aalpha/.test(state.calls[0]) && !/path|file/.test(state.calls[0]) && /Custom: alpha/.test(await body()), state.calls)
+  // PROTO-BGR-RESEARCH-001: several photographs can be added in one go (the founder's benchmark is 30) and the limit is 30
+  const cards = () => page.getByRole('button', { name: /^Show original:/ }).count()
+  const before = await cards()
+  await page.locator('input[type=file]').first().setInputFiles([photoPath, photoPath, photoPath]); await t.settle(900)
+  t.eq('three photographs chosen at once are all added', (await cards()) - before, 3)
+  t.ck('the page states the 30-photo limit', /up to 30 photos/.test(await body()))
 })

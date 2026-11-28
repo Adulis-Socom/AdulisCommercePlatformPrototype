@@ -25,13 +25,18 @@ await suite('media-editor', { width: 1440, height: 900 }, async (page, t) => {
   await page.locator('input[type=file]').first().setInputFiles(photoA); await t.settle(700)
   await page.getByRole('button', { name: /^Edit photo 1/ }).click(); await t.settle(500)
   let text = await content()
-  t.ck('no adapter: the editor says the model is unavailable and why', /This model is unavailable/.test(text) && /Background Removal Lab/.test(text))
+  // PROTO-BGR-RESEARCH-001: the registry now admits birefnet-general-lite (internal evaluation), so with no adapter the default model reports the adapter, not the licence.
+  t.ck('no adapter: the admitted default model says the local adapter is not running', !/This model is unavailable/.test(text) && /The local adapter is not running/.test(text))
+  await page.getByLabel('Model').selectOption('silueta'); await t.settle(300)
+  text = await content()
+  t.ck('a model the registry does not admit says it is unavailable and why', /This model is unavailable/.test(text) && /Background Removal Lab/.test(text))
+  await page.getByLabel('Model').selectOption('birefnet-general-lite'); await t.settle(300)
   t.eq('Remove background is disabled', await page.getByRole('button', { name: 'Remove background' }).isDisabled(), true)
   t.ck('the model list comes from the registry (local automatic models only)', (await page.getByLabel('Model').locator('option').count()) > 10)
   await page.getByLabel('Product name').fill('Media Test Shirt')
   t.ck('authoring still works without the adapter', (await page.getByLabel('Product name').inputValue()) === 'Media Test Shirt')
 
-  // MOCKED: the registry (shipped catalogue module) and the adapter both clear silueta. Only these test responses say so; nothing is admitted in the repo.
+  // MOCKED: the registry (shipped catalogue module) and the adapter both clear silueta. Only these test responses say so; only the registry module and the adapter are mocked here (the real admitted model is exercised by tests/bgr-real.test.mjs, outside pnpm test).
   const modified = JSON.parse(readFileSync('src/lab/model-catalogue.json', 'utf8'))
   modified.models.find(m => m.id === 'silueta').admitted = true
   await page.route('**/model-catalogue.json*', route => route.fulfill({ status: 200, contentType: 'text/javascript', body: `export default ${JSON.stringify(modified)}` }))

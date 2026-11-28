@@ -8,6 +8,10 @@ from pathlib import Path
 import onnxruntime  # noqa: F401
 import pooch  # noqa: F401
 
+# The models the reviewed registry (models.json) admits for internal evaluation, and nothing else. Whoever admits or demotes a model changes
+# this tuple in the same commit; the tests then assert exactly this set and that every other model is refused.
+ADMITTED_MODELS = ("birefnet-general", "birefnet-general-lite", "sam")
+
 ADMISSION = {"scope": "internal-evaluation", "decision": "admitted", "decidedBy": "unit test", "date": "2026-11-28",
              "evidence": ["test fixture (not real evidence)"], "checkpointRole": "test", "limitations": "test only"}
 
@@ -24,7 +28,7 @@ def admit_for_test(adapter, model, root):
     (Path(root) / model).mkdir(parents=True, exist_ok=True)
     for asset in entry["assets"]:
         data = f"checkpoint {asset['file']}".encode()
-        (Path(root) / model / asset["file"]).write_bytes(data)
+        (Path(root) / model / (asset.get("localFile") or asset["file"])).write_bytes(data)
         files[asset["file"]] = data
         assets.append(dict(asset, pinnedSha256=sha(data)))
     entry.update(status="admitted", assets=assets, admission=dict(ADMISSION, evidence=list(ADMISSION["evidence"])))

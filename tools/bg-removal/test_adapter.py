@@ -100,8 +100,9 @@ class AdapterTest(unittest.TestCase):
             status, data, _ = self.post(png(), model=model)
             self.assertEqual(status, 400, model)
             self.assertIn("allowlist", json.loads(data)["error"])
+        from bgfixtures import ADMITTED_MODELS
         blocked = [k for k, e in json.loads((HERE / "models.json").read_text(encoding="utf-8"))["models"].items() if e["status"] != "admitted"]
-        self.assertGreaterEqual(len(blocked), 23)  # nothing is admitted today
+        self.assertEqual(len(blocked), 23 - len(ADMITTED_MODELS))  # every model but the reviewed internal-evaluation admissions
         for model in blocked:
             status, data, _ = self.post(png(), model=model)
             self.assertEqual(status, 403, model)
@@ -193,10 +194,15 @@ class AdapterTest(unittest.TestCase):
         catalogue = json.loads(data)
         self.assertEqual(catalogue["runtime"]["coreModulesMissing"], [m for m in ("numpy", "PIL", "onnxruntime", "pymatting", "numba", "scipy", "skimage", "pooch", "jsonschema")
                                                                        if importlib.util.find_spec(m) is None])
+        from bgfixtures import ADMITTED_MODELS
         for entry in catalogue["models"]:
-            self.assertFalse(entry["ready"], entry["id"])  # nothing is admitted
             self.assertIn("missing", entry["dependencies"], entry["id"])
-            self.assertIn("not admitted", entry["readinessReasons"], entry["id"])
+            if entry["id"] in ADMITTED_MODELS:
+                self.assertTrue(entry["admitted"], entry["id"])
+                self.assertEqual(entry["ready"], entry["installed"] and entry["dependencies"]["ok"], entry["id"])  # depends on this disk
+            else:
+                self.assertFalse(entry["ready"], entry["id"])
+                self.assertIn("not admitted", entry["readinessReasons"], entry["id"])
         fp16 = next(m for m in catalogue["models"] if m["id"] == "birefnet-general-fp16")
         self.assertEqual(fp16["dependencies"]["missing"], [m for m in ("onnx", "onnxconverter_common") if importlib.util.find_spec(m) is None])
         status, data, _ = self.get("/health")
@@ -230,16 +236,20 @@ class AdapterTest(unittest.TestCase):
             entry.clear()
             entry.update(original)
 
-    @unittest.skipUnless(any(e.get("status") == "admitted" for e in json.loads((HERE / "models.json").read_text())["models"].values()),
-                         "no admitted checkpoint: inference is intentionally not run")
     def test_actual_inference_returns_a_real_alpha_png(self):
+        """REAL inference with an admitted model whose checkpoint was promoted on this machine; skipped (with the reason) when none is installed or RAM is short."""
         from PIL import Image
         from skimage import data
-        manifest = json.loads((HERE / "models.json").read_text())["models"]
-        model = next(key for key, e in manifest.items() if e.get("status") == "admitted")
+        status, body, _ = self.get("/catalogue")
+        ready = [m["id"] for m in json.loads(body)["models"] if m["ready"] and m["id"] != "sam"]  # SAM is interactive (needs a point): covered by smoke.py
+        if not ready:
+            self.skipTest("no admitted checkpoint is installed on this machine (promote one from quarantine; see README)")
+        model = ready[0]
         source = io.BytesIO()
         Image.fromarray(data.coffee()).save(source, format="JPEG", quality=90)
         status, body, headers = self.post(source.getvalue(), model=model)
+        if status == 507:
+            self.skipTest("the adapter refused for lack of free RAM (a real environment result): " + body.decode()[:120])
         self.assertEqual(status, 200)
         result = Image.open(io.BytesIO(body))
         self.assertEqual((result.mode, result.size), ("RGBA", (600, 400)))

@@ -338,7 +338,8 @@ def checkpoint_files(model):
     if entry.get("custom"):
         return [(CUSTOM_DIR / entry["customFile"], entry["sha256"], None)]
     source = entry.get("derivedFrom", model)
-    return [(MODEL_ROOT / source / asset["file"], asset.get("pinnedSha256"), asset) for asset in MANIFEST[source].get("assets", [])]
+    # rembg looks for `<session name>.onnx` for the BiRefNet sessions, not for the release asset name: `localFile` is the name on disk, `file` the release/quarantine name
+    return [(MODEL_ROOT / source / (asset.get("localFile") or asset["file"]), asset.get("pinnedSha256"), asset) for asset in MANIFEST[source].get("assets", [])]
 
 
 def is_installed(model):
@@ -940,7 +941,7 @@ def promote(model, asset_file):
     actual = sha256_of(source)
     if actual != pinned:
         raise SystemExit(f"refused: the quarantined file hashes to {actual}, not the pinned {pinned}")
-    target = MODEL_ROOT / model / asset_file
+    target = MODEL_ROOT / model / (asset.get("localFile") or asset_file)
     if under_quarantine(target):
         raise SystemExit("refused: the executable location lies inside the quarantine folder")
     need = source.stat().st_size / 1048576 + DISK_HEADROOM_MB

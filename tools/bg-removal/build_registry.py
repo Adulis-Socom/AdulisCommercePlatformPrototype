@@ -149,7 +149,7 @@ def main() -> None:
         pinned = {a["file"]: a.get("pinnedSha256") for a in previous.get("models", {}).get(key, {}).get("assets", [])}
         for name in assets:
             asset = release.get(name, {})
-            entry["assets"].append({"file": name, "url": RELEASE + name, "bytes": asset.get("size"), "publisherSha256": (asset.get("digest") or "").removeprefix("sha256:") or None, "rembgChecksum": next(iter(inspected.get(key, {}).get("checksums", [])), None) if len(assets) == 1 else None, "actualSha256": None, "pinnedSha256": pinned.get(name)})
+            entry["assets"].append({"file": name, "url": RELEASE + name, "bytes": asset.get("size"), "publisherSha256": (asset.get("digest") or "").removeprefix("sha256:") or None, "rembgChecksum": next(iter(inspected.get(key, {}).get("checksums", [])), None) if len(assets) == 1 else None, "actualSha256": None, "pinnedSha256": pinned.get(name), **({"localFile": f"{key}.onnx"} if key.startswith("birefnet") else {})})
         if entry["assets"]:
             disk = sum(a["bytes"] or 0 for a in entry["assets"])
             entry["resources"] = {"diskMb": round(disk / 1048576), "ramMbEstimate": round(disk / 1048576 * 2.5), "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"}

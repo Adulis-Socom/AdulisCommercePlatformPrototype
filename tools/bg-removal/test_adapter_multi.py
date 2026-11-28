@@ -18,7 +18,7 @@ from unittest import mock
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import adapter  # noqa: E402  (does not import rembg)
-from bgfixtures import admit_for_test, sha  # noqa: E402
+from bgfixtures import ADMITTED_MODELS, admit_for_test, sha  # noqa: E402
 
 REGISTRY = json.loads((HERE / "models.json").read_text(encoding="utf-8"))
 INSPECTED = json.loads((HERE / "rembg_sessions_2.0.88.json").read_text(encoding="utf-8"))["sessions"]
@@ -51,13 +51,18 @@ class RegistryTest(unittest.TestCase):
             if len(entry["assets"]) == 1 and session["checksums"]:
                 self.assertEqual(single[0]["rembgChecksum"], session["checksums"][0], session["id"])
 
-    def test_nothing_is_admitted_and_each_blocked_model_says_why(self):
+    def test_exactly_the_reviewed_models_are_admitted_and_each_other_model_says_why(self):
+        self.assertEqual(sorted(k for k, e in REGISTRY["models"].items() if e["status"] == "admitted"), sorted(ADMITTED_MODELS))
         for key, entry in REGISTRY["models"].items():
-            self.assertNotEqual(entry["status"], "admitted", key)
-            self.assertFalse(entry["executable"], key)
-            self.assertTrue(entry["blocker"] and entry["statusNote"], key)
+            self.assertTrue(entry["statusNote"], key)
             self.assertIn(entry["kind"], ("local", "remote", "custom"))
-            self.assertFalse(entry["installPermitted"], key)
+            self.assertFalse(entry["installPermitted"], key)  # nothing may be downloaded by /install; admitted files come from quarantine through promote
+            if key in ADMITTED_MODELS:
+                self.assertTrue(entry["executable"], key)
+                self.assertEqual(entry["blocker"], "", key)
+            else:
+                self.assertFalse(entry["executable"], key)
+                self.assertTrue(entry["blocker"], key)
 
     def test_remote_services_are_inactive_and_hold_no_credentials(self):
         for key in ("withoutbg", "atlascloud"):
@@ -70,11 +75,15 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(REGISTRY["models"]["u2netp"]["sha256"], "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8")
         self.assertEqual(REGISTRY["models"]["u2netp"]["status"], "unresolved")
 
-    def test_public_catalogue_entry_has_no_paths_and_is_not_ready(self):
+    def test_public_catalogue_entry_has_no_paths_and_only_admitted_installed_models_are_ready(self):
         for key in REGISTRY["models"]:
             entry = adapter.public_entry(key)
             self.assertNotIn("file", entry)
-            self.assertFalse(entry["ready"], key)
+            if key in ADMITTED_MODELS:
+                self.assertTrue(entry["admitted"], key)
+                self.assertEqual(entry["ready"], entry["installed"] and entry["dependencies"]["ok"], key)  # depends on this disk, never on the registry alone
+            else:
+                self.assertFalse(entry["ready"], key)
             self.assertNotIn(str(HERE), json.dumps(entry))
 
 

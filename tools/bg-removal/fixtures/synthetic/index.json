@@ -1,0 +1,86 @@
+[
+  {
+    "name": "bottle",
+    "file": "bottle.jpg",
+    "mask": "bottle.mask.png",
+    "width": 1024,
+    "height": 1024,
+    "subjectCentre": [
+      511,
+      560
+    ],
+    "centreSource": "synthetic generator (centroid of the drawn ground-truth mask)",
+    "bytes": 28039,
+    "sha256": "1a8ddaaff8779bc876d5578960ffff1646a776f633fb33a3ecd90209a365340c"
+  },
+  {
+    "name": "mug",
+    "file": "mug.jpg",
+    "mask": "mug.mask.png",
+    "width": 1600,
+    "height": 1200,
+    "subjectCentre": [
+      772,
+      637
+    ],
+    "centreSource": "synthetic generator (centroid of the drawn ground-truth mask)",
+    "bytes": 41208,
+    "sha256": "5b6c8ce3684d6d4082a9458cb4e61f2f7d80ad0b7d8b5648023866f64b22b8ef"
+  },
+  {
+    "name": "fringe",
+    "file": "fringe.jpg",
+    "mask": "fringe.mask.png",
+    "width": 1024,
+    "height": 1024,
+    "subjectCentre": [
+      511,
+      649
+    ],
+    "centreSource": "synthetic generator (centroid of the drawn ground-truth mask)",
+    "bytes": 71259,
+    "sha256": "5d4a85fbfd0699eca42467119fe75204f1c7ac4a49b0da7735286443bc1a847d"
+  },
+  {
+    "name": "glass",
+    "file": "glass.jpg",
+    "mask": "glass.mask.png",
+    "width": 1600,
+    "height": 1200,
+    "subjectCentre": [
+      799,
+      459
+    ],
+    "centreSource": "synthetic generator (centroid of the drawn ground-truth mask)",
+    "bytes": 41071,
+    "sha256": "03a7daf5884d4ed44fe6f1a99b2928179d8b3d2bac83e7ad8aea77c94dfb0844"
+  },
+  {
+    "name": "shoe-lowcontrast",
+    "file": "shoe-lowcontrast.jpg",
+    "mask": "shoe-lowcontrast.mask.png",
+    "width": 1024,
+    "height": 1024,
+    "subjectCentre": [
+      485,
+      625
+    ],
+    "centreSource": "synthetic generator (centroid of the drawn ground-truth mask)",
+    "bytes": 20266,
+    "sha256": "c11922748253377c3ee10effa00faa9caae5f8a4baa026a302573c83cb9b95fe"
+  },
+  {
+    "name": "torso",
+    "file": "torso.jpg",
+    "mask": "torso.mask.png",
+    "width": 1600,
+    "height": 1200,
+    "subjectCentre": [
+      799,
+      783
+    ],
+    "centreSource": "synthetic generator (centroid of the drawn ground-truth mask)",
+    "bytes": 38412,
+    "sha256": "8d444288d041cef821b338844f779f67724154755e7ce3e7f87966e93766c26f"
+  }
+]

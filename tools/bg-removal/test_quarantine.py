@@ -23,7 +23,7 @@ from unittest import mock
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import adapter  # noqa: E402  (does not import rembg)
-from bgfixtures import ADMISSION, FakeRembg, admit_for_test, png, sha  # noqa: E402
+from bgfixtures import ADMISSION, ADMITTED_MODELS, FakeRembg, admit_for_test, png, sha  # noqa: E402
 
 REGISTRY = json.loads((HERE / "models.json").read_text(encoding="utf-8"))
 QUARANTINE_RECORD = {"id": "silueta", "family": "silueta", "file": "silueta.onnx", "sourceUrl": "https://example.invalid/silueta.onnx", "publisher": "test", "revision": "r1",
@@ -88,15 +88,25 @@ class Sandbox(unittest.TestCase):
 
 
 class AdmissionSchemaTest(unittest.TestCase):
-    def test_registry_is_schema_3_with_pinned_hash_and_admission_slots_and_admits_nothing(self):
+    def test_registry_is_schema_3_and_admits_exactly_the_reviewed_models_with_complete_records(self):
         self.assertEqual(REGISTRY["schema"], 3)
         for key, entry in REGISTRY["models"].items():
-            self.assertNotEqual(entry["status"], "admitted", key)
             self.assertIn("admission", entry, key)
-            self.assertIsNone(entry["admission"], key)
+            if key not in ADMITTED_MODELS:
+                self.assertNotEqual(entry["status"], "admitted", key)
+                self.assertIsNone(entry["admission"], key)
+                for asset in entry["assets"]:
+                    self.assertIn("pinnedSha256", asset, key)
+                    self.assertIsNone(asset["pinnedSha256"], key)
+                continue
+            self.assertEqual(entry["status"], "admitted", key)
+            self.assertEqual(adapter.admission_problems(entry, REGISTRY["models"]), [], key)  # the same rule the adapter enforces at load
+            record = entry["admission"]
+            self.assertEqual((record["scope"], record["decision"]), ("internal-evaluation", "admitted"), key)
+            self.assertIn("ONLY", record["limitations"], key)  # the restriction to internal evaluation is written into the record
+            self.assertTrue(all(isinstance(e, str) and e for e in record["evidence"]), key)
             for asset in entry["assets"]:
-                self.assertIn("pinnedSha256", asset, key)
-                self.assertIsNone(asset["pinnedSha256"], key)
+                self.assertRegex(asset["pinnedSha256"], r"^[0-9a-f]{64}$", key)
         self.assertEqual(REGISTRY["customAdmissions"], [])
         self.assertEqual(REGISTRY["models"]["birefnet-general-fp16"]["derivedFrom"], "birefnet-general")
 
@@ -165,6 +175,7 @@ class AdmissionSchemaTest(unittest.TestCase):
         registry = copy.deepcopy(REGISTRY)
         fp16, source = registry["models"]["birefnet-general-fp16"], registry["models"]["birefnet-general"]
         fp16.update(status="admitted", admission=copy.deepcopy(ADMISSION))
+        source.update(status="candidate", admission=None)  # the live registry admits birefnet-general; this test starts from a source that is not admitted
         with tempfile.TemporaryDirectory() as tmp:
             file = Path(tmp) / "models.json"
             file.write_text(json.dumps(registry), encoding="utf-8")
@@ -190,10 +201,10 @@ class AdmissionSchemaTest(unittest.TestCase):
             entry.update(saved)
 
     def test_the_live_registry_refuses_every_model_even_with_an_installed_u2netp_file(self):
-        """u2netp.onnx may exist on this disk from an earlier session; it is NOT admitted, so every gate refuses it."""
+        """u2netp.onnx may exist on this disk from an earlier session; it is NOT admitted, so every gate refuses it. Only the reviewed admissions pass."""
         fake = FakeRembg()
         with mock.patch.dict(sys.modules, {"rembg": fake.module}):
-            for key in REGISTRY["models"]:
+            for key in [k for k in REGISTRY["models"] if k not in ADMITTED_MODELS]:
                 self.assertFalse(adapter.is_admitted(adapter.MANIFEST[key]), key)
                 with self.assertRaises(adapter.Refused) as caught:
                     adapter.load_session(key)
@@ -359,6 +370,19 @@ class PromoteTest(Sandbox):
         result = adapter.process(png(), "silueta", adapter.parse_settings("silueta", {}))  # MOCKED inference
         self.assertEqual(self.fake.created, ["silueta"])
         self.assertEqual(result["facts"]["checkpointSha256"], [sha(b"quarantined checkpoint bytes")])
+
+    def test_promote_writes_the_name_rembg_looks_for_when_it_differs_from_the_release_name(self):
+        """BiRefNet sessions read <session name>.onnx, not the release asset name; the first real run failed on this (ENG-BGR-09)."""
+        file, _ = self.quarantine_checkpoint("birefnet-general-lite")
+        adapter.promote("birefnet-general-lite", file)
+        self.assertEqual((self.models / "birefnet-general-lite" / "birefnet-general-lite.onnx").read_bytes(), b"quarantined checkpoint bytes")
+        self.assertFalse((self.models / "birefnet-general-lite" / file).exists())
+        self.assertTrue(adapter.is_installed("birefnet-general-lite"))
+
+    def test_every_birefnet_asset_names_the_file_rembg_reads(self):
+        for key, entry in REGISTRY["models"].items():
+            for asset in entry["assets"]:
+                self.assertEqual(asset.get("localFile"), f"{key}.onnx" if key.startswith("birefnet") else None, key)
 
     def test_promote_refuses_an_unadmitted_model_and_copies_nothing(self):
         self.quarantine_checkpoint(admit=False)
@@ -607,7 +631,8 @@ class ReadinessTest(Sandbox):
             self.assertIn("onnx, onnxconverter_common", caught.exception.message)
         with mock.patch.object(adapter, "module_missing", lambda name: False):
             self.assertTrue(adapter.public_entry("birefnet-general-fp16")["ready"])
-        (self.models / "birefnet-general" / adapter.MANIFEST["birefnet-general"]["assets"][0]["file"]).unlink()
+        asset = adapter.MANIFEST["birefnet-general"]["assets"][0]
+        (self.models / "birefnet-general" / (asset.get("localFile") or asset["file"])).unlink()
         with mock.patch.object(adapter, "module_missing", lambda name: False):
             self.assertFalse(adapter.public_entry("birefnet-general-fp16")["ready"])
 

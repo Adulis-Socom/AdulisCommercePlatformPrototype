@@ -5,10 +5,9 @@ Experimental Tools) and Seller Console > Products > Media. It is a research tool
 
 - Runs only on this computer (`127.0.0.1:8765`). Photos are never sent to an online service, and no remote provider is active.
 - The prototype works normally without it; the Lab and the Media panel then say the adapter is not running.
-- **No model is currently admitted.** `models.json` is the single registry of all 23 rembg sessions. Every entry has a status;
+- **Three models are admitted, for internal evaluation only** (`birefnet-general-lite`, `birefnet-general`, `sam`; lead decision 2026-11-28, reversible by the founder; see "Admitted models" below). `models.json` is the single registry of all 23 rembg sessions. Every entry has a status;
   only exactly `"admitted"` can load, a status alone is not enough (schema 3, below), and there is no environment-variable or flag override. Evidence and reasons:
-  `Deliverables/Prototype/PROTO-AUTONOMOUS-002/MODEL_ADMISSION_REGISTER.md`. Until a model is admitted by a reviewed commit, the Lab
-  shows the whole catalogue with each model's reason and nothing can be selected or run.
+  `Deliverables/Prototype/PROTO-AUTONOMOUS-002/MODEL_ADMISSION_REGISTER.md`. A model that is not admitted is listed in the Lab with its reason and cannot be selected or run.
 - The limits (10 MB, 16 megapixels, 60 s, one image at a time, one model cached) are experiment defaults, not product policy.
 
 ## Registry files
@@ -30,7 +29,7 @@ py -3.13 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-`setup_models.py` downloads only models that are `admitted` (currently none: it prints "skipped"). A permitted model can also be
+`setup_models.py` downloads only models that are `admitted` with `installPermitted` (none has it: admitted files come from quarantine through `promote`). A permitted model can also be
 installed through `POST /install`, which refuses anything not admitted (schema 3) and `installPermitted`. Before any download or load the
 adapter checks free disk and free RAM and refuses with 507 rather than risk the machine. The `.venv` and `models` folders are git-ignored.
 
@@ -61,6 +60,26 @@ Acquiring a file for **inspection** is separate from admitting it for **executio
   admitted AND every checkpoint file present AND every module imported by that model importable. `import rembg` itself needs numpy, PIL, onnxruntime, pymatting (+numba), scipy, scikit-image, pooch
   and jsonschema for any model (read from rembg 2.0.88's `bg.py` and `sessions/*.py`; `test_quarantine.ReadinessTest` re-parses the installed sources); `birefnet-general-fp16` adds `onnx` and `onnxconverter_common`.
   A model whose module is missing is `ready: false` with the module named and is refused with 503 before any load.
+
+## Admitted models (PROTO-BGR-RESEARCH-001)
+
+Scope `internal-evaluation` ONLY: not commercial deployment, not redistribution; each `admission.limitations` names the unresolved legal questions (Q-02, Q-04, Q-06, Q-10, Q-12; register in the deliverables folder).
+
+| Model | Why admissible | Files (pinned SHA-256 in `models.json`) |
+|---|---|---|
+| `birefnet-general-lite` | MIT; rembg's file is byte-identical to the publisher's release ONNX | 1 |
+| `birefnet-general` | MIT; rembg's file was verified byte-identical to the publisher's release ONNX by downloading the publisher file | 1 (about 973 MB) |
+| `sam` (ViT-B) | Apache-2.0 stated by Meta; the ONNX exports are rembg's hosting, not byte-verifiable against Meta's .pth (recorded limitation) | encoder + decoder, each pinned |
+
+`localFile` (asset field): rembg reads `<session name>.onnx` for every BiRefNet session, not the release file name, so `promote` writes `models/models/birefnet-general/birefnet-general.onnx` from the quarantine file `BiRefNet-general-epoch_244.onnx`.
+Install an admitted model: `python adapter.py quarantine-verify`, then `python adapter.py promote <model-id> <asset-file>` per asset.
+
+**Measured on this machine (see `MODEL_BENCHMARK_REGISTER.md`)**: the registry's `ramMbEstimate` (534, 896, 2432 MB) is far below what inference really takes (the resident set reaches about 5 to 8 GB, mostly the first inference's activations), and the adapter checks free RAM
+BEFORE it evicts the model that is already loaded, so selecting two models in one Lab run can be refused for memory the swap would free. Use "Unload models" between models (the Lab does this for you in `tests/bgr-real.test.mjs`). The estimate and the preflight were NOT changed; both are recorded as founder decisions.
+
+Tools: `make_synthetic.py` (deterministic authorised test photographs and their ground-truth masks, `fixtures/synthetic/`, plus `--small30` for the 30-photo run);
+`smoke.py <model> <evidence folder> [--retry-507 N] [--job-limit-mb N]` (real inference through the adapter, records cold/warm/memory and an RGBA check; no quality score);
+`failure_checks.py <evidence folder>` (refusal checks against the real adapter); `bench.py` (isolated child); `../../tests/bgr-real.test.mjs` (the Lab against the real adapter; NOT in `pnpm test`, skips when no adapter).
 
 ## Isolated benchmark (IR-045)
 
@@ -97,10 +116,9 @@ cd tools\bg-removal
 
 `test_quarantine` covers schema-3 admission at load, quarantine/promote/quarantine-verify, the absence of any override, readiness, the benchmark gate and the separated measurements.
 `test_adapter` starts a real adapter and checks every refusal that must happen before inference. `test_adapter_multi` checks the
-registry (23 sessions match rembg's own catalogue; none admitted; remote services inactive; `models.json` equals what `build_registry.py -` generates), settings validation and the session
+registry (23 sessions match rembg's own catalogue; exactly the reviewed models admitted; remote services inactive; `models.json` equals what `build_registry.py -` generates), settings validation and the session
 logic (lazy load, bounded cache, unload, SHA-256 verification, RAM preflight, failure isolation) with a **mocked** `rembg` and
-temporary files: it proves the adapter's behaviour, not any model's quality. Real inference tests are skipped while nothing is
-admitted. `smoke.py` runs real inference and is on hold for the same reason. Browser tests: `node tests/run.mjs` in the repo root
+temporary files: it proves the adapter's behaviour, not any model's quality. `test_adapter.test_actual_inference_returns_a_real_alpha_png` runs a REAL admitted model when one is installed and RAM allows (it skips with the reason otherwise). `smoke.py` runs real inference. Browser tests: `node tests/run.mjs` in the repo root
 (Lab and Media Editor run against a mocked adapter and say so).
 
 ## What the adapter checks

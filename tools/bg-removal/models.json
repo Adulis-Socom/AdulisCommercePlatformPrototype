@@ -1107,13 +1107,13 @@
       "kind": "local",
       "rembgSession": "birefnet-general",
       "implementation": "rembg session",
-      "status": "candidate",
-      "statusNote": "MIT label evidence; pending a legal view on DIS5K inheritance and exact-file provenance. Not admitted.",
-      "executable": false,
-      "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
-      "evaluationPermission": "label-level (not sufficient to admit)",
-      "commercialUse": "unresolved (dataset terms)",
-      "redistribution": "unresolved",
+      "status": "admitted",
+      "statusNote": "Admitted for internal evaluation (lead decision 2026-11-28) after the publisher's release ONNX was downloaded and found byte-identical.",
+      "executable": true,
+      "blocker": "",
+      "evaluationPermission": "granted for internal evaluation only (lead decision)",
+      "commercialUse": "unresolved (Q-02, Q-04, Q-06, Q-10)",
+      "redistribution": "unresolved (Q-06)",
       "licenceFamily": "birefnet",
       "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
       "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
@@ -1133,7 +1133,19 @@
       },
       "install": "not-installed",
       "installPermitted": false,
-      "admission": null,
+      "admission": {
+        "scope": "internal-evaluation",
+        "decision": "admitted",
+        "decidedBy": "lead (PROTO-BGR-RESEARCH-001), reversible by the founder",
+        "date": "2026-11-28",
+        "evidence": [
+          "Deliverables/Prototype/PROTO-BGR-RESEARCH-001/evidence/provenance/licence_birefnet.md",
+          "Deliverables/Prototype/PROTO-BGR-RESEARCH-001/evidence/provenance/acquisitions.json",
+          "Deliverables/Prototype/PROTO-BGR-RESEARCH-001/MODEL_PROVENANCE_REGISTER.md"
+        ],
+        "checkpointRole": "rembg-conversion file; byte-identical (same SHA-256) to the publisher's own release ONNX BiRefNet-general-epoch_244.onnx (ZhengPeng7/BiRefNet release v1, MIT), verified locally by downloading the publisher file",
+        "limitations": "Weights licence MIT (label and repository). About 973 MB: loading needs several GB of free RAM and is refused by the adapter's RAM preflight when RAM is short. Admitted for internal evaluation ONLY: not for commercial deployment, not for redistribution of weights or cut-outs. Legal questions Q-02 (DIS5K inheritance), Q-06 (re-hosting/conversion terms), Q-10 and Q-12 (outputs) remain unresolved; counsel has not answered them. Decision made by the lead on 2026-11-28 and reversible by the founder (BGD-007)."
+      },
       "runtime": {
         "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
         "dynamicResolution": false,
@@ -1161,7 +1173,8 @@
           "publisherSha256": null,
           "rembgChecksum": "md5:7a35a0141cbbc80de11d9c9a28f52697",
           "actualSha256": null,
-          "pinnedSha256": null
+          "pinnedSha256": "58f621f00f5d756097615970a88a791584600dcf7c45b18a0a6267535a1ebd3c",
+          "localFile": "birefnet-general.onnx"
         }
       ],
       "resources": {
@@ -1276,13 +1289,13 @@
       "kind": "local",
       "rembgSession": "birefnet-general-lite",
       "implementation": "rembg session",
-      "status": "candidate",
-      "statusNote": "As birefnet-general. The smallest BiRefNet; the first pilot once admitted.",
-      "executable": false,
-      "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
-      "evaluationPermission": "label-level (not sufficient to admit)",
-      "commercialUse": "unresolved (dataset terms)",
-      "redistribution": "unresolved",
+      "status": "admitted",
+      "statusNote": "Admitted for internal evaluation (lead decision 2026-11-28). The rembg file equals the publisher's release ONNX byte for byte.",
+      "executable": true,
+      "blocker": "",
+      "evaluationPermission": "granted for internal evaluation only (lead decision)",
+      "commercialUse": "unresolved (Q-02, Q-04, Q-06, Q-10)",
+      "redistribution": "unresolved (Q-06)",
       "licenceFamily": "birefnet",
       "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
       "trainingDataConcerns": "DIS5K and other dataset terms may be inherited (legal call); per-variant cards for portrait, HRSOD, COD, massive and fp16 not read",
@@ -1299,7 +1312,19 @@
       },
       "install": "not-installed",
       "installPermitted": false,
-      "admission": null,
+      "admission": {
+        "scope": "internal-evaluation",
+        "decision": "admitted",
+        "decidedBy": "lead (PROTO-BGR-RESEARCH-001), reversible by the founder",
+        "date": "2026-11-28",
+        "evidence": [
+          "Deliverables/Prototype/PROTO-BGR-RESEARCH-001/evidence/provenance/licence_birefnet.md",
+          "Deliverables/Prototype/PROTO-BGR-RESEARCH-001/evidence/provenance/acquisitions.json",
+          "Deliverables/Prototype/PROTO-BGR-RESEARCH-001/MODEL_PROVENANCE_REGISTER.md"
+        ],
+        "checkpointRole": "rembg-conversion file; byte-identical (same SHA-256) to the publisher's own release ONNX BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx (ZhengPeng7/BiRefNet release v1, MIT)",
+        "limitations": "Weights licence MIT (label and repository). Admitted for internal evaluation ONLY: not for commercial deployment, not for redistribution of weights or cut-outs. Legal questions Q-02 (DIS5K inheritance), Q-06 (re-hosting/conversion terms), Q-10 and Q-12 (outputs) remain unresolved; counsel has not answered them. Decision made by the lead on 2026-11-28 and reversible by the founder (BGD-007)."
+      },
       "runtime": {
         "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
         "dynamicResolution": false,
@@ -1327,7 +1352,8 @@
           "publisherSha256": null,
           "rembgChecksum": "md5:4fab47adc4ff364be1713e97b7e66334",
           "actualSha256": null,
-          "pinnedSha256": null
+          "pinnedSha256": "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333",
+          "localFile": "birefnet-general-lite.onnx"
         }
       ],
       "resources": {
@@ -1592,7 +1618,8 @@
           "publisherSha256": null,
           "rembgChecksum": "md5:c3a64a6abf20250d090cd055f12a3b67",
           "actualSha256": null,
-          "pinnedSha256": null
+          "pinnedSha256": null,
+          "localFile": "birefnet-portrait.onnx"
         }
       ],
       "resources": {
@@ -1739,7 +1766,8 @@
           "publisherSha256": null,
           "rembgChecksum": "md5:2d4d44102b446f33a4ebb2e56c051f2b",
           "actualSha256": null,
-          "pinnedSha256": null
+          "pinnedSha256": null,
+          "localFile": "birefnet-dis.onnx"
         }
       ],
       "resources": {
@@ -1886,7 +1914,8 @@
           "publisherSha256": null,
           "rembgChecksum": "md5:c017ade5de8a50ff0fd74d790d268dda",
           "actualSha256": null,
-          "pinnedSha256": null
+          "pinnedSha256": null,
+          "localFile": "birefnet-hrsod.onnx"
         }
       ],
       "resources": {
@@ -2033,7 +2062,8 @@
           "publisherSha256": null,
           "rembgChecksum": "md5:f6d0d21ca89d287f17e7afe9f5fd3b45",
           "actualSha256": null,
-          "pinnedSha256": null
+          "pinnedSha256": null,
+          "localFile": "birefnet-cod.onnx"
         }
       ],
       "resources": {
@@ -2180,7 +2210,8 @@
           "publisherSha256": null,
           "rembgChecksum": "md5:33e726a2136a3d59eb0fdf613e31e3e9",
           "actualSha256": null,
-          "pinnedSha256": null
+          "pinnedSha256": null,
+          "localFile": "birefnet-massive.onnx"
         }
       ],
       "resources": {
@@ -2328,7 +2359,8 @@
           "publisherSha256": "aa3c17882a27f079fafa7655cf50e83b9e6e067d6c6fa4cbc3524ae441da0bd7",
           "rembgChecksum": "md5:4f9c4b2d2e16fe1788f98184e7f43d2b",
           "actualSha256": null,
-          "pinnedSha256": null
+          "pinnedSha256": null,
+          "localFile": "birefnet-dynamic.onnx"
         }
       ],
       "resources": {
@@ -2589,13 +2621,13 @@
       "kind": "local",
       "rembgSession": "sam",
       "implementation": "rembg session",
-      "status": "candidate",
-      "statusNote": "Apache-2.0 label evidence; ONNX conversion provenance unverified. Larger ViT-L and ViT-H checkpoints and quantised variants exist but are not registered.",
-      "executable": false,
-      "blocker": "Not admitted: licence evidence insufficient for the exact checkpoint file",
-      "evaluationPermission": "label-level (not sufficient to admit)",
-      "commercialUse": "unresolved (dataset terms)",
-      "redistribution": "unresolved",
+      "status": "admitted",
+      "statusNote": "Admitted for internal evaluation (lead decision 2026-11-28). Interactive: needs at least one foreground point.",
+      "executable": true,
+      "blocker": "",
+      "evaluationPermission": "granted for internal evaluation only (lead decision)",
+      "commercialUse": "unresolved (Q-02, Q-04, Q-06, Q-10)",
+      "redistribution": "unresolved (Q-06)",
       "licenceFamily": "sam",
       "licenceEvidence": "Deliverables/Prototype/PROTO-AUTONOMOUS-002/evidence/BGR-015/licence_evidence.md",
       "trainingDataConcerns": "SA-1B licence text not read",
@@ -2613,7 +2645,19 @@
       },
       "install": "not-installed",
       "installPermitted": false,
-      "admission": null,
+      "admission": {
+        "scope": "internal-evaluation",
+        "decision": "admitted",
+        "decidedBy": "lead (PROTO-BGR-RESEARCH-001), reversible by the founder",
+        "date": "2026-11-28",
+        "evidence": [
+          "Deliverables/Prototype/PROTO-BGR-RESEARCH-001/evidence/provenance/licence_sam.md",
+          "Deliverables/Prototype/PROTO-BGR-RESEARCH-001/evidence/provenance/acquisitions.json",
+          "Deliverables/Prototype/PROTO-BGR-RESEARCH-001/MODEL_PROVENANCE_REGISTER.md"
+        ],
+        "checkpointRole": "rembg-hosted ONNX exports of Meta's sam_vit_b_01ec64 (encoder and decoder, each pinned); the exports are third-party (rembg's hosting), derivation from Meta's .pth is not byte-verifiable",
+        "limitations": "Apache-2.0 stated by Meta for the model; SA-1B dataset licence text was unreadable (Q-04). The ONNX export maker is not Meta and cannot be verified byte-for-byte against the publisher checkpoint (different format); the admission covers the encoder+decoder PAIR, each pinned. Admitted for internal evaluation ONLY: not for commercial deployment, not for redistribution of weights or cut-outs. Legal questions Q-02 (DIS5K inheritance), Q-06 (re-hosting/conversion terms), Q-10 and Q-12 (outputs) remain unresolved; counsel has not answered them. Decision made by the lead on 2026-11-28 and reversible by the founder (BGD-007)."
+      },
       "modes": [
         "interactive point prompt (label 1 foreground, 0 background); not automatic segmentation"
       ],
@@ -2645,7 +2689,7 @@
           "publisherSha256": null,
           "rembgChecksum": null,
           "actualSha256": null,
-          "pinnedSha256": null
+          "pinnedSha256": "62a29c39ebc8ae4dfc3d9ec8eae28c28efc8360233fa8ffba229eb9f6ac0c30a"
         },
         {
           "file": "sam_vit_b_01ec64.decoder.onnx",
@@ -2654,7 +2698,7 @@
           "publisherSha256": null,
           "rembgChecksum": null,
           "actualSha256": null,
-          "pinnedSha256": null
+          "pinnedSha256": "9820a48a2d002aead7b4dab204d813176a810a5f1dc8f32e32f759cc070ae97e"
         }
       ],
       "resources": {
