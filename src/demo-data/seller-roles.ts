@@ -165,7 +165,7 @@ export function areaAccess(roles: readonly SellerRole[], area: AccessArea): { le
   return { level, scope: partial ? held.map(capability => capability.scope).join(', ') : undefined }
 }
 
-export type MemberStatus = 'Active' | 'Suspended' | 'Removed'
+export type MemberStatus = 'Active' | 'Suspended' | 'Removed' | 'Invited' | 'Revoked'
 
 /** A Seller team member as Settings shows them: the Owner by ownership, or a member with their team roles. */
 export interface TeamMember {
@@ -183,15 +183,19 @@ export interface TeamMember {
  */
 const TEAM_ROLES_OF: Record<'Operations', readonly TeamRole[]> = { Operations: ['INVENTORY', 'SALES_SUPPORT'] }
 
+const STANDING: Record<string, MemberStatus> = { ACTIVE: 'Active', INVITED: 'Invited', REVOKED: 'Revoked', SUSPENDED: 'Suspended' }
+
 /** The Seller's team: its Owner first, then its members, all Active (DEMO_DATA › Seller Console Settings). */
 export function sellerTeam(seller: SellerId): TeamMember[] {
   return (Object.keys(STAFF) as StaffId[])
     .filter(id => STAFF[id].seller === seller)
     .map(id => {
       const { name, role } = STAFF[id]
+      // COMP-002: the marketplace dataset states each membership's standing (ACTIVE, INVITED, REVOKED, SUSPENDED); the legacy staff are all Active.
+      const status = (STANDING[STAFF[id].status ?? ''] ?? 'Active') as MemberStatus
       return role === 'Owner'
         ? { staff: id, name, owner: true, roles: [], status: 'Active' as const }
-        : { staff: id, name, owner: false, roles: (STAFF[id].roles as readonly TeamRole[] | undefined) ?? TEAM_ROLES_OF[role], status: 'Active' as const }
+        : { staff: id, name, owner: false, roles: (STAFF[id].roles as readonly TeamRole[] | undefined) ?? TEAM_ROLES_OF[role], status }
     })
     .sort((a, b) => Number(b.owner) - Number(a.owner))
 }

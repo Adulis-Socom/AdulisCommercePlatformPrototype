@@ -1,26 +1,38 @@
+import { useState } from 'react'
 import { currentPrice, type Moment, type ProductId, type SellerId } from '../demo-data'
 import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
 import { formatBirr, linkableProducts, productStock, stockState, useWorkspace } from '../seller-workspace'
 import { fromSeed } from './console/ProductAuthoring'
 import { priceLabel, taxonomyOf } from './buyer-authored'
+import { NotPermitted, useActing } from './companion-team'
+import { PERMISSION, type Decision } from '../marketplace/permissions'
 
 /**
  * MC-001: the Seller Companion's lightweight catalogue (current MVP). Every Product the Seller can sell with its stock state and a
  * quick stock stepper, over the same workspace the Seller Console, Scenes, Stories and the Buyer read. Options, photos and
  * publishing stay in the Seller Console. A Product with Variants has stock per Variant, so it is not edited here.
  */
-export function CatalogueTab({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
+export function CatalogueTab({ sellerId, at, only }: { sellerId: SellerId; at: Moment; only?: string }) {
   const { state, dispatch } = useWorkspace()
-  const rows = linkableProducts(state, sellerId, at, true)
+  // COMP-002: what the acting team member may do. Viewing needs seller.products:read, a stock change seller.inventory:write; a refusal names the missing permission.
+  const acting = useActing(sellerId)
+  const [refused, setRefused] = useState<Decision | null>(null)
+  const viewing = acting.can(PERMISSION.viewProducts)
+  const rows = linkableProducts(state, sellerId, at, true).filter(row => !only || row.id === only)
   const setStock = (id: string, next: number) => {
+    const decision = acting.can(PERMISSION.writeStock)
+    setRefused(decision.allowed ? null : decision)
+    if (!decision.allowed) return
     const seeded = id in PRODUCTS
     const base = seeded ? fromSeed(id as ProductId, sellerId, state, at) : state.products[id]
     if (!base || base.variants.length) return
     dispatch({ type: 'product', item: { ...base, stock: String(Math.max(0, next)), updated: Date.now() } })
   }
+  if (!viewing.allowed) return <div className="p-4"><NotPermitted decision={viewing} subject="Catalogue" /></div>
   return (
     <div className="p-4">
       <div className="mb-3 flex items-baseline justify-between"><h2 className="font-display text-xl font-semibold text-text-primary">Catalogue</h2><span className="text-xs text-text-muted">{rows.length} Products · {SELLERS[sellerId].name}</span></div>
+      {refused && <div className="mb-3" data-stock-refused><NotPermitted decision={refused} subject="Stock change" /></div>}
       {rows.length === 0 && <p role="status" className="rounded-xl border border-border bg-surface p-4 text-sm text-text-secondary">No published Products yet. Create and publish a Product in the Seller Console.</p>}
       <ul aria-label="Products" className="flex flex-col gap-2">
         {rows.map(row => {

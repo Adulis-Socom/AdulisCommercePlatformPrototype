@@ -56,7 +56,7 @@ function SectionContent({ active, onNavigate, demoTarget, onStartFlow }: { activ
     case '03-website':          return <CompanyWebsite demoTarget={demoTarget} />
     case '04-storefront':       return <SellerStorefront demoTarget={demoTarget} />
     case '05-buyer':            return <MobileBuyer demoTarget={demoTarget} />
-    case '06-seller-companion': return <MobileSellerCompanion demoTarget={demoTarget} />
+    case '06-seller-companion': return <MobileSellerCompanion demoTarget={demoTarget} onNavigate={onNavigate} />
     case '07-courier':          return <MobileCourier demoTarget={demoTarget} />
     case '08-seller-console':   return <SellerConsole demoTarget={demoTarget} />
     case '09-operator-console': return <OperatorConsole demoTarget={demoTarget} />

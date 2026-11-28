@@ -138,7 +138,7 @@ function staff(): { staff: Record<string, StaffRecord>; sessions: { staff: strin
   const out: Record<string, StaffRecord> = {}
   const sessions: { staff: string; surface: 'Seller Console' | 'Seller Companion'; device: string }[] = []
   for (const m of OPERATIONS.team_members) {
-    out[m.member_id] = { seller: m.seller_id as StaffRecord['seller'], name: m.display_name, role: m.relationship_type === 'OWNERSHIP' ? 'Owner' : 'Operations', ...(m.relationship_type === 'TEAM' ? { roles: m.roles } : {}) }
+    out[m.member_id] = { seller: m.seller_id as StaffRecord['seller'], name: m.display_name, role: m.relationship_type === 'OWNERSHIP' ? 'Owner' : 'Operations', ...(m.relationship_type === 'TEAM' ? { roles: m.roles, status: m.membership_status } : {}) }
     // Each Owner has a Console and a Companion session on the shared prototype devices, as the legacy Owners do.
     if (m.relationship_type === 'OWNERSHIP') sessions.push({ staff: m.member_id, surface: 'Seller Console', device: 'desktop browser' }, { staff: m.member_id, surface: 'Seller Companion', device: 'phone' })
   }

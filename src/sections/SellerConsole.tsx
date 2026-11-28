@@ -41,6 +41,7 @@ import { SellerOrders, useSellerActions } from '../simulation/surfaces'
 import { SellerCouriers } from '../simulation/feedback-ui'
 import { SellerReviews } from '../simulation/reviews-ui'
 import { Notice } from './console/kit'
+import { getSelectedSeller, setSelectedSeller } from '../selected-seller'
 import { LiveInbox, LiveThreadControls } from './console/LiveInbox'
 import { ContextPicker } from './console/ContextPicker'
 import { liveAsRecords, keyFor } from '../chatbot/thread'
@@ -157,7 +158,9 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
   // top-bar Seller selector switches between the primary showcase Sellers.
   const { seller: storySeller } = useStory()
   const [at, advanceTo] = useStoryMoment()
-  const [sellerId, setSellerId] = useState<SellerId>(storySeller ?? SURFACE_DEFAULTS.seller)
+  // COMP-003: the Seller chosen on another surface (the Companion, the Storefront) when no guided step names one.
+  const picked = getSelectedSeller() as SellerId | undefined
+  const [sellerId, setSellerId] = useState<SellerId>(storySeller ?? (picked && picked in SELLERS ? picked : SURFACE_DEFAULTS.seller))
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState<OrderId | null>(null)
@@ -180,6 +183,7 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
   }
   // Switching Seller keeps the section and drops everything chosen for the previous Seller.
   const switchSeller = (id: SellerId) => {
+    setSelectedSeller(id)
     setSellerId(id)
     setSelectedOrder(null)
   }
@@ -1426,8 +1430,8 @@ function TeamMemberCard({ member, you, canManage, onChange }: { member: TeamMemb
       {member.owner && <p className="mt-2 text-xs leading-relaxed text-text-secondary">Ownership changes only through an ownership transfer, which only the Owner can start. It can’t be given as a team role.</p>}
       {!member.owner && member.status !== 'Active' && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-raised p-3 text-xs text-text-secondary">
-          <span>{member.status === 'Suspended' ? 'Suspended: keeps their place on the team but has no access.' : 'Removed from the team: no access.'}</span>
-          {canManage && <Button size="sm" variant="tertiary" onClick={() => onChange({ status: 'Active' })}>{member.status === 'Suspended' ? 'Reactivate' : 'Undo removal'}</Button>}
+          <span>{{ Suspended: 'Suspended: keeps their place on the team but has no access.', Invited: 'Invited: has not joined yet, so has no access.', Revoked: 'Revoked: the membership was revoked, so there is no access.', Removed: 'Removed from the team: no access.' }[member.status as string]}</span>
+          {canManage && (member.status === 'Suspended' || member.status === 'Removed') && <Button size="sm" variant="tertiary" onClick={() => onChange({ status: 'Active' })}>{member.status === 'Suspended' ? 'Reactivate' : 'Undo removal'}</Button>}
         </div>
       )}
       {!member.owner && member.status === 'Active' && canManage && !editing && <Button size="sm" variant="tertiary" onClick={() => { setDraft(member.roles); setEditing(true) }} style={{ marginTop: 12 }}>Edit roles</Button>}

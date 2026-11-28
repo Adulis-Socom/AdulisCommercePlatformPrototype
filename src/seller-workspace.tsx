@@ -4,6 +4,7 @@ import { DEFAULT_SNAPSHOT, MARKET, PRODUCTS, SELLERS, SHOPPABLE_POSTS, SURFACE_D
 import { setLiveOverlay, type AuthoredLive, type AuthoredProductLive, type AuthoredSceneLive, type ProductOverlay, type SellerOverlay } from './demo-data/live'
 import { findTaxonomy } from './demo-data/taxonomy'
 import { DATASET, datasetKey, isLegacy } from './marketplace/registry'
+import { LOW_STOCK_AT } from './marketplace/alerts'
 import type { Knowledge } from './sections/console/chatbot-engine'
 import type { BotConfig } from './chatbot/config'
 import type { ChatMsg, Conversation } from './chatbot/chat'
@@ -54,6 +55,8 @@ export interface WsStory { id: string; seller: SellerId; image: string | null; a
 export interface WsSetup {
   storeName: string; handle: string; about: string; contactPhone: string; ownerName: string
   coverage: string[]; collection: { on: boolean; place: string }; sellerDelivery: { on: boolean; fee: string }; courier: boolean; blank: boolean
+  /** COMP-003: the store's area as edited from the Companion profile; absent = the dataset's area. */
+  area?: string
 }
 /**
  * DEMO-003: what ONE Buyer keeps in this session, stored in `WorkspaceState.buyers` under `buyerKey(...)`: dataset, mode and Buyer. A field that is
@@ -216,7 +219,7 @@ export function effectiveOverlay(state: WorkspaceState): { products: Record<stri
   for (const [id, s] of Object.entries(state.setup)) {
     if (!s || s.blank) continue
     const handle = s.handle.trim()
-    sellers[id] = { name: s.storeName.trim(), handle: handle && !handle.startsWith('@') ? `@${handle}` : handle, bio: s.about.trim(), collectionPlace: s.collection.on ? s.collection.place.trim() : '' }
+    sellers[id] = { name: s.storeName.trim(), handle: handle && !handle.startsWith('@') ? `@${handle}` : handle, bio: s.about.trim(), area: s.area?.trim() || undefined, collectionPlace: s.collection.on ? s.collection.place.trim() : '' }
   }
   // FIX-004: published authored Products and public authored Scenes become first-class records (same shape as the seeded ones).
   const authoredProducts: Record<string, AuthoredProductLive> = {}
@@ -289,7 +292,7 @@ export function productStock(p: Pick<WsProduct, 'variants' | 'stock'>): number {
   return p.variants.length ? p.variants.reduce((sum, v) => sum + (parseCount(v.stock) ?? 0), 0) : (parseCount(p.stock) ?? 0)
 }
 export type StockState = 'Available' | 'Low Stock' | 'Out of Stock'
-export const LOW_STOCK_AT = 3 // prototype threshold only; the governing designs set no number
+export { LOW_STOCK_AT } // prototype threshold only (defined once in marketplace/alerts.ts, which the alert rules share); the governing designs set no number
 export const stockState = (stock: number): StockState => (stock <= 0 ? 'Out of Stock' : stock <= LOW_STOCK_AT ? 'Low Stock' : 'Available')
 
 export interface Issue { field: string; message: string }
@@ -332,7 +335,7 @@ export interface LinkableProduct { id: string; name: string; stock: number; cove
 export function linkableProducts(state: WorkspaceState, seller: SellerId, at: Moment, includeOutOfStock = false): LinkableProduct[] {
   const seeded = sellerProductsAt(seller, at).map((id): LinkableProduct & { published: boolean } => {
     const o = state.products[id]
-    return { id, name: o?.name ?? PRODUCTS[id].name, stock: o ? productStock(o) : PRODUCTS[id].stock, cover: o?.photos[0] ?? null, published: !o || o.status === 'published' }
+    return { id, name: o?.name ?? PRODUCTS[id].name, stock: o ? productStock(o) : PRODUCTS[id].stock, cover: o?.photos[0] ?? null, published: o ? o.status === 'published' : isLegacy || PRODUCTS[id].publication !== 'Draft' }
   })
   const authored = Object.values(state.products).filter(p => p.seller === seller && !p.seeded).map(p => ({ id: p.id, name: p.name || 'Untitled Product', stock: productStock(p), cover: p.photos[0] ?? null, published: p.status === 'published' }))
   return [...seeded, ...authored].filter(p => p.published && (includeOutOfStock || p.stock > 0)).map(({ published: _p, ...rest }) => rest)

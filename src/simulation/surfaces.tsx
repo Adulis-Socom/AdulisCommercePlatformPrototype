@@ -95,24 +95,6 @@ export function CompanionOrders({ sellerId, open, setOpen }: { sellerId: string;
   )
 }
 
-/** Companion > Alerts: the Orders that need the Seller now, from the same store. */
-export function CompanionOrderAlerts({ sellerId, onOpen }: { sellerId: string; onOpen: (orderId: string) => void }) {
-  const actions = useSellerActions(sellerId)
-  if (!actions.length) return null
-  return (
-    <div data-sim-alerts>
-      <div className="flex items-center justify-between px-4 pb-2 pt-4"><span className="text-xs font-semibold uppercase tracking-wider text-text-muted">Orders (internal simulation)</span><span className="text-xs text-text-muted">{actions.length} need you</span></div>
-      {actions.map(({ order, text }) => (
-        <button key={order.id} type="button" onClick={() => onOpen(order.id)} data-order-alert={order.id} className="flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left">
-          <span className="mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full bg-brand" />
-          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{text}</span><span className="mt-0.5 block text-xs text-text-secondary">{order.id} · {MODE_LABEL[order.mode]} · {partyName(order.buyerId)}</span></span>
-          <span className="text-xs font-semibold text-brand-text">Open</span>
-        </button>
-      ))}
-    </div>
-  )
-}
-
 // ---------- Courier ----------
 type Tab = 'offers' | 'active' | 'history' | 'pools' | 'feedback' | 'account'
 const TABS = [

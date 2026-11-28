@@ -6,6 +6,7 @@ import { sellerReply } from '../../chatbot/session'
 import { botConfigOf } from '../../chatbot/world'
 import { seededThreadOf } from '../../chatbot/thread'
 import { useWorkspace } from '../../seller-workspace'
+import type { Decision } from '../../marketplace/permissions'
 
 /**
  * BOT-006 Seller Inbox continuity: the conversations the Buyer app created this session, with exactly the messages the Buyer saw, the
@@ -16,12 +17,15 @@ const STATUS = { bot: 'Assistant answering', waiting: 'Waiting for you', human: 
 const TONE = { bot: 'bg-surface-raised text-text-secondary', waiting: 'bg-warning-bg text-warning', human: 'bg-success-bg text-success', 'bot-off': 'bg-surface-raised text-text-muted' } as const
 const shortBuyer = (id: string) => { const name = BUYERS[id as BuyerId]?.name ?? 'Buyer'; const [first, ...rest] = name.split(' '); return rest.length ? `${first} ${rest[rest.length - 1][0]}.` : first }
 
-export function LiveInbox({ sellerId, author, compact }: { sellerId: string; author: string; compact?: boolean }) {
+export function LiveInbox({ sellerId, author, compact, guard }: { sellerId: string; author: string; compact?: boolean; guard?: () => Decision }) {
   const { state, dispatch } = useWorkspace()
   // A conversation with a Buyer who already has a seeded thread appears INSIDE that thread (one thread per Buyer, Seller and Market), not here.
   const convs = Object.values(state.chats).filter(c => c.sellerId === sellerId && !seededThreadOf(c)).sort((a, b) => (b.messages.at(-1)?.seq ?? 0) - (a.messages.at(-1)?.seq ?? 0))
   const [open, setOpen] = useState<string | null>(null)
   const [reply, setReply] = useState('')
+  // COMP-002: the Companion passes the acting member's permission check; a refusal names the missing permission and nothing is sent.
+  const [refused, setRefused] = useState<string | null>(null)
+  const allowed = () => { const d = guard?.(); setRefused(d && !d.allowed ? d.message : null); return !d || d.allowed }
   if (!convs.length) return null
   const enabled = botConfigOf(state, sellerId).enabled
   const current = convs.find(c => c.key === open) ?? null
@@ -50,13 +54,14 @@ export function LiveInbox({ sellerId, author, compact }: { sellerId: string; aut
                   </div>
                   {c.waiting && <p role="status" className="mb-2 text-xs font-semibold text-warning">Handed to you by the Assistant. The Buyer was told we can’t promise a reply time.</p>}
                   <div className="flex gap-2">
-                    <input aria-label="Reply to Buyer" value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { sellerReply(dispatch, state, c.key, reply, author); setReply('') } }} placeholder={`Reply as ${author}`} className="h-11 min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 text-sm" />
-                    <Button onClick={() => { sellerReply(dispatch, state, c.key, reply, author); setReply('') }}>Send to Buyer</Button>
+                    <input aria-label="Reply to Buyer" value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && allowed()) { sellerReply(dispatch, state, c.key, reply, author); setReply('') } }} placeholder={`Reply as ${author}`} className="h-11 min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 text-sm" />
+                    <Button onClick={() => { if (allowed()) { sellerReply(dispatch, state, c.key, reply, author); setReply('') } }}>Send to Buyer</Button>
                   </div>
+                  {refused && <p role="alert" data-reply-refused className="mt-2 rounded-lg bg-warning-bg p-2 text-xs font-semibold text-text-secondary">Not permitted for your role. {refused}</p>}
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-muted">
                     {c.mode === 'human_takeover'
-                      ? <Button size="sm" variant="secondary" onClick={() => dispatch({ type: 'chat-mode', key: c.key, mode: 'bot' })}>Hand back to the Assistant</Button>
-                      : <Button size="sm" variant="secondary" onClick={() => dispatch({ type: 'chat-mode', key: c.key, mode: 'human_takeover' })}>Take over</Button>}
+                      ? <Button size="sm" variant="secondary" onClick={() => { if (allowed()) dispatch({ type: 'chat-mode', key: c.key, mode: 'bot' }) }}>Hand back to the Assistant</Button>
+                      : <Button size="sm" variant="secondary" onClick={() => { if (allowed()) dispatch({ type: 'chat-mode', key: c.key, mode: 'human_takeover' }) }}>Take over</Button>}
                     <span>{c.mode === 'human_takeover' ? 'The Assistant is silent in this conversation.' : 'Replying also pauses the Assistant here.'}</span>
                   </div>
                 </div>

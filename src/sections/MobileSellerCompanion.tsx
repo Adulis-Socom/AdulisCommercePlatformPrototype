@@ -3,7 +3,7 @@ import { Button } from '../components/ui/Button'
 import { Textarea, TextInput } from '../components/ui/Input'
 import { OrderTimeline, type TimelineEvent } from '../components/ui/Operational'
 import {
-  PhoneFrame, BottomNav, IconAlerts, IconOrders, IconPackage, IconInbox, IconMore, IconChevronDown, IconChevronRight,
+  PhoneFrame, BottomNav, IconAlerts, IconOrders, IconPackage, IconInbox, IconMore, IconChevronDown, IconChevronRight, IconUser, IconUsers,
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
@@ -14,7 +14,7 @@ import {
   lineOptions, messagesAt, notificationTime, notificationsAt, orderCourierCompensation, ordersAt, orderStateAt, orderTotals, paidAt, preparationAt, readyStateFor,
   sameContext, sellerProductsAt, sellerReplyDueAt, sessionStaffOn, shortName, showcaseSellers, stateTime,
   type ClaimId, type ConversationId, type CourierCard, type CourierId, type MessageContext, type MessageRecord, type Moment, type NotificationRecord,
-  type OrderId, type OrderState, type SellerId, type Timestamp,
+  type OrderId, type OrderState, type SellerId, type StaffId, type Timestamp,
 } from '../demo-data'
 import { useWorkspace } from '../seller-workspace'
 import { LiveInbox, LiveThreadControls } from './console/LiveInbox'
@@ -26,10 +26,18 @@ import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { ContextListbox } from './console/ContextPicker'
 import { CatalogueTab } from './companion-catalogue'
 import { isLegacy } from '../marketplace/registry'
-import { CompanionOrderAlerts, CompanionOrders, useSellerActions } from '../simulation/surfaces'
+import { CompanionOrders, useSellerActions } from '../simulation/surfaces'
+import { AlertsHub, SceneDetail, StoryDetail, useCompanionAlerts } from './companion-alerts'
+import { NotPermitted, TeamTab, useActing, type Acting } from './companion-team'
+import { EditProfileSheet, ProfileMenu, ProfileTab } from './companion-profile'
+import { useCompanionSession } from '../companion-session'
+import { getSelectedSeller, setSelectedSeller } from '../selected-seller'
+import { teamOf } from '../marketplace/seller-ops'
+import { PERMISSION, type Decision } from '../marketplace/permissions'
+import type { Alert } from '../marketplace/alerts'
 
-type TabKey = 'alerts' | 'orders' | 'inbox' | 'more'
-type Screen = 'tabs' | 'order' | 'prepare' | 'couriers' | 'offer' | 'pickup-qr' | 'pickup-verified' | 'delivery' | 'handoff-qr' | 'handoff-otp' | 'handoff-verified' | 'collection-qr' | 'conversation' | 'claim' | 'gated'
+type TabKey = 'alerts' | 'orders' | 'inbox' | 'more' | 'team' | 'profile'
+type Screen = 'tabs' | 'order' | 'prepare' | 'couriers' | 'offer' | 'pickup-qr' | 'pickup-verified' | 'delivery' | 'handoff-qr' | 'handoff-otp' | 'handoff-verified' | 'collection-qr' | 'conversation' | 'claim' | 'gated' | 'destination'
 type HandoffMethod = 'QR' | 'OTP fallback'
 type OrderStage = 'paid' | 'preparing' | 'ready' | 'offer' | 'assigned' | 'pickup' | 'delivery'
 type Tone = 'brand' | 'danger' | 'warning' | 'info' | 'success'
@@ -40,6 +48,8 @@ const TABS = [
   { key: 'inbox' as TabKey, label: 'Inbox', icon: <IconInbox size={22} /> },
   { key: 'more' as TabKey, label: 'More', icon: <IconMore size={22} /> },
 ]
+// COMP-002 / COMP-003: on the marketplace dataset the fifth tab is Team and More becomes Profile. The legacy dataset keeps its four tabs.
+const MARKETPLACE_TABS = [...TABS.slice(0, 3), { key: 'team' as TabKey, label: 'Team', icon: <IconUsers size={22} /> }, { key: 'profile' as TabKey, label: 'Profile', icon: <IconUser size={22} /> }]
 
 // Active Order states the Seller still has to act on: preparation, then handing over.
 // The alerts that exist in the current MVP: stock and Buyer messages. Order, payment, Courier and Claim alerts are simulation-only.
@@ -105,25 +115,28 @@ function alertFor(n: NotificationRecord): { tone: Tone; title: string; detail: s
   }
 }
 
-export default function MobileSellerCompanion({ demoTarget }: { demoTarget?: string }) {
+export default function MobileSellerCompanion({ demoTarget, onNavigate }: { demoTarget?: string; onNavigate?: (section: string) => void }) {
   useWorkspace() // re-render when the Seller's edits change the effective Products and store identity (FIX-001)
   // The story moment of the guided-flow step (the 10:25 snapshot otherwise); it moves past each documented event the
   // Seller performs here. The Companion opens on the step's Seller (the default Seller otherwise), and the Seller
   // context selector (specification §23) switches between the primary showcase Sellers.
   const { seller: storySeller } = useStory()
   const [at, advanceTo] = useStoryMoment()
-  const initialSeller = storySeller ?? SURFACE_DEFAULTS.seller
+  // COMP-003: the Seller chosen anywhere else (Console, Storefront) when no guided step names one, so the surfaces agree.
+  const picked = getSelectedSeller() as SellerId | undefined
+  const initialSeller = storySeller ?? (picked && picked in SELLERS ? picked : SURFACE_DEFAULTS.seller)
   const [sellerId, setSellerId] = useState<SellerId>(initialSeller)
+  const chooseSeller = (id: SellerId) => { setSelectedSeller(id); setSellerId(id) }
   return (
     <PhoneFrame label={`06 — SELLER COMPANION · ${SELLERS[sellerId].name.toUpperCase()}`} clock={formatClockShort(at.at)}>
       {/* Keyed by Seller: switching starts again from the selected Seller's records, on its Alerts. */}
-      <SellerCompanionApp key={sellerId} sellerId={sellerId} at={at} advanceTo={advanceTo} demoTarget={sellerId === initialSeller ? demoTarget : undefined} onSwitchSeller={setSellerId} />
+      <SellerCompanionApp key={sellerId} sellerId={sellerId} at={at} advanceTo={advanceTo} demoTarget={sellerId === initialSeller ? demoTarget : undefined} onSwitchSeller={chooseSeller} onNavigate={onNavigate} />
     </PhoneFrame>
   )
 }
 
-function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSeller }: {
-  sellerId: SellerId; at: Moment; advanceTo: (event: Moment | string) => void; demoTarget?: string; onSwitchSeller: (id: SellerId) => void
+function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSeller, onNavigate }: {
+  sellerId: SellerId; at: Moment; advanceTo: (event: Moment | string) => void; demoTarget?: string; onSwitchSeller: (id: SellerId) => void; onNavigate?: (section: string) => void
 }) {
   const initialTab: TabKey = demoTarget === 'inbox' ? 'inbox' : demoTarget === 'order' || demoTarget === 'collection-qr' ? 'orders' : 'alerts'
   const initialScreen: Screen = demoTarget === 'order'
@@ -141,7 +154,7 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
   // FE-001: Order handling (preparation, Courier offers, QR handoff) and Claims belong to the internal simulation.
   const [rawScreen, setScreen] = useState<Screen>(initialScreen)
-  const screen: Screen = !simulation && rawScreen !== 'tabs' && rawScreen !== 'conversation' ? 'gated' : rawScreen
+  const screen: Screen = !simulation && rawScreen !== 'tabs' && rawScreen !== 'conversation' && rawScreen !== 'destination' ? 'gated' : rawScreen
   const [orderId, setOrderId] = useState<OrderId | undefined>(initialOrder)
   // SIM-001: on the marketplace dataset the Orders tab and the order Alerts read the shared simulation store.
   const [simOrder, setSimOrder] = useState<string | null>(null)
@@ -160,11 +173,37 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
   const [notice, setNotice] = useState<string>()
   const [handoffMethod, setHandoffMethod] = useState<HandoffMethod>('QR')
   const [switcherOpen, setSwitcherOpen] = useState(false)
+  // COMP-001..003 (marketplace dataset): the acting team member, the alert destination being viewed, and where Back returns to.
+  const acting = useActing(sellerId)
+  const session = useCompanionSession()
+  const [fromAlerts, setFromAlerts] = useState(false)
+  const [dest, setDest] = useState<Alert['dest'] | null>(null)
+  const [teamFocus, setTeamFocus] = useState<string | null>(null)
+  const [profileSheet, setProfileSheet] = useState<'menu' | 'edit' | null>(null)
+  const alertHub = useCompanionAlerts(sellerId, at, simulation)
+  const storeOpen = session.storeOpen[sellerId] ?? teamOf(sellerId)?.lifecycle === 'ACTIVE'
+  // The Console and the Storefront open on this Seller (the selected Seller is shared), and Back from them keeps it.
+  const toSurface = (section: string) => { setSelectedSeller(sellerId); onNavigate?.(section) }
 
   const selectTab = (tab: TabKey) => {
     setActiveTab(tab)
     setScreen('tabs')
+    setFromAlerts(false)
+    setTeamFocus(null)
   }
+  const backToAlerts = () => { setFromAlerts(false); setDest(null); setSimOrder(null); setTeamFocus(null); setActiveTab('alerts'); setScreen('tabs') }
+  /** Open an alert's destination. Back from every destination returns to Alerts. */
+  const openAlert = (alert: Alert) => {
+    const d = alert.dest
+    if (d.type === 'none') return
+    setFromAlerts(true)
+    if (d.type === 'product' || d.type === 'scene' || d.type === 'story') { setDest(d); setScreen('destination') }
+    else if (d.type === 'inbox' && d.id && d.id in CONVERSATIONS) openConversation(d.id as ConversationId)
+    else if (d.type === 'task') { setTeamFocus(d.id); setActiveTab('team'); setScreen('tabs') }
+    else if (d.type === 'order') { setSimOrder(d.id); setActiveTab('orders'); setScreen('tabs') }
+    else { setActiveTab(d.type === 'profile' ? 'profile' : 'inbox'); setScreen('tabs') }
+  }
+  const leave = (tab: TabKey) => (fromAlerts ? backToAlerts() : (setActiveTab(tab), setScreen('tabs')))
 
   const backToOrder = () => setScreen('order')
   const openOrder = (id: OrderId) => { setOrderId(id); setStage(companionStage(id, at)); setCourierId(ORDERS[id].courier ?? SURFACE_DEFAULTS.courier); setNotice(undefined); setScreen('order') }
@@ -193,7 +232,7 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
   // Tab badges: alerts needing attention, active Orders awaiting the Seller, and conversations and Claims awaiting a reply.
   const active = activeOrders(sellerId, at)
   const badges: Partial<Record<TabKey, number>> = {
-    alerts: notificationsAt(sellerId, at).filter(n => (simulation || MVP_ALERTS.includes(n.event.kind)) && alertFor(n).attention).length,
+    alerts: isLegacy ? notificationsAt(sellerId, at).filter(n => (simulation || MVP_ALERTS.includes(n.event.kind)) && alertFor(n).attention).length : alertHub.unread,
     orders: simulation ? (isLegacy ? active.filter(id => [...NEEDS_PREP, ...READY].includes(orderStateAt(id, at)!)).length : simActions.length) : undefined,
     inbox: sellerThreads(sellerId, at, simulation).filter(({ id, last }) => simulation ? awaitingSellerReplyAt(id, at) : last.from === 'buyer').length + (simulation ? openClaims(sellerId, at).length : 0),
   }
@@ -202,14 +241,17 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
     <div className="relative flex flex-1 flex-col overflow-hidden">
       {screen === 'tabs' && (
         <>
-          <CompanionHeader tab={activeTab} sellerId={sellerId} onSwitchSeller={() => setSwitcherOpen(true)} />
+          <CompanionHeader tab={activeTab} sellerId={sellerId} storeOpen={isLegacy ? !!SELLERS[sellerId].storeOpen : !!storeOpen} onSwitchSeller={() => setSwitcherOpen(true)} onMenu={() => setProfileSheet('menu')} />
           <div className="flex-1 overflow-y-auto">
-            {activeTab === 'alerts' && <>{simulation && !isLegacy && <CompanionOrderAlerts sellerId={sellerId} onOpen={id => { setSimOrder(id); setActiveTab('orders') }} />}<AlertsTab sellerId={sellerId} at={at} onOrder={openOrder} onClaim={openClaim} onConversation={openConversation} onLowStock={() => selectTab('more')} /></>}
+            {fromAlerts && activeTab !== 'alerts' && <div className="border-b border-border bg-surface px-4 py-1"><button type="button" onClick={backToAlerts} aria-label="Back to Alerts" data-back-to-alerts className="min-h-11 text-sm font-semibold text-brand-text">‹ Back to Alerts</button></div>}
+            {activeTab === 'alerts' && (isLegacy ? <AlertsTab sellerId={sellerId} at={at} onOrder={openOrder} onClaim={openClaim} onConversation={openConversation} onLowStock={() => selectTab('more')} /> : <AlertsHub sellerId={sellerId} alerts={alertHub.alerts} onOpen={openAlert} />)}
             {activeTab === 'orders' && (simulation ? (isLegacy ? <OrdersTab sellerId={sellerId} at={at} onOrder={openOrder} /> : <CompanionOrders sellerId={sellerId} open={simOrder} setOpen={setSimOrder} />) : <CatalogueTab sellerId={sellerId} at={at} />)}
-            {activeTab === 'inbox' && <InboxTab sellerId={sellerId} at={at} sent={sentReplies} onConversation={openConversation} onClaim={openClaim} />}
+            {activeTab === 'inbox' && (acting.can(PERMISSION.readInbox).allowed ? <InboxTab sellerId={sellerId} at={at} sent={sentReplies} onConversation={openConversation} onClaim={openClaim} guard={() => acting.can(PERMISSION.replyInbox)} /> : <div className="p-4"><NotPermitted decision={acting.can(PERMISSION.readInbox)} subject="Inbox" /></div>)}
             {activeTab === 'more' && <MoreTab sellerId={sellerId} at={at} notice={consoleNotice} onConsole={() => setConsoleNotice(true)} />}
+            {activeTab === 'team' && <TeamTab sellerId={sellerId} at={at} focusTask={teamFocus} onConsole={() => toSurface('08-seller-console')} />}
+            {activeTab === 'profile' && <ProfileTab sellerId={sellerId} at={at} acting={acting} onConsole={() => toSurface('08-seller-console')} onStorefront={() => toSurface('04-storefront')} />}
           </div>
-          <BottomNav items={TABS.map(tab => (!simulation && tab.key === 'orders' ? { ...tab, label: 'Catalogue', icon: <IconPackage size={22} />, badge: badges[tab.key] } : { ...tab, badge: badges[tab.key] }))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-brand)" />
+          <BottomNav items={(isLegacy ? TABS : MARKETPLACE_TABS).map(tab => (!simulation && tab.key === 'orders' ? { ...tab, label: 'Catalogue', icon: <IconPackage size={22} />, badge: badges[tab.key] } : { ...tab, badge: badges[tab.key] }))} active={activeTab} onSelect={key => selectTab(key as TabKey)} accent="var(--color-brand)" />
         </>
       )}
       {screen === 'gated' && <SimulationGate title="Order handling" compact onBack={() => { setActiveTab('alerts'); setScreen('tabs') }}>Preparing Orders, Courier offers and QR handoff belong to the historical paid-commerce design, which Release 1 does not include.</SimulationGate>}
@@ -241,16 +283,29 @@ function SellerCompanionApp({ sellerId, at, advanceTo, demoTarget, onSwitchSelle
       {screen === 'pickup-qr' && <SellerPickupQr courierId={courierId} onBack={backToOrder} onVerified={() => { advance('Pickup Verified'); setScreen('pickup-verified') }} />}
       {screen === 'pickup-verified' && orderId && <PickupVerified orderId={orderId} courierId={courierId} at={at} onContinue={() => { setStage('pickup'); setScreen('delivery') }} />}
       {screen === 'delivery' && orderId && <DeliveryStatus orderId={orderId} courierId={courierId} stage={stage} onBack={backToOrder} onAdvance={() => { advance('Out for Delivery'); setStage('delivery') }} />}
-      {screen === 'conversation' && conversationId && <BuyerConversation conversationId={conversationId} at={at} sent={sentReplies[conversationId] ?? []} onSend={message => setSentReplies(all => ({ ...all, [conversationId]: [...(all[conversationId] ?? []), { ...message, sequence: Object.values(all).reduce((n, list) => n + (list?.length ?? 0), 0) + 1 }] }))} onDocumentedReply={advanceTo} onBack={() => { setActiveTab('inbox'); setScreen('tabs') }} />}
-      {screen === 'claim' && claimId && <ClaimResponse claimId={claimId} at={at} onBack={() => { setActiveTab('inbox'); setScreen('tabs') }} />}
+      {screen === 'conversation' && conversationId && !acting.can(PERMISSION.readInbox).allowed && <><ScreenHeader title="Conversation" onBack={() => leave('inbox')} backLabel={fromAlerts ? 'Back to Alerts' : undefined} /><div className="p-4"><NotPermitted decision={acting.can(PERMISSION.readInbox)} subject="Inbox" /></div></>}
+      {screen === 'conversation' && conversationId && acting.can(PERMISSION.readInbox).allowed && <BuyerConversation conversationId={conversationId} acting={acting} at={at} sent={sentReplies[conversationId] ?? []} onSend={message => setSentReplies(all => ({ ...all, [conversationId]: [...(all[conversationId] ?? []), { ...message, sequence: Object.values(all).reduce((n, list) => n + (list?.length ?? 0), 0) + 1 }] }))} onDocumentedReply={advanceTo} onBack={() => leave('inbox')} backLabel={fromAlerts ? 'Back to Alerts' : undefined} />}
+      {screen === 'claim' && claimId && <ClaimResponse claimId={claimId} at={at} onBack={() => leave('inbox')} />}
+      {screen === 'destination' && dest && (
+        <>
+          <ScreenHeader title={dest.type === 'product' ? 'Product' : dest.type === 'scene' ? 'Scene' : 'Story'} onBack={backToAlerts} backLabel="Back to Alerts" />
+          <div className="flex-1 overflow-y-auto">
+            {dest.type === 'product' && <CatalogueTab sellerId={sellerId} at={at} only={dest.id} />}
+            {dest.type === 'scene' && (acting.can('seller.scene_posts:read').allowed ? <SceneDetail sellerId={sellerId} sceneId={dest.id} at={at} /> : <div className="p-4"><NotPermitted decision={acting.can('seller.scene_posts:read')} subject="Scene" /></div>)}
+            {dest.type === 'story' && <StoryDetail story={alertHub.stories.find(story => story.id === dest.id)} />}
+          </div>
+        </>
+      )}
+      {profileSheet === 'menu' && <ProfileMenu sellerId={sellerId} acting={acting} onClose={() => setProfileSheet(null)} onEdit={() => setProfileSheet('edit')} onSwitchSeller={() => setSwitcherOpen(true)} onConsole={() => toSurface('08-seller-console')} onStorefront={() => toSurface('04-storefront')} onTeam={() => selectTab('team')} />}
+      {profileSheet === 'edit' && <EditProfileSheet sellerId={sellerId} onClose={() => setProfileSheet(null)} />}
       {switcherOpen && <SellerSwitcher current={sellerId} onClose={() => setSwitcherOpen(false)} onSelect={id => { setSwitcherOpen(false); if (id !== sellerId) onSwitchSeller(id) }} />}
     </div>
   )
 }
 
-function CompanionHeader({ tab, sellerId, onSwitchSeller }: { tab: TabKey; sellerId: SellerId; onSwitchSeller: () => void }) {
+function CompanionHeader({ tab, sellerId, storeOpen, onSwitchSeller, onMenu }: { tab: TabKey; sellerId: SellerId; storeOpen: boolean; onSwitchSeller: () => void; onMenu: () => void }) {
   const { simulation } = usePrototypeMode()
-  const titles: Record<TabKey, string> = { alerts: 'Alerts', orders: simulation ? 'Paid Orders' : 'Catalogue', inbox: 'Inbox', more: 'More' }
+  const titles: Record<TabKey, string> = { alerts: 'Alerts', orders: simulation ? 'Paid Orders' : 'Catalogue', inbox: 'Inbox', more: 'More', team: 'Team', profile: 'Profile' }
   const seller = SELLERS[sellerId]
   return (
     <div className="flex h-13 flex-shrink-0 items-center justify-between border-b border-border bg-surface px-4">
@@ -258,7 +313,10 @@ function CompanionHeader({ tab, sellerId, onSwitchSeller }: { tab: TabKey; selle
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-muted text-xs font-bold text-brand-dark">{initials(seller.name)}</div>
         <div><div className="font-display text-base font-semibold">{titles[tab]}</div><div className="flex items-center gap-1 text-[10px] text-text-muted">{seller.name}<IconChevronDown size={10} /></div></div>
       </button>
-      {seller.storeOpen && <span className="rounded-full bg-success-bg px-2 py-1 text-[10px] font-semibold text-success">Store open</span>}
+      <div className="flex items-center gap-2">
+        {storeOpen && <span className="rounded-full bg-success-bg px-2 py-1 text-[10px] font-semibold text-success">Store open</span>}
+        {tab === 'profile' && <button type="button" onClick={onMenu} aria-haspopup="dialog" aria-label="Profile menu" data-profile-menu className="flex h-11 w-11 items-center justify-center rounded-full text-text-secondary"><IconMore size={22} /></button>}
+      </div>
     </div>
   )
 }
@@ -284,10 +342,10 @@ function SellerSwitcher({ current, onClose, onSelect }: { current: SellerId; onC
   )
 }
 
-function ScreenHeader({ title, onBack, trailing }: { title: string; onBack: () => void; trailing?: ReactNode }) {
+function ScreenHeader({ title, onBack, trailing, backLabel }: { title: string; onBack: () => void; trailing?: ReactNode; backLabel?: string }) {
   return (
     <div className="flex h-13 flex-shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
-      <button onClick={onBack} aria-label="Back" className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-raised text-xl text-text-secondary">‹</button>
+      <button onClick={onBack} aria-label={backLabel ?? 'Back'} className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-raised text-xl text-text-secondary">‹</button>
       <div className="flex-1 truncate font-display text-lg font-semibold">{title}</div>
       {trailing}
     </div>
@@ -708,8 +766,8 @@ function HandoffVerified({ orderId, at, method, onContinue }: { orderId: OrderId
   )
 }
 
-function InboxTab({ sellerId, at, sent, onConversation, onClaim }: {
-  sellerId: SellerId; at: Moment; sent: Partial<Record<ConversationId, readonly MessageRecord[]>>; onConversation: (id: ConversationId) => void; onClaim: (id: ClaimId) => void
+function InboxTab({ sellerId, at, sent, onConversation, onClaim, guard }: {
+  sellerId: SellerId; at: Moment; sent: Partial<Record<ConversationId, readonly MessageRecord[]>>; onConversation: (id: ConversationId) => void; onClaim: (id: ClaimId) => void; guard?: () => Decision
 }) {
   // The Seller's conversations, latest first, marked while the Buyer awaits a reply; then Claims awaiting a response. Each
   // row previews its conversation's newest message, a reply sent in this session included, so its text and chip come from
@@ -721,7 +779,7 @@ function InboxTab({ sellerId, at, sent, onConversation, onClaim }: {
     .sort((a, b) => byMessageTime(b.last, a.last))
   const claims = simulation ? openClaims(sellerId, at) : []
   const staffId = sessionStaffOn(sellerId, 'Seller Companion')
-  const live = <LiveInbox compact sellerId={sellerId} author={staffId ? shortName(STAFF[staffId].name) : SELLERS[sellerId].name} />
+  const live = <LiveInbox compact guard={guard} sellerId={sellerId} author={staffId ? shortName(STAFF[staffId].name) : SELLERS[sellerId].name} />
   const hasLive = Object.values(workspace.chats).some(c => c.sellerId === sellerId)
   if (threads.length === 0 && claims.length === 0 && !hasLive) return (
     <div className="px-6 py-16 text-center"><div className="font-display text-lg font-semibold">Inbox is empty</div><p className="mt-1 text-sm text-text-muted">Buyer conversations and Claims that need your response appear here.</p></div>
@@ -742,16 +800,18 @@ function InboxTab({ sellerId, at, sent, onConversation, onClaim }: {
   )
 }
 
-function BuyerConversation({ conversationId, at, sent, onSend, onDocumentedReply, onBack }: {
-  conversationId: ConversationId; at: Moment; sent: readonly MessageRecord[]; onSend: (message: MessageRecord) => void
-  onDocumentedReply: (at: Timestamp) => void; onBack: () => void
+function BuyerConversation({ conversationId, acting, at, sent, onSend, onDocumentedReply, onBack, backLabel }: {
+  conversationId: ConversationId; acting: Acting; at: Moment; sent: readonly MessageRecord[]; onSend: (message: MessageRecord) => void
+  onDocumentedReply: (at: Timestamp) => void; onBack: () => void; backLabel?: string
 }) {
   const { simulation } = usePrototypeMode()
   const { buyer, seller } = CONVERSATIONS[conversationId]
   // The team member with the Companion session replies (DEMO_DATA › Seller Console Settings). When a guided-flow step
   // stops just before that member's documented reply (Flow L at 11:48), the composer holds it with its context, and
   // sending it is that event; any other reply is this session's own.
-  const staff = sessionStaffOn(seller, 'Seller Companion')
+  // COMP-002: on the marketplace dataset the acting team member replies (and needs seller.inbox:reply to do so).
+  const staff = (acting.member?.id ?? sessionStaffOn(seller, 'Seller Companion')) as StaffId | undefined
+  const [refused, setRefused] = useState<Decision | null>(null)
   const due = sellerReplyDueAt(conversationId, at)
   const documented = due && due.from === staff ? due : undefined
   // The composer's context is this screen's state, never the conversation's: General / Seller unless a reply is due.
@@ -764,6 +824,9 @@ function BuyerConversation({ conversationId, at, sent, onSend, onDocumentedReply
   const messages = visibleMessages(effectiveMessagesAt(conversationId, at, [...sent, ...live]), simulation)
   const send = () => {
     if (!message || !staff) return
+    const decision = acting.can(PERMISSION.replyInbox)
+    setRefused(decision.allowed ? null : decision)
+    if (!decision.allowed) return
     if (documented && message === documented.text && sameContext(context, documented.context)) onDocumentedReply(documented.at)
     else replyInThread(ws, wsDispatch, conversationId, shortName(STAFF[staff].name), message, context)
     setMessage('')
@@ -777,7 +840,7 @@ function BuyerConversation({ conversationId, at, sent, onSend, onDocumentedReply
   }, [messages.length])
   return (
     <>
-      <ScreenHeader title={shortName(BUYERS[buyer].name)} onBack={onBack} />
+      <ScreenHeader title={shortName(BUYERS[buyer].name)} onBack={onBack} backLabel={backLabel} />
       <div className="border-b border-border bg-warning-bg px-4 py-2 text-[10px] leading-relaxed text-text-secondary">Chat supports coordination. It does not change payment, pickup, delivery, claim, or Order truth.</div>
       <div ref={list} role="list" aria-label="Messages" className="flex-1 overflow-y-auto bg-surface-raised p-4">
         <LiveThreadControls conversationKey={keyFor(conversationId)} sellerId={seller} />
@@ -786,6 +849,7 @@ function BuyerConversation({ conversationId, at, sent, onSend, onDocumentedReply
       <div className="border-t border-border bg-surface p-3 pb-5">
         <button onClick={() => setChoosing(true)} aria-haspopup="dialog" aria-label={`Talking about: ${contextSubject(context)}. Change`} className="mb-2 inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand bg-brand-muted px-3 py-1 text-left text-xs font-semibold text-brand-dark"><span>Talking about: {contextSubject(context)}</span><IconChevronDown size={12} /></button>
         <div className="mb-2 flex gap-2 overflow-x-auto">{simulation ? <><Pill onClick={() => setMessage('Your order is ready for courier pickup.')}>Order ready</Pill><Pill onClick={() => setMessage('A courier has been assigned.')}>Courier assigned</Pill></> : <><Pill onClick={() => setMessage('Thank you for your message.')}>Thank you</Pill><Pill onClick={() => setMessage('I will check and reply soon.')}>I will check</Pill></>}</div>
+        {refused && <div className="mb-2" data-reply-refused><NotPermitted decision={refused} subject="Reply" /></div>}
         <div className="flex gap-2"><div className="flex-1 rounded-lg border border-border px-3 py-2 text-sm text-text-secondary">{message || ('general' in context ? `Message ${shortName(BUYERS[buyer].name)}` : `Message about ${contextSubject(context)}`)}</div><Button size="sm" onClick={send}>Send</Button></div>
       </div>
       {choosing && <ContextSheet choices={contextChoicesAt(conversationId, at).filter(choice => simulation || !('order' in choice))} selected={context} onSelect={setContext} onClose={() => setChoosing(false)} />}

@@ -5,6 +5,7 @@ import { linkableProducts, productStock, sceneVisibility, stockState, useWorkspa
 import { describeMethods, sellerMethods } from '../fulfilment'
 import { usePrototypeMode } from '../prototype-mode'
 import { isLegacy } from '../marketplace/registry'
+import { getSelectedSeller, setSelectedSeller } from '../selected-seller'
 import { useSim } from '../simulation/store'
 import { REPUTATION } from '../demo-data/reputation'
 import { priceLabel, taxonomyOf } from './buyer-authored'
@@ -171,7 +172,10 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
   const [entryMode, setEntryMode] = useState<EntryMode>(initialEntry)
   // Choosing an entry, even the current one, opens it again from its first screen.
   const [entryCount, setEntryCount] = useState(0)
-  const [sellerId, setSellerId] = useState<SellerId>(story.seller ?? SURFACE_DEFAULTS.seller)
+  // COMP-003: the Seller chosen on another surface, when it has a public Storefront (a draft or suspended store has none) and no guided step names one.
+  const picked = getSelectedSeller() as SellerId | undefined
+  const [sellerId, setSellerId] = useState<SellerId>(story.seller ?? (picked && buyerVisibleSellers().includes(picked) ? picked : SURFACE_DEFAULTS.seller))
+  const chooseSeller = (id: SellerId) => { setSelectedSeller(id); setSellerId(id) }
   const handleEntryChange = (mode: EntryMode) => {
     setEntryMode(mode)
     setEntryCount(count => count + 1)
@@ -208,7 +212,7 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
         <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.08em' }}>PROTOTYPE · STOREFRONT SELLER</span>
         <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
           {buyerVisibleSellers().map(id => (
-            <button key={id} onClick={() => setSellerId(id)} aria-pressed={sellerId === id} style={pillStyle(sellerId === id)}>
+            <button key={id} onClick={() => chooseSeller(id)} aria-pressed={sellerId === id} style={pillStyle(sellerId === id)}>
               {SELLERS[id].name}
             </button>
           ))}

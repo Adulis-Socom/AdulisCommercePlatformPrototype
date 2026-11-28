@@ -118,6 +118,8 @@ export interface StaffRecord {
   readonly role: 'Owner' | 'Operations'
   /** Marketplace dataset only: the member's canonical team roles from the source (replaces the 'Operations' default mapping). */
   readonly roles?: readonly string[]
+  /** Marketplace dataset only: the source membership_status (ACTIVE, INVITED, REVOKED, SUSPENDED; absent for the Owner). */
+  readonly status?: string
 }
 
 const STAFF_RECORDS = {
