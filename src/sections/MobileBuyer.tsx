@@ -2512,6 +2512,8 @@ const tabTakes = (tab: ReviewTab, e: ReviewEntitlement) => (tab.kind === 'produc
 type ShownReview = {
   key: string; buyer: BuyerId; rating: number; text: string; written: CalendarDate | Moment; variant?: string; products?: readonly ProductId[]
   edited: boolean
+  /** SIM-003: written in this session of the internal simulation, so not a verified purchase. */
+  simulated?: boolean
   /** The signed-in Buyer's entitlement behind it, when it's hers: she edits it, and doesn't report it. */
   own?: ReviewEntitlement
 }
@@ -2529,7 +2531,7 @@ function shownReviews(tab: ReviewTab, at: Moment, mine: Partial<Record<string, S
   })
   const written = canonical.map(entry => {
     const edit = session.find(r => r.entitlement.order === entry.order)
-    return { key: entry.review, buyer: entry.buyer, rating: edit ? edit.rating : entry.rating, text: edit?.text || entry.text, written: entry.written, variant: entry.variant, products: entry.products, edited: Boolean(edit), own: own(entry.order) }
+    return { key: entry.review, buyer: entry.buyer, rating: edit ? edit.rating : entry.rating, text: edit?.text || entry.text, written: entry.written, variant: entry.variant, products: entry.products, simulated: entry.simulated, edited: Boolean(edit), own: own(entry.order) }
   })
   return [...fresh, ...written]
 }
@@ -2698,7 +2700,7 @@ function ReviewCard({ review, kind, reported, onEdit, onReport }: { review: Show
           <div className="text-sm font-semibold">{name}{review.own && <span className="font-normal text-text-muted"> · You</span>}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
             <Stars rating={review.rating} label={`${kind === 'product' ? 'Product Quality' : 'Seller Service'} ${review.rating} out of 5`} />
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success"><CheckIconSmall /> Verified Purchase</span>
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success"><CheckIconSmall /> {review.simulated ? 'Simulated review, not a verified purchase' : 'Verified Purchase'}</span>
           </div>
         </div>
         <span className="flex-shrink-0 text-xs text-text-muted">{formatDate(when)}{review.edited ? ' · Edited' : ''}</span>

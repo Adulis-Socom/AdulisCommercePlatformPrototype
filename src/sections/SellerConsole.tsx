@@ -37,6 +37,8 @@ import {
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { isLegacy } from '../marketplace/registry'
 import { SellerOrders, useSellerActions } from '../simulation/surfaces'
+import { SellerCouriers } from '../simulation/feedback-ui'
+import { SellerReviews } from '../simulation/reviews-ui'
 import { Notice } from './console/kit'
 import { LiveInbox, LiveThreadControls } from './console/LiveInbox'
 import { liveAsRecords, keyFor } from '../chatbot/thread'
@@ -220,10 +222,10 @@ export default function SellerConsole({ demoTarget }: { demoTarget?: string }) {
           {activeNav === 'inbox' && <InboxPanel sellerId={sellerId} at={at} />}
           {activeNav === 'claims' && (simulation ? <ClaimsPanel sellerId={sellerId} at={at} /> : <SimulationGate title="Claims">Payment and refund Claims are deferred. Release 1 has no paid Orders to raise a Claim against.</SimulationGate>)}
           {activeNav === 'insights' && <InsightsPanel sellerId={sellerId} at={at} />}
-          {activeNav === 'reviews' && <ReviewsPanel sellerId={sellerId} at={at} />}
+          {activeNav === 'reviews' && (isLegacy ? <ReviewsPanel sellerId={sellerId} at={at} /> : <SellerReviews sellerId={sellerId} />)}
           {activeNav === 'trust' && <TrustPanel sellerId={sellerId} at={at} />}
           {activeNav === 'store' && <StorePanel sellerId={sellerId} at={at} onOpenCouriers={() => navigate('couriers')} />}
-          {activeNav === 'couriers' && <CouriersPanel sellerId={sellerId} at={at} advanceTo={advanceTo} changes={courierChanges} onChange={changeCourier} />}
+          {activeNav === 'couriers' && (isLegacy ? <CouriersPanel sellerId={sellerId} at={at} advanceTo={advanceTo} changes={courierChanges} onChange={changeCourier} /> : <SellerCouriers sellerId={sellerId} />)}
           {activeNav === 'automation' && <AutomationPanel sellerId={sellerId} at={at} />}
           {activeNav === 'settings' && <SettingsPanel sellerId={sellerId} at={at} onNavigate={navigate} team={teamWith(sellerId, teamChanges)} onTeamChange={(staff, change) => setTeamChanges(changes => ({ ...changes, [staff]: { ...changes[staff], ...change } }))} />}
         </div>

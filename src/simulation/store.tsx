@@ -4,12 +4,15 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import { isLegacy, datasetKey } from '../marketplace/registry'
 import { CATALOGUE, OPERATIONS } from '../marketplace/import'
+import { usePrototypeMode } from '../prototype-mode'
+import { REPUTATION } from '../demo-data/reputation'
+import { buildFeed } from './feed'
 import { apply, buildWorld, seedState, type Action, type Result, type SimState, type World } from './orders'
 
 export const STORAGE_KEY = `${datasetKey('adulis.simulation.v1')}|simulation`
 export const WORLD: World = buildWorld(OPERATIONS, CATALOGUE as unknown as Parameters<typeof buildWorld>[1])
 let seeded: SimState | null = null
-const seed = (): SimState => (seeded ??= seedState(OPERATIONS))
+export const seed = (): SimState => (seeded ??= seedState(OPERATIONS))
 
 function load(): { log: Action[]; state: SimState } {
   try {
@@ -43,6 +46,9 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     live.current = next
     setStore(next)
   }, [])
+  // SIM-003: publish the simulated reputation for the Buyer and Storefront pages, in the internal simulation only (the MVP shows no purchased reviews).
+  const { simulation } = usePrototypeMode()
+  REPUTATION.current = !isLegacy && simulation ? buildFeed(store.state) : null
   const value = useMemo(() => ({ sim: store.state, act, reset }), [store, act, reset])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

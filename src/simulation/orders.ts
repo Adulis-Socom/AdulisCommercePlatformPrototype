@@ -5,6 +5,11 @@
 // observed set). Nothing is invented: Order statuses, scenario statuses, cancellation and delivery-failure reasons, Handoff stages and
 // methods are the dataset's own values.
 import type { OperationsCore } from '../marketplace/types.ts'
+import { SNAPSHOT, isoAt } from './clock.ts'
+import { relationshipAction } from './relationships.ts'
+import { commentAction, type SimComment } from './feedback.ts'
+import { GRANT_DELAY_MIN, issueGrant, reviewAction, type SimGrant, type SimRating, type SimReview } from './reviews.ts'
+export { SNAPSHOT, isoAt }
 
 export type Mode = 'BUYER_COLLECTION' | 'COURIER_DELIVERY' | 'SELLER_DELIVERY'
 export type Status = 'PAID' | 'PREPARING' | 'READY_FOR_COLLECTION' | 'READY_FOR_DELIVERY' | 'COURIER_ASSIGNED' | 'PICKUP_VERIFIED' | 'OUT_FOR_DELIVERY' | 'FINAL_DELIVERY_VERIFIED' | 'COMPLETED' | 'DELIVERY_FAILED' | 'RETURNED_TO_SELLER' | 'CANCELLED'
@@ -24,7 +29,6 @@ export const STATUS_LABEL: Record<Status, string> = {
 export const STAGE_LABEL: Record<Stage, string> = { PICKUP: 'Pickup', DELIVERY: 'Final delivery', RETURN: 'Return' }
 export const FAIL_REASONS = ['BUYER_UNAVAILABLE', 'SELLER_NON_DELIVERY'] as const
 export const CANCEL_REASON = 'SIMULATED_BUYER_REQUEST'
-export const SNAPSHOT = '2026-11-27T10:00:00+03:00'
 /** A credential lives this many SIMULATED minutes (advanced only by the explicit "Advance simulated time" control). */
 export const CRED_TTL_MIN = 10
 export const CREDENTIAL_LABEL = 'DEMO_ONLY_NON_REUSABLE'
@@ -51,7 +55,13 @@ export interface SimEvent { orderId: string; index: number; state: Status; at: s
 export interface SimHandoff { id: string; orderId: string; stage: Stage; presenterId: string; scannerId: string; method: string; verifiedAt: string; result: string; credential: string }
 export interface SimOffer { id: string; orderId: string; sellerId: string; courierId: string; relationshipId: string; offeredAt: string; status: OfferStatus; resolvedAt: string | null }
 export interface SimCredential { token: string; orderId: string; stage: Stage; issue: number; presenterId: string; issuedAt: number; expiresAt: number; used: boolean }
+/** One entry of a relationship's history: a supplied relationship_event, or a session action. */
+export interface RelEvent { status: string; at: string; note: string; session: boolean }
 export interface SimState {
+  /** Relationship status per `${courier}|${seller}` (null = no relationship), and the history per relationship_id (COURIER-002). */
+  relStatus: Record<string, string | null>; relEvents: Record<string, RelEvent[]>
+  /** Shared Courier comments (COURIER-001) and the review chain grants -> reviews -> Product Quality ratings (SIM-003). */
+  comments: Record<string, SimComment>; grants: Record<string, SimGrant>; reviews: Record<string, SimReview>; ratings: Record<string, SimRating>
   now: number; serial: number
   orders: Record<string, SimOrder>; lines: Record<string, SimLine[]>; events: Record<string, SimEvent[]>; handoffs: Record<string, SimHandoff[]>
   offers: Record<string, SimOffer>; credentials: Record<string, SimCredential>; issues: Record<string, number>; availability: Record<string, Availability>
@@ -60,26 +70,34 @@ export interface SimState {
 // ---------- the world (static facts the rules read) ----------
 export interface World {
   couriers: Record<string, { id: string; name: string; handle: string; baseCity: string; cities: string[]; vehicle: string; verification: string; mvpAvailability: string }>
-  relationships: Record<string, { id: string; status: string | null; canReceive: boolean | null }> // key `${courier}|${seller}`
+  relationships: Record<string, { id: string; courierId: string; sellerId: string; status: string | null; canReceive: boolean | null; declared: boolean; note: string }> // key `${courier}|${seller}`; status is the seed's
   settings: Record<string, { enabled: boolean; approved: string[]; fee: number }>
   opportunities: Record<string, { compensation: number; terms: string }> // key `${courier}|${seller}`
   sellers: Record<string, { id: string; name: string; lifecycle: string; city: string }>
   products: Record<string, { id: string; sellerId: string; name: string; price: number; stock: number; published: boolean; variants: boolean }>
   buyers: Record<string, { id: string; name: string; city: string; area: string }>
   scenes: Record<string, { id: string; title: string }>
+  claims: Record<string, { id: string; orderId: string; buyerId: string; sellerId: string; outcome: string; basis: string }>
+  sellerRep: Record<string, { sellerId: string; published: number; rating: number | null; pqCount: number; pqMean: number | null }>
+  productRep: Record<string, { productId: string; sellerId: string; count: number; average: number | null }>
 }
 type Row = Record<string, any> // source rows carry more columns than types.ts names; they are read here by name
 export function buildWorld(ops: OperationsCore, cat: { sellers: Row[]; products: Row[]; variants: Row[]; scenes: Row[] }): World {
   const variantProducts = new Set(cat.variants.map(v => v.product_id as string))
   return {
     couriers: Object.fromEntries((ops.couriers as Row[]).map(c => [c.courier_id, { id: c.courier_id, name: c.name, handle: c.handle, baseCity: c.base_city, cities: c.service_cities, vehicle: c.vehicle, verification: c.verification, mvpAvailability: c.mvp_availability }])),
-    relationships: Object.fromEntries((ops.relationships_and_eligibility as Row[]).map(r => [`${r.courier_id}|${r.seller_id}`, { id: r.relationship_id, status: r.relationship_status, canReceive: r.can_receive_offer }])),
+    relationships: Object.fromEntries((ops.relationships_and_eligibility as Row[]).map(r => [`${r.courier_id}|${r.seller_id}`, { id: r.relationship_id, courierId: r.courier_id, sellerId: r.seller_id, status: r.relationship_status, canReceive: r.can_receive_offer, note: r.current_note_private,
+      // a Seller declared an opportunity for this Courier when the row says eligible, or an opportunities record exists (it stays declared after a withdrawal)
+      declared: r.opportunity_state === 'ELIGIBLE_TO_APPLY' || (ops.opportunities as Row[]).some(o => o.relationship_id === r.relationship_id) }])),
     settings: Object.fromEntries((ops.simulation_courier_settings as Row[]).map(s => [s.seller_id, { enabled: !!s.courier_delivery_enabled, approved: s.approved_courier_ids, fee: s.example_fee_etb }])),
     opportunities: Object.fromEntries((ops.opportunities as Row[]).map(o => [`${o.courier_id}|${o.seller_id}`, { compensation: o.simulated_compensation_etb, terms: o.terms }])),
     sellers: Object.fromEntries(cat.sellers.map(s => [s.seller_id, { id: s.seller_id, name: s.name, lifecycle: s.lifecycle, city: s.city }])),
     products: Object.fromEntries(cat.products.map(p => [p.product_id, { id: p.product_id, sellerId: p.seller_id, name: p.name, price: p.current_etb, stock: p.stock, published: p.publication === 'PUBLISHED', variants: variantProducts.has(p.product_id) }])),
     buyers: Object.fromEntries((ops.buyers as Row[]).map(b => [b.buyer_id, { id: b.buyer_id, name: b.display_name, city: b.city, area: b.area }])),
     scenes: Object.fromEntries(cat.scenes.map(s => [s.scene_id, { id: s.scene_id, title: s.title }])),
+    claims: Object.fromEntries((ops.claims as Row[]).map(c => [c.claim_id, { id: c.claim_id, orderId: c.order_id, buyerId: c.buyer_id, sellerId: c.seller_id, outcome: c.outcome, basis: c.basis }])),
+    sellerRep: Object.fromEntries((ops.seller_reputation as Row[]).map(r => [r.seller_id, { sellerId: r.seller_id, published: r.published_service_reviews, rating: r.service_rating ?? null, pqCount: r.product_rating_count, pqMean: r.product_rating_mean ?? null }])),
+    productRep: Object.fromEntries((ops.product_reputation as Row[]).map(r => [r.product_id, { productId: r.product_id, sellerId: r.seller_id, count: r.rating_count, average: r.average_stars ?? null }])),
   }
 }
 
@@ -96,7 +114,14 @@ export function seedState(ops: OperationsCore): SimState {
   const handoffs = groupBy(ops.handoffs as Row[], r => r.order_id)
   const offers: Record<string, SimOffer> = {}
   for (const r of ops.delivery_offers as Row[]) offers[r.offer_id] = { id: r.offer_id, orderId: r.order_id, sellerId: r.seller_id, courierId: r.courier_id, relationshipId: r.relationship_id, offeredAt: r.offered_at, status: r.status, resolvedAt: r.resolved_at ?? null }
+  const byRel = groupBy(ops.relationship_events as Row[], r => r.relationship_id)
   return {
+    relStatus: Object.fromEntries((ops.relationships_and_eligibility as Row[]).map(r => [`${r.courier_id}|${r.seller_id}`, r.relationship_status ?? null])),
+    relEvents: Object.fromEntries(Object.entries(byRel).map(([k, v]) => [k, v.sort((a, b) => a.event_index - b.event_index).map(e => ({ status: e.status, at: e.at, note: e.note, session: false }))])),
+    comments: Object.fromEntries((ops.courier_comments as Row[]).map(c => [c.comment_id, { id: c.comment_id, courierId: c.courier_id, sellerId: c.seller_id, orderId: c.order_id, sentiment: c.sentiment, topic: c.topic, text: c.text, createdAt: c.created_at, visibility: c.visibility, moderation: c.moderation_state, seeded: true }])),
+    grants: Object.fromEntries((ops.review_grants as Row[]).map(g => [g.grant_id, { id: g.grant_id, orderId: g.order_id, buyerId: g.buyer_id, sellerId: g.seller_id, basis: g.basis, claimId: g.claim_id ?? null, state: g.state, eligibleAt: g.eligible_at, seeded: true }])),
+    reviews: Object.fromEntries((ops.reviews as Row[]).map(r => [r.review_id, { id: r.review_id, grantId: r.grant_id, orderId: r.order_id, buyerId: r.buyer_id, sellerId: r.seller_id, basis: r.basis, stars: r.seller_service_stars, text: r.seller_service_text, publishedAt: r.published_at, visibility: r.visibility, moderationNote: r.moderation_note ?? null, seeded: true }])),
+    ratings: Object.fromEntries((ops.product_ratings as Row[]).map(p => [p.item_review_id, { id: p.item_review_id, reviewId: p.review_id, orderLineId: p.order_line_id, productId: p.product_id, stars: p.product_quality_stars, text: p.product_quality_text }])),
     now: 0, serial: 0, orders,
     lines: Object.fromEntries(Object.entries(lines).map(([k, v]) => [k, v.map(l => ({ id: l.order_line_id, productId: l.product_id, variantId: l.variant_id ?? null, variantLabel: l.variant_label ?? null, name: l.product_name_snapshot, quantity: l.quantity, unit: l.unit_etb, line: l.line_etb, received: !!l.received }))])),
     events: Object.fromEntries(Object.entries(events).map(([k, v]) => [k, v.sort((a, b) => a.event_index - b.event_index).map(e => ({ orderId: e.order_id, index: e.event_index, state: e.state, at: e.at, actor: e.actor }))])),
@@ -107,10 +132,6 @@ export function seedState(ops: OperationsCore): SimState {
 }
 
 // ---------- time and credentials ----------
-export function isoAt(minutes: number): string {
-  const ms = Date.parse(SNAPSHOT) + minutes * 60000 + 3 * 3600000
-  return new Date(ms).toISOString().slice(0, 19) + '+03:00'
-}
 /** Deterministic synthetic credential for one Order, Stage and issue number: FNV-1a over the three, rendered as `ADU-SIM-XXXX-XXXX`. Not a secret, not a real QR payload. */
 export function credentialToken(orderId: string, stage: Stage, issue: number): string {
   let h = 0x811c9dc5
@@ -168,10 +189,10 @@ const no = (code: string, reason: string): Verdict => ({ ok: false, code, reason
 export function canReceiveOffers(w: World, s: SimState, courierId: string, sellerId: string): Verdict {
   const c = w.couriers[courierId]
   if (!c) return no('UNKNOWN_COURIER', 'Unknown Courier')
-  const rel = w.relationships[`${courierId}|${sellerId}`]
-  if (rel?.status === 'SUSPENDED') return no('RELATIONSHIP_SUSPENDED', 'The relationship with this Seller is suspended')
-  if (rel?.status === 'REMOVED') return no('RELATIONSHIP_REMOVED', 'The Courier was removed from this Seller\'s pool')
-  if (rel?.status !== 'APPROVED') return no('NOT_POOL_MEMBER', 'Not an approved member of this Seller\'s Courier pool')
+  const status = s.relStatus[`${courierId}|${sellerId}`] ?? null
+  if (status === 'SUSPENDED') return no('RELATIONSHIP_SUSPENDED', 'The relationship with this Seller is suspended')
+  if (status === 'REMOVED') return no('RELATIONSHIP_REMOVED', 'The Courier was removed from this Seller\'s pool')
+  if (status !== 'APPROVED') return no('NOT_POOL_MEMBER', 'Not an approved member of this Seller\'s Courier pool')
   if (c.verification !== 'VERIFIED') return no('NOT_VERIFIED', `Courier verification is ${c.verification}: only VERIFIED Couriers can receive offers`)
   const a = s.availability[courierId]
   if (a !== 'AVAILABLE') return no('UNAVAILABLE', `Courier is ${a === 'BUSY' ? 'busy' : 'unavailable'} right now`)
@@ -207,6 +228,11 @@ export type Action =
   | { type: 'FAIL_DELIVERY'; actor: Party; orderId: string; reason: string }
   | { type: 'PRESENT'; actor: Party; orderId: string; stage: Stage }
   | { type: 'SCAN'; actor: Party; orderId: string; stage: Stage; token?: string }
+  | { type: 'APPLY'; actor: Party; sellerId: string }
+  | { type: 'ACCEPT_INVITATION'; actor: Party; sellerId: string }
+  | { type: 'WITHDRAW'; actor: Party; sellerId: string }
+  | { type: 'COMMENT'; actor: Party; orderId: string; sentiment: string; topic: string; text: string }
+  | { type: 'SUBMIT_REVIEW'; actor: Party; grantId: string; serviceStars: number; serviceText: string; ratings: { orderLineId: string; stars: number; text: string }[] }
 export type Result = { ok: true; state: SimState; note: string } | { ok: false; code: string; reason: string }
 const fail = (code: string, reason: string): Result => ({ ok: false, code, reason })
 
@@ -229,6 +255,9 @@ function freeCourier(s: SimState, courierId: string | null, orderId: string): Si
 }
 
 export function apply(w: World, s: SimState, a: Action): Result {
+  if (a.type === 'APPLY' || a.type === 'ACCEPT_INVITATION' || a.type === 'WITHDRAW') return relationshipAction(w, s, a)
+  if (a.type === 'COMMENT') return commentAction(w, s, a)
+  if (a.type === 'SUBMIT_REVIEW') return reviewAction(w, s, a, isoAt(s.now))
   if (a.type === 'ADVANCE_TIME') {
     if (!Number.isInteger(a.minutes) || a.minutes < 1 || a.minutes > 24 * 60) return fail('BAD_TIME', 'Advance by a whole number of minutes between 1 and 1440')
     return { ok: true, state: { ...s, now: s.now + a.minutes }, note: `Simulated time advanced by ${a.minutes} min` }
@@ -369,5 +398,6 @@ function scan(s: SimState, o: SimOrder, a: Extract<Action, { type: 'SCAN' }>): R
   n = move(n, o.id, 'FINAL_DELIVERY_VERIFIED', { finalHandoffId: hid, })
   n = { ...n, lines: { ...n.lines, [o.id]: (n.lines[o.id] ?? []).map(l => ({ ...l, received: true })) } }
   n = move(n, o.id, 'COMPLETED')
+  n = issueGrant(n, o.id, isoAt(s.now + GRANT_DELAY_MIN)) // SIM-003: the Buyer's Review Grant for this Order
   return { ok: true, state: freeCourier(n, o.assignedCourier, o.id), note: 'Final delivery verified. The Order is completed.' }
 }

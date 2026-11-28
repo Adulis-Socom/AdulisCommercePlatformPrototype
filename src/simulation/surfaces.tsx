@@ -5,11 +5,12 @@ import { isLegacy } from '../marketplace/registry'
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
 import { Button } from '../components/ui/Button'
 import { Page, Card } from '../sections/console/kit'
-import { PhoneFrame, BottomNav, IconMap, IconTruck, IconHistory, IconUser } from '../sections/ShellHelpers'
+import { PhoneFrame, BottomNav, IconMap, IconTruck, IconHistory, IconUser, IconUsers, IconClipboard } from '../sections/ShellHelpers'
 import { useSim, WORLD } from './store'
 import {
   MODE_LABEL, STATUS_LABEL, isOpen, ordersOfCourier, ordersOfSeller, pendingOffers, sortNewest, type Availability, type Party, type SimOrder, type SimState, type Status,
 } from './orders'
+import { CourierFeedback, CourierPools } from './feedback-ui'
 import { CourierOffers, Msg, NewOrderForm, OrderDetail, OrderRows, ScanPanel, SimBar, StatusPill, etb, fmtAt, itemsOf, partyName, useRun } from './ui'
 
 /** What a Seller does next on an Order, or null when it is waiting on someone else. */
@@ -113,11 +114,13 @@ export function CompanionOrderAlerts({ sellerId, onOpen }: { sellerId: string; o
 }
 
 // ---------- Courier ----------
-type Tab = 'offers' | 'active' | 'history' | 'account'
+type Tab = 'offers' | 'active' | 'history' | 'pools' | 'feedback' | 'account'
 const TABS = [
   { key: 'offers', label: 'Offers', icon: <IconMap size={22} /> },
   { key: 'active', label: 'Active', icon: <IconTruck size={22} /> },
   { key: 'history', label: 'History', icon: <IconHistory size={22} /> },
+  { key: 'pools', label: 'Pools', icon: <IconUsers size={22} /> },
+  { key: 'feedback', label: 'Feedback', icon: <IconClipboard size={22} /> },
   { key: 'account', label: 'Account', icon: <IconUser size={22} /> },
 ]
 const AVAIL: Availability[] = ['AVAILABLE', 'BUSY', 'UNAVAILABLE']
@@ -135,7 +138,7 @@ export function MarketplaceCourier() {
     <PhoneFrame label={`07 — COURIER MODE · ${c.name.toUpperCase()}`} clock="10:00">
       <div className="relative flex flex-1 flex-col overflow-hidden" data-surface="marketplace-courier">
         <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2">
-          <div className="font-display text-lg font-semibold">{{ offers: 'Offers', active: 'Active delivery', history: 'History', account: 'Account' }[tab]}</div>
+          <div className="font-display text-lg font-semibold">{{ offers: 'Offers', active: 'Active delivery', history: 'History', pools: 'Seller pools', feedback: 'Feedback', account: 'Account' }[tab]}</div>
           <div><label htmlFor="courier-account" className="sr-only">Courier account</label>
             <select id="courier-account" value={courierId} onChange={e => { setCourier(e.target.value); setOpen(null) }} className="h-9 rounded-lg border border-border bg-surface px-2 text-xs font-semibold">{Object.values(WORLD.couriers).map(x => <option key={x.id} value={x.id}>{x.name} ({x.id})</option>)}</select></div>
         </div>
@@ -143,6 +146,8 @@ export function MarketplaceCourier() {
           {tab === 'account' && <>{simulation && <SimBar />}<CourierAccount courierId={courierId} simulation={simulation} /></>}
           {tab === 'offers' && (simulation ? <><SimBar /><CourierOffers courierId={courierId} onOpen={id => { setOpen(id); setTab('active') }} /></> : <Gate title="Delivery offers">Live Courier work is disabled in the current MVP. Offers belong to the internal simulation.</Gate>)}
           {tab === 'active' && (simulation ? <><SimBar /><CourierActive courierId={courierId} open={open} setOpen={setOpen} /></> : <Gate title="Active delivery">Live Courier work is disabled in the current MVP.</Gate>)}
+          {tab === 'pools' && <>{simulation && <SimBar />}<CourierPools courierId={courierId} /></>}
+          {tab === 'feedback' && <>{simulation && <SimBar />}<CourierFeedback courierId={courierId} onOpenOrder={id => { setOpen(id); setTab('active') }} /></>}
           {tab === 'history' && (simulation ? <><SimBar /><CourierHistory courierId={courierId} /></> : <Gate title="Delivery history">There are no deliveries in the current MVP, so there is no delivery history to show.</Gate>)}
         </div>
         <BottomNav items={TABS} active={tab} onSelect={k => pick(k as Tab)} accent="var(--color-courier-brand)" onAccent="var(--color-on-courier-brand)" />
@@ -162,7 +167,7 @@ function CourierAccount({ courierId, simulation }: { courierId: string; simulati
         <dt className="text-text-muted">Service cities</dt><dd>{c.cities.join(', ')}</dd>
         <dt className="text-text-muted">Availability (MVP)</dt><dd>{c.mvpAvailability.toLowerCase()}</dd>
       </dl>
-      <p className="mt-4 rounded-xl bg-surface-raised p-3 text-xs text-text-secondary">{simulation ? 'Simulation availability controls who can receive offers. Seller pool pages and comments arrive with the Courier showcase update.' : 'Live Courier work is disabled in the current MVP. Switch to the internal simulation to see offers and deliveries.'}</p>
+      <p className="mt-4 rounded-xl bg-surface-raised p-3 text-xs text-text-secondary">{simulation ? 'Simulation availability controls who can receive offers. Your Seller pools are under Pools and the comments Sellers shared about you are under Feedback.' : 'Live Courier work is disabled in the current MVP. Switch to the internal simulation to see offers and deliveries.'}</p>
       {simulation && <SimAvailability courierId={courierId} />}
     </div>
   )

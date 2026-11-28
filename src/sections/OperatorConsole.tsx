@@ -20,6 +20,8 @@ import {
 } from '../demo-data'
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
+import { isLegacy } from '../marketplace/registry'
+import { ReputationReadout } from '../simulation/reviews-ui'
 import { TAXONOMY, TAXONOMY_GAPS, findTaxonomy } from '../demo-data/taxonomy'
 import { useWorkspace } from '../seller-workspace'
 import { DECISION_LABEL, validateReview, type ReviewDecision } from '../chatbot/feedback'
@@ -28,7 +30,7 @@ type NavKey =
   | 'overview'
   | 'work-queue' | 'wq-support' | 'wq-moderation' | 'wq-claims' | 'wq-verification' | 'wq-trust-appeals' | 'wq-handoff'
   | 'search-global' | 'search-sellers' | 'search-accounts'
-  | 'gov-config' | 'gov-taxonomy' | 'gov-chatbot' | 'gov-access' | 'gov-approvals' | 'gov-audit' | 'gov-health'
+  | 'gov-config' | 'gov-taxonomy' | 'gov-chatbot' | 'gov-reputation' | 'gov-access' | 'gov-approvals' | 'gov-audit' | 'gov-health'
 
 type QueueFilter = 'All' | 'Support' | 'Moderation' | 'Claims' | 'Verification / Recovery' | 'Trust Appeals' | 'Manual Handoff'
 type FounderActor = 'CEO' | 'COO/CTO'
@@ -63,6 +65,7 @@ const NAV_STRUCTURE: { group?: string; items: NavItem[] }[] = [
       { key: 'gov-config', label: 'Configuration', icon: <IconGlobe size={14} /> },
       { key: 'gov-taxonomy', label: 'Taxonomy review', icon: <IconClipboard size={14} /> },
       { key: 'gov-chatbot', label: 'Chatbot feedback', icon: <IconClipboard size={14} /> },
+      ...(isLegacy ? [] : [{ key: 'gov-reputation' as const, label: 'Reputation reconciliation', icon: <IconActivity size={14} /> }]), // SIM-003: marketplace dataset only
       { key: 'gov-access', label: 'Operator Access', icon: <IconKey size={14} /> },
       { key: 'gov-approvals', label: 'Founder Decisions', icon: <IconCheck size={14} /> },
       { key: 'gov-audit', label: 'Audit', icon: <IconClipboard size={14} /> },
@@ -232,6 +235,7 @@ export default function OperatorConsole({ demoTarget }: { demoTarget?: string })
           {activeNav === 'gov-config' && <ConfigurationPanel />}
           {activeNav === 'gov-taxonomy' && <TaxonomyReviewPanel />}
           {activeNav === 'gov-chatbot' && <ChatbotFeedbackPanel />}
+          {activeNav === 'gov-reputation' && <ReputationReadout />}
           {activeNav === 'gov-access' && <OperatorAccessPanel at={at} live={live} session={session} setSession={setSession} />}
           {activeNav === 'gov-approvals' && (simulation ? <FounderDecisionsPanel at={at} /> : <div className="mx-auto my-8 max-w-lg rounded-2xl border border-border bg-surface"><SimulationGate title="Founder Decisions" compact>The demonstration decision is a payment Claim on a paid Order, which Release 1 does not have. The dual-Founder approval workflow is shown in the internal simulation.</SimulationGate></div>)}
           {activeNav === 'gov-audit' && <AuditPanel at={at} />}

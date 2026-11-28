@@ -65,5 +65,15 @@ export function drivers(page, t, viewport) {
     const r = await lastResult()
     return { ...r, id: (r.text.match(/SIM-O-D\d+/) ?? [])[0] }
   }
-  return { phone, main, settle, click, setMode, consoleOrders, companion, buyerOrders, courier, row, openOrder, detailText, status, token, lastResult, act, scan, advance, simState, wsState, newOrder }
+  // Daniel (CR-01) completes his active delivery SIM-O-0138 to Hana: he displays the final code, Hana scans it. Used to produce a finished, Courier-served Order (comment evidence, a Review Grant).
+  const finishDelivery0138 = async () => {
+    await courier('CR-01', 'Active'); await openOrder('SIM-O-0138')
+    await page.getByRole('button', { name: 'Display final delivery code' }).click(); await settle(300)
+    await buyerOrders('BY-02'); await openOrder('SIM-O-0138')
+    return scan({ stage: 'DELIVERY' })
+  }
+  // The Courier app's Pools and Feedback tabs: list rows by data-pool-group, and the count in each section heading.
+  const pools = group => page.locator(`[data-pool-row][data-pool-group="${group}"]`)
+  const noOverflow = async label => ({ label, ok: await page.evaluate(() => { const m = document.querySelector('main.app-main'); return m.scrollWidth <= m.clientWidth + 1 }) })
+  return { phone, main, settle, finishDelivery0138, pools, noOverflow, click, setMode, consoleOrders, companion, buyerOrders, courier, row, openOrder, detailText, status, token, lastResult, act, scan, advance, simState, wsState, newOrder }
 }

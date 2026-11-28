@@ -23,6 +23,7 @@ import type { CourierId, CourierRelationship, CourierVerification } from './reco
 import { ORDERS, ORDER_IDS } from './records/orders.ts'
 import type { AuthorizedRecipient, OrderId, OrderLine } from './records/orders.ts'
 import { REVIEWS, REVIEW_IDS } from './records/reviews.ts'
+import { REPUTATION } from './reputation.ts'
 import type { ReviewId } from './records/reviews.ts'
 import { CLAIMS } from './records/claims.ts'
 import type { ClaimId } from './records/claims.ts'
@@ -84,6 +85,7 @@ export function sellerCompletedOrdersAt(seller: SellerId, at: Moment = DEFAULT_S
 
 /** Seller Service at `at`: the 10:25 rating count plus Reviews written since; the rounded average stays the same. */
 export function sellerServiceAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): { average: number; ratings: number } | undefined {
+  if (REPUTATION.current) return REPUTATION.current.service(seller) // SIM-003: the simulation's visible reviews (marketplace dataset, internal simulation only)
   const base = SELLERS[seller].totals?.sellerService
   return base && { average: base.average, ratings: base.ratings + REVIEW_IDS.filter(id => ORDERS[REVIEWS[id].order].seller === seller && writtenAfterSnapshot(id, at)).length }
 }
@@ -146,6 +148,7 @@ export function currentPrice(product: ProductId): Santim {
 
 /** Product Quality at `at`: the 10:25 count plus Reviews written since; null when the Product has no ratings yet. */
 export function productQualityAt(product: ProductId, at: Moment = DEFAULT_SNAPSHOT): { average: number; ratings: number } | null | undefined {
+  if (REPUTATION.current) return REPUTATION.current.quality(product)
   const base = LIVE_PRODUCTS[product].quality
   if (!base) return base
   return { average: base.average, ratings: base.ratings + REVIEW_IDS.filter(id => writtenAfterSnapshot(id, at) && REVIEWS[id].productQuality.some(q => q.product === product)).length }
@@ -547,6 +550,8 @@ export interface ReviewEntry {
   readonly rating: number
   readonly text: string
   readonly written: CalendarDate | Moment
+  /** SIM-003: written in this session (a simulation record, not a verified purchase). */
+  readonly simulated?: boolean
   /** A Product Review's purchased variant ('M, Sand'), from the Order line. */
   readonly variant?: string
   /** A Seller Review's purchased Products. */
@@ -555,6 +560,7 @@ export interface ReviewEntry {
 
 /** The Product Reviews of a Product at `at`, newest first: each Review that rated its Product Quality. */
 export function productReviewsAt(product: ProductId, at: Moment = DEFAULT_SNAPSHOT): ReviewEntry[] {
+  if (REPUTATION.current) return REPUTATION.current.productReviews(product) as unknown as ReviewEntry[]
   return reviewsAt({ product }, at).map(id => {
     const review = REVIEWS[id]
     const line = ORDERS[review.order].lines.find(l => l.product === product)
@@ -564,6 +570,7 @@ export function productReviewsAt(product: ProductId, at: Moment = DEFAULT_SNAPSH
 
 /** The Seller Reviews of a Seller at `at`, newest first: the Seller Service of each Review of the Seller's Orders, whatever was bought. */
 export function sellerReviewsAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): ReviewEntry[] {
+  if (REPUTATION.current) return REPUTATION.current.sellerReviews(seller) as unknown as ReviewEntry[]
   return reviewsAt({ seller }, at).map(id => {
     const review = REVIEWS[id]
     return { review: id, order: review.order, buyer: ORDERS[review.order].buyer, rating: review.sellerService, text: review.text, written: review.written, products: review.productQuality.map(q => q.product) }

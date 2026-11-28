@@ -34,8 +34,8 @@ ck('a REMOVED relationship is refused (CR-01 x DS-05)', code('CR-01', 'DS-05') =
 ck('INVITED, APPLIED, REJECTED and no relationship are not pool membership', ['CR-01|DS-12', 'CR-01|DS-14', 'CR-01|DS-10', 'CR-03|DS-01'].every(k => code(...k.split('|')) === 'NOT_POOL_MEMBER'))
 ck('a PENDING (unverified) Courier cannot receive offers', code('CR-05', 'DS-01') === 'NOT_POOL_MEMBER' && W.couriers['CR-05'].verification === 'PENDING')
 const unverified = { ...seed, availability: { ...seed.availability } }
-const W2 = { ...W, relationships: { ...W.relationships, 'CR-05|DS-01': { id: 'x', status: 'APPROVED', canReceive: null } } }
-ck('even an approved, available PENDING Courier is refused as not verified', canReceiveOffers(W2, { ...unverified, availability: { ...unverified.availability, 'CR-05': 'AVAILABLE' } }, 'CR-05', 'DS-01').code === 'NOT_VERIFIED')
+// COURIER-002: the relationship status now lives in the simulation state (so a session action can change it), not in the static world
+ck('even an approved, available PENDING Courier is refused as not verified', canReceiveOffers(W, { ...unverified, relStatus: { ...unverified.relStatus, 'CR-05|DS-01': 'APPROVED' }, availability: { ...unverified.availability, 'CR-05': 'AVAILABLE' } }, 'CR-05', 'DS-01').code === 'NOT_VERIFIED')
 ck('an UNAVAILABLE and a BUSY Courier are refused (CR-04 x DS-15, CR-01 x DS-01)', code('CR-04', 'DS-15') === 'UNAVAILABLE' && code('CR-01', 'DS-01') === 'UNAVAILABLE')
 ck('an AVAILABLE approved verified Courier is eligible (CR-02 x DS-04)', canReceiveOffers(W, seed, 'CR-02', 'DS-04').ok)
 

@@ -359,7 +359,7 @@ function SellerMenu<T extends string>({ sellerName, options, selected, onSelect,
             role="menu"
             aria-label="Switch Seller"
             className="absolute right-0 z-50 mt-2 rounded-xl border p-1.5"
-            style={{ top: '100%', width: 264, background: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-lg)' }}
+            style={{ top: '100%', width: 264, maxHeight: 'min(70vh, 560px)', overflowY: 'auto', background: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-lg)' }}
           >
             <p className="px-2.5 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>Prototype · Switch Seller</p>
             {options.map(option => {

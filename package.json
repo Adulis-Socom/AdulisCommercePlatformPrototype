@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node tests/run.mjs",
-    "test:unit": "node tests/unit/chatbot-coverage.mjs && node tests/unit/chatbot-engine.mjs && node tests/unit/buyer-collections.mjs && node tests/unit/marketplace-data.mjs && node tests/unit/geography.mjs && node tests/unit/simulation.mjs",
+    "test:unit": "node tests/unit/chatbot-coverage.mjs && node tests/unit/chatbot-engine.mjs && node tests/unit/buyer-collections.mjs && node tests/unit/marketplace-data.mjs && node tests/unit/geography.mjs && node tests/unit/simulation.mjs && node tests/unit/courier-reviews.mjs",
     "data:build": "node tools/marketplace/build.mjs",
     "format": "oxfmt"
   },

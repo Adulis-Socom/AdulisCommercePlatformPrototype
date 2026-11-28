@@ -4,6 +4,9 @@ import { StoryProvider, useStory } from '../StoryClock'
 import { linkableProducts, productStock, sceneVisibility, stockState, useWorkspace } from '../seller-workspace'
 import { describeMethods, sellerMethods } from '../fulfilment'
 import { usePrototypeMode } from '../prototype-mode'
+import { isLegacy } from '../marketplace/registry'
+import { useSim } from '../simulation/store'
+import { REPUTATION } from '../demo-data/reputation'
 import { priceLabel, taxonomyOf } from './buyer-authored'
 import {
   BUYERS, MARKET, ORDERS, REVIEWS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
@@ -76,6 +79,7 @@ function useStorefront() {
   const seller = SELLERS[sellerId]
   const { state: workspace } = useWorkspace()
   const { simulation } = usePrototypeMode()
+  if (!isLegacy) useSim() // eslint-disable-line react-hooks/rules-of-hooks -- isLegacy is a module constant. SIM-003: re-render when a simulated review lands
   const seededProducts: Product[] = sellerProductsAt(sellerId, at).filter(id => !isUnpublishedSeeded(id)).map((id, index) => {
     const p = PRODUCTS[id]
     const discount = activeDiscount(id)
@@ -109,7 +113,9 @@ function useStorefront() {
     return { id, imgBg: POST_BACKGROUNDS[index % POST_BACKGROUNDS.length], title: post.title, caption: post.caption, taggedProducts: [...post.tags], hasHotspot: post.hotspots > 0, zeroProduct: post.tags.length === 0 }
   })
   const posts: ShoppablePost[] = [...authoredPosts, ...seededPosts]
-  const reviews: Review[] = reviewsAt({ seller: sellerId }, at).map(id => {
+  // SIM-003: on the marketplace dataset the Seller's reviews are the simulation's visible ones (none in the current MVP, where the feed is not published).
+  const feed = REPUTATION.current
+  const reviews: Review[] = isLegacy ? reviewsAt({ seller: sellerId }, at).map(id => {
     const review = REVIEWS[id]
     const written = review.written
     return {
@@ -119,7 +125,10 @@ function useStorefront() {
       date: formatMonthShortYear(typeof written === 'string' ? written : written.at),
       text: review.text,
     }
-  })
+  }) : feed ? feed.sellerReviews(sellerId).map(r => ({
+    buyer: shortName(BUYERS[r.buyer as keyof typeof BUYERS].name), products: (r.products ?? []).map(id => ({ id: id as ProductId, name: PRODUCTS[id as ProductId].name, rating: 0 })),
+    ss: r.rating, date: formatMonthShortYear(r.written), text: r.simulated ? `${r.text} (Simulated review, not a verified purchase)` : r.text,
+  })) : []
   return {
     story, sellerId, seller, products, posts, reviews,
     trust: trustLabel(trustAt(sellerId, at)),

@@ -4,6 +4,8 @@
 import { useState, type ReactNode } from 'react'
 import { Button } from '../components/ui/Button'
 import { useSim, WORLD } from './store'
+import { OrderFeedback } from './feedback-ui'
+import { OrderReview, ReviewChip } from './reviews-ui'
 import {
   CRED_TTL_MIN, FAIL_REASONS, MODES, MODE_LABEL, STAGE_LABEL, STATUS_LABEL, courierEligibility, credentialState, currentCredential, expectedHandoff, isoAt,
   offersOf, scenarioStatus, type Action, type Party, type SimOrder, type Stage, type Status,
@@ -58,7 +60,7 @@ export function OrderRows({ orders, onOpen, who }: { orders: SimOrder[]; onOpen:
         <li key={o.id}>
           <button type="button" onClick={() => onOpen(o.id)} data-order-row={o.id} className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-surface-raised">
             <span className="min-w-0 flex-1">
-              <span className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-semibold">{o.id}</span><StatusPill status={o.status} /></span>
+              <span className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-semibold">{o.id}</span><StatusPill status={o.status} />{who === 'buyer' && <ReviewChip orderId={o.id} />}</span>
               <span className="mt-1 block truncate text-sm font-semibold">{itemsOf(o.id, sim.lines)}</span>
               <span className="block text-xs text-text-muted">{who === 'seller' ? partyName(o.buyerId) : partyName(o.sellerId)} · {MODE_LABEL[o.mode]} · {fmtAt(o.paidAt)}</span>
             </span>
@@ -70,7 +72,7 @@ export function OrderRows({ orders, onOpen, who }: { orders: SimOrder[]; onOpen:
   )
 }
 
-function Section({ title, children, hint }: { title: string; children: ReactNode; hint?: string }) {
+export function Section({ title, children, hint }: { title: string; children: ReactNode; hint?: string }) {
   return <section className="rounded-xl border border-border bg-surface p-3"><h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">{title}</h3>{hint && <p className="mt-0.5 text-[11px] text-text-muted">{hint}</p>}<div className="mt-2">{children}</div></section>
 }
 
@@ -109,6 +111,8 @@ export function OrderDetail({ orderId, actor, onBack, backLabel = 'Back to Order
           <ul className="flex flex-col gap-1">{offersOf(sim, o.id).map(f => <li key={f.id} data-offer={f.id} data-offer-status={f.status} className="text-xs"><span className="font-mono">{f.id}</span> · {partyName(f.courierId)} · <span className="font-semibold">{f.status}</span> · offered {fmtAt(f.offeredAt)}{f.resolvedAt ? ` · resolved ${fmtAt(f.resolvedAt)}` : ''}</li>)}</ul>
         </Section>
       )}
+      <OrderReview order={o} actor={actor} />
+      <OrderFeedback order={o} actor={actor} />
       <Section title="Handoffs" hint="Evidence supplied with the Order. Synthetic credentials only: DEMO_ONLY_NON_REUSABLE, no real QR authority.">
         {handoffs.length === 0 ? <p className="text-xs text-text-muted">No Handoff has been verified yet.</p> : (
           <ul className="flex flex-col gap-2">{handoffs.map(h => (
