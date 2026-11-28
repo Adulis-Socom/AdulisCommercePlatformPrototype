@@ -61,6 +61,17 @@
   --adulis-preview-dark: var(--color-operator-bg);
   /* How far fixed categorical colours used as text are lifted toward the text colour: none in Light. */
   --adulis-dark-lift: 0%;
+  /* The shared Button's primary and destructive fills, and the like heart: the brand and danger colours everywhere except
+     CTO (DESIGN-001), which gives the primary call to action its lime and the like heart and destructive fill #EF4444.
+     --adulis-gray is the specified Gray text, for non-essential marks only. */
+  --adulis-cta: var(--color-brand);
+  --adulis-cta-label: var(--adulis-button-label);
+  --adulis-cta-hover: var(--color-brand-light);
+  --adulis-cta-active: var(--color-brand-dark);
+  --adulis-like: var(--color-brand-text);
+  --adulis-danger-fill: var(--color-danger);
+  --adulis-on-danger-fill: var(--color-on-status);
+  --adulis-gray: var(--color-text-muted);
 }
 
 /* Every candidate system, in either mode. */
@@ -109,6 +120,21 @@
   --adulis-tint-warm: var(--adulis-accent-soft);
   --adulis-tint-sage: var(--adulis-primary-soft);
   --adulis-tint-mint: var(--adulis-primary-soft);
+}
+
+/* CTO (Light only): the functional colours take the forms derived in tokens.ts (ctoTokens), AA on its surfaces and soft tints. */
+:root[data-adulis-theme='cto'] {
+  --color-success: var(--adulis-success);
+  --color-success-bg: var(--adulis-success-soft);
+  --color-warning: var(--adulis-warning);
+  --color-warning-bg: var(--adulis-warning-soft);
+  --color-danger: var(--adulis-danger);
+  --color-danger-bg: var(--adulis-danger-soft);
+  --color-info: var(--adulis-info);
+  --color-info-bg: var(--adulis-info-soft);
+  --color-courier: var(--adulis-courier);
+  --color-courier-muted: var(--adulis-courier-soft);
+  --color-on-status: var(--adulis-on-status);
 }
 
 /* Dark mode: native controls and scrollbars follow, and the functional colours take their dark-surface forms. */

@@ -18,11 +18,11 @@ const STYLES: Record<ButtonVariant, {
   disabledBg: string; disabledColor: string;
 }> = {
   primary: {
-    bg: 'var(--color-brand)',
-    color: 'var(--adulis-button-label)',
+    bg: 'var(--adulis-cta)',
+    color: 'var(--adulis-cta-label)',
     border: 'transparent',
-    hoverBg: 'var(--color-brand-light)',
-    activeBg: 'var(--color-brand-dark)',
+    hoverBg: 'var(--adulis-cta-hover)',
+    activeBg: 'var(--adulis-cta-active)',
     disabledBg: 'var(--color-border)',
     disabledColor: 'var(--color-text-muted)',
   },
@@ -54,8 +54,8 @@ const STYLES: Record<ButtonVariant, {
     disabledColor: 'var(--color-text-muted)',
   },
   destructive: {
-    bg: 'var(--color-danger)',
-    color: 'var(--color-on-status)',
+    bg: 'var(--adulis-danger-fill)',
+    color: 'var(--adulis-on-danger-fill)',
     border: 'transparent',
     hoverBg: '#D94040',
     activeBg: '#A02020',

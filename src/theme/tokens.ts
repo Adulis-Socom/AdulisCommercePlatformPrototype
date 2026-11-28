@@ -5,7 +5,7 @@
  * surfaces they sit on. theme-tokens.css maps the prototype's existing colour tokens onto these.
  */
 
-import type { CandidatePalette, PaletteRoles, ThemeMode } from './palettes'
+import type { CandidatePalette, FixedPalette, PaletteRoles, ThemeMode } from './palettes'
 
 type Rgb = [number, number, number]
 
@@ -159,6 +159,55 @@ export function themeTokens(palette: CandidatePalette, mode: ThemeMode): Record<
     }
     // Solid status fills are the lightened colours, so their text is the dark ink.
     tokens['--adulis-on-status'] = ink.preferred
+  }
+  return tokens
+}
+
+/**
+ * Every --adulis-* token for CTO (DESIGN-001), Light only. The specified hex values are used as given; what they cannot
+ * carry is derived from them: the Gray text #7E8494 reads 3.7:1 on white, so it is kept for borders and non-essential
+ * marks and small text takes the lightest gray of it that reaches AA; the Danger #EF4444 reads 3.8:1 as text, so text and
+ * status fills take it pulled toward the ink until AA, while hearts and destructive fills keep #EF4444 with ink on it.
+ * The Accent lime is the primary call to action's fill, with the ink on it, and nothing else large.
+ */
+export function ctoTokens(palette: FixedPalette): Record<string, string> {
+  const { primary, secondary, accent, background, surface, text } = palette.light
+  const { danger, gray } = palette.extras
+  const raised = secondary
+  const primarySoft = mix(primary, surface, 0.12)
+  const textBackgrounds = [surface, raised, background, primarySoft]
+  const mutedText = readableOn(gray, textBackgrounds, text)
+  const tokens: Record<string, string> = {
+    ...themeTokens({ ...palette, dark: palette.light } as CandidatePalette, 'light'),
+    '--adulis-primary-hover': mix(surface, primary, 0.14),
+    '--adulis-primary-soft': primarySoft,
+    '--adulis-selected': primarySoft,
+    '--adulis-accent-soft': raised,
+    '--adulis-surface-secondary': raised,
+    '--adulis-operator-raised': raised,
+    '--adulis-muted-text': mutedText,
+    '--adulis-operator-muted': mutedText,
+    '--adulis-secondary-text': mix(text, mutedText, 0.3),
+    '--adulis-border-strong': gray,
+    '--adulis-gray': gray,
+    // Lime on the fixed dark bands (the Guide's header, the Courier camera view): 16:1 on the ink.
+    '--adulis-accent-on-dark': accent,
+    '--adulis-preview-dark': primary,
+    '--adulis-cta': accent,
+    '--adulis-cta-label': text,
+    '--adulis-cta-hover': mix(text, accent, 0.1),
+    '--adulis-cta-active': mix(text, accent, 0.2),
+    '--adulis-like': danger,
+    '--adulis-danger-fill': danger,
+    '--adulis-on-danger-fill': foregroundOn(danger, { preferred: surface, other: text }),
+    '--adulis-on-status': surface,
+    // The Guide's fixed categorical colours as text (some read 3.5:1 on white): darkened toward the ink, as Dark mode lightens them.
+    '--adulis-dark-lift': '30%',
+  }
+  for (const [name, base] of Object.entries(STATUS)) {
+    const soft = mix(name === 'danger' ? danger : base, surface, 0.12)
+    tokens[`--adulis-${name}`] = readableOn(name === 'danger' ? danger : base, [soft, ...textBackgrounds], text)
+    tokens[`--adulis-${name}-soft`] = soft
   }
   return tokens
 }

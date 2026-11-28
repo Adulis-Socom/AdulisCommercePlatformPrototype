@@ -2259,7 +2259,7 @@ function ShoppablePostUnit({ postId, at, following, liked, saved, onExplore, onS
       {/* The Scene's actions. Like and Save are toggles (Like is the Scene's, never its Products'; Save keeps the Scene itself); no counts are shown.
           Explore the Scene is the primary action. */}
       <div className="flex items-center px-1.5 pt-1.5 text-xs font-semibold">
-        <button onClick={onLike} aria-label="Like" aria-pressed={liked} className={`flex h-9 w-9 items-center justify-center rounded-full ${liked ? 'text-brand-text' : 'text-text-secondary'}`}><HeartIcon filled={liked} /></button>
+        <button onClick={onLike} aria-label="Like" aria-pressed={liked} className={`flex h-9 w-9 items-center justify-center rounded-full ${liked ? 'text-like' : 'text-text-secondary'}`}><HeartIcon filled={liked} /></button>
         <button onClick={onSave} aria-label="Save" aria-pressed={saved} className={`flex h-9 w-9 items-center justify-center rounded-full ${saved ? 'text-brand-text' : 'text-text-secondary'}`}><BookmarkIcon filled={saved} /></button>
         <button onClick={onChat} aria-label="Chat with seller" title="Chat with seller" className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><ChatBubbleIcon /></button>
         <button onClick={onShare} aria-label="Share" title="Share" data-share className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary"><ShareIcon /></button>

@@ -122,7 +122,32 @@ export const CANDIDATES: readonly CandidatePalette[] = [
   },
 ]
 
-/** Baseline first, then the ten candidates in their proposal order. */
-export const PALETTES: readonly Palette[] = [BASELINE, ...CANDIDATES]
+export const CTO_ID = 'cto'
+
+/** A system whose colours are specified exactly and which has Light only (no approved Dark design): CTO (DESIGN-001). */
+export interface FixedPalette extends Palette {
+  personality: string
+  /** The two specified colours that are not base roles: the Danger/Like red and the Gray text. */
+  extras: { danger: string; gray: string }
+}
+
+export const isFixed = (palette: Palette): palette is FixedPalette => 'extras' in palette
+
+/**
+ * CTO: exactly the specified hex values (Primary #111111, Secondary #F4F5F7, Accent #C4FE29, Danger/Like #EF4444, Gray text
+ * #7E8494, Border #E5E7EB, Background #F5F5F7) on white surfaces. The Accent lime is a standout colour (primary call to action,
+ * story ring, key highlights), never body text or a large fill; its ink is the Primary. Surfaces and text colours that need
+ * more contrast than the specified Gray or Danger give are derived in tokens.ts (ctoTokens), never by changing these values.
+ */
+export const CTO: FixedPalette = {
+  id: CTO_ID,
+  name: 'CTO',
+  personality: 'Ink and white · one lime accent · crisp · confident',
+  light: { primary: '#111111', secondary: '#F4F5F7', accent: '#C4FE29', background: '#F5F5F7', surface: '#FFFFFF', text: '#111111', border: '#E5E7EB' },
+  extras: { danger: '#EF4444', gray: '#7E8494' },
+}
+
+/** Baseline first, then the ten candidates in their proposal order, then CTO. */
+export const PALETTES: readonly Palette[] = [BASELINE, ...CANDIDATES, CTO]
 
 export const paletteById = (id: string): Palette | undefined => PALETTES.find(palette => palette.id === id)

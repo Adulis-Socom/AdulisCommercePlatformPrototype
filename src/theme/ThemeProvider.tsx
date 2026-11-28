@@ -5,8 +5,8 @@
  */
 
 import { createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
-import { BASELINE_ID, isCandidate, paletteById, type ThemeMode } from './palettes'
-import { themeTokens } from './tokens'
+import { BASELINE_ID, isCandidate, isFixed, paletteById, type ThemeMode } from './palettes'
+import { ctoTokens, themeTokens } from './tokens'
 
 export type ModeChoice = ThemeMode | 'system'
 
@@ -47,7 +47,7 @@ export const resolveMode = (mode: ModeChoice, system: ThemeMode = systemMode()):
 
 /**
  * Marks <html> with the choice and writes its tokens. Baseline writes none, in any mode: it has no approved dark
- * design, so index.css applies unchanged and <html> is marked Light.
+ * design, so index.css applies unchanged and <html> is marked Light. CTO (a fixed, Light-only system) writes its own.
  */
 export function applyTheme(paletteId: string, mode: ThemeMode) {
   const palette = paletteById(paletteId) ?? paletteById(BASELINE_ID)!
@@ -56,9 +56,8 @@ export function applyTheme(paletteId: string, mode: ThemeMode) {
   for (let i = 0; i < root.style.length; i++) if (root.style[i].startsWith('--adulis-')) previous.push(root.style[i])
   for (const name of previous) root.style.removeProperty(name)
   const effective = isCandidate(palette) ? mode : 'light'
-  if (isCandidate(palette)) {
-    for (const [name, value] of Object.entries(themeTokens(palette, effective))) root.style.setProperty(name, value)
-  }
+  const tokens = isCandidate(palette) ? themeTokens(palette, effective) : isFixed(palette) ? ctoTokens(palette) : {}
+  for (const [name, value] of Object.entries(tokens)) root.style.setProperty(name, value)
   root.dataset.adulisTheme = palette.id
   root.dataset.adulisMode = effective
 }

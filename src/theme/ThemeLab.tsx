@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { BASELINE_ID, PALETTES, isCandidate, paletteById, rolesIn, type Palette, type ThemeMode } from './palettes'
+import { BASELINE_ID, PALETTES, isCandidate, isFixed, paletteById, rolesIn, type Palette, type ThemeMode } from './palettes'
 import { DEFAULT_CHOICE, useThemeLab, type ModeChoice } from './ThemeProvider'
 
 const MODES: { value: ModeChoice; label: string }[] = [
@@ -128,10 +128,10 @@ export function ThemeLab() {
                 </label>
               ))}
             </div>
-            {!candidate && <p id={`${id}-mode-note`} className="mt-2 text-xs text-text-muted">Baseline uses the current approved prototype styling.</p>}
+            {!candidate && <p id={`${id}-mode-note`} className="mt-2 text-xs text-text-muted">{isFixed(palette) ? `${palette.name} is a Light-only system.` : 'Baseline uses the current approved prototype styling.'}</p>}
           </fieldset>
 
-          <button type="button" onClick={() => choose(DEFAULT_CHOICE)} disabled={!candidate} className="theme-lab-reset">
+          <button type="button" onClick={() => choose(DEFAULT_CHOICE)} disabled={palette.id === BASELINE_ID} className="theme-lab-reset">
             Reset to Baseline
           </button>
           <p className="mt-3 text-[11px] leading-relaxed text-text-muted">

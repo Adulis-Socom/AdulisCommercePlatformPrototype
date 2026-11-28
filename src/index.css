@@ -32,6 +32,9 @@
   /* Dark immersive surfaces (Story viewer, camera, toasts, QR modules): the text colour in the Baseline. */
   --color-ink:               var(--color-text-primary);
 
+  /* The like heart: the brand text colour, #EF4444 in CTO. */
+  --color-like:              var(--adulis-like);
+
   --color-border:            #E8E0D8;
   --color-border-strong:     #C8BDB5;
 
