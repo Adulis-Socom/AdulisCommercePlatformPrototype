@@ -1,7 +1,8 @@
 // BGR-017/018: the Background Removal Lab.
 // Part 1 runs against NO adapter (the real situation today): every model is visible, none can run.
 // Part 2 runs against a MOCKED adapter (Playwright answers http://127.0.0.1:8765): it proves the Lab's own behaviour (sequential runs,
-// settings, failure isolation, cancel, inspection, scoring, export). It says nothing about any model's quality, and these runs are NOT inference.
+// settings, failure isolation, cancel, inspection, scoring, export, registered custom checkpoints, dependency readiness, the separated
+// measurement columns). It says nothing about any model's quality, and these runs are NOT inference; the adapter's own rules are in the Python tests.
 import { suite } from './harness.mjs'
 import { readFileSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -43,13 +44,23 @@ await suite('lab', { width: 1440, height: 900 }, async (page, t) => {
 
   // ---------- Part 2: MOCKED adapter ----------
   const state = { inflight: 0, maxInflight: 0, calls: [], failOn: null, delay: 0, unloads: 0, loaded: new Set() }
-  const admitted = new Set(['birefnet-general-lite', 'silueta', 'sam', 'u2net_cloth_seg'])
-  const cors = { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Model, X-Inference-Ms, X-Load-Ms, X-Peak-Rss-Mb, X-Rss-Mb, X-Provider, X-Input-Size, X-Cold, X-Input-Sha256, X-Output-Sha256, X-Output-Size, X-Checkpoint-Sha256, X-Load-Delta-Mb', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST' }
+  // birefnet-general-fp16 is admitted and installed here but one of its Python modules is missing: it must stay unselectable, with the module named.
+  const admitted = new Set(['birefnet-general-lite', 'silueta', 'sam', 'u2net_cloth_seg', 'birefnet-general-fp16'])
+  const missingModules = { 'birefnet-general-fp16': ['onnx', 'onnxconverter_common'] }
+  const dependencies = id => ({ ok: !missingModules[id], required: ['numpy'], missing: missingModules[id] ?? [], missingPackages: (missingModules[id] ?? []).map(m => m.replace('_', '-')), features: {} })
+  const base = CATALOGUE.models.find(m => m.id === 'u2net_custom')
+  const customEntry = (name, session, extra) => ({ ...base, id: `custom:${name}`, label: `Custom: ${name} (${base.label})`, custom: true, name, customSession: session, sha256: (name === 'alpha' ? 'cd' : 'ef').repeat(32), bytes: 5242880, registeredAt: '2026-11-28T10:00:00+00:00', assets: [], loaded: false, preflight: null, dependencies: dependencies('x'), ...extra })
+  const customs = [
+    customEntry('alpha', 'u2net_custom', { status: 'admitted', admitted: true, installed: true, ready: true, customState: 'admitted', blocker: '' }),
+    customEntry('beta', 'dis_custom', { status: 'registered', admitted: false, installed: true, ready: false, customState: 'blocked', blocker: 'Not admitted: this hash is admitted only as u2net_custom, not as dis_custom' }),
+  ]
+  const cors = { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Model, X-Inference-Ms, X-Load-Ms, X-Peak-Rss-Mb, X-Rss-Mb, X-Provider, X-Input-Size, X-Cold, X-Input-Sha256, X-Output-Sha256, X-Output-Size, X-Checkpoint-Sha256, X-Load-Delta-Mb, X-Inference-Index, X-Inference-Rss-Delta-Mb', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST' }
+  const inferences = new Map()
   await page.route('http://127.0.0.1:8765/**', async route => {
     const req = route.request(); const url = new URL(req.url())
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
     if (url.pathname === '/catalogue') {
-      const models = CATALOGUE.models.map(m => ({ ...m, status: admitted.has(m.id) ? 'admitted' : m.status, admitted: admitted.has(m.id), installed: admitted.has(m.id), loaded: false, ready: admitted.has(m.id), preflight: m.kind === 'local' ? { ok: true, freeRamMb: 9000, needRamMb: 1000 } : null }))
+      const models = [...CATALOGUE.models.map(m => ({ ...m, status: admitted.has(m.id) ? 'admitted' : m.status, admitted: admitted.has(m.id), installed: admitted.has(m.id), loaded: false, ready: admitted.has(m.id) && !missingModules[m.id], dependencies: dependencies(m.id), preflight: m.kind === 'local' ? { ok: true, freeRamMb: 9000, needRamMb: 1000 } : null })), ...customs]
       return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ maxSessions: 1, models }) })
     }
     if (url.pathname === '/unload') { state.unloads++; return route.fulfill({ status: 200, headers: cors, body: '{}' }) }
@@ -58,15 +69,24 @@ await suite('lab', { width: 1440, height: 900 }, async (page, t) => {
       if (state.delay) await new Promise(r => setTimeout(r, state.delay))
       state.inflight--
       const cold = !state.loaded.has(model); state.loaded.add(model)
+      inferences.set(model, cold ? 1 : (inferences.get(model) ?? 0) + 1)
       if (state.failOn === model) return route.fulfill({ status: 500, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ error: 'Background removal failed.' }) })
-      return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'image/png', 'x-model': model, 'x-inference-ms': '123', 'x-load-ms': '456', 'x-peak-rss-mb': '789', 'x-rss-mb': '700', 'x-provider': 'CPUExecutionProvider', 'x-input-size': '60x40', 'x-cold': cold ? '1' : '0', 'x-input-sha256': createHash('sha256').update(req.postDataBuffer() ?? Buffer.alloc(0)).digest('hex'), 'x-output-sha256': createHash('sha256').update(cutout).digest('hex'), 'x-output-size': '60x40', 'x-checkpoint-sha256': 'ab'.repeat(32), 'x-load-delta-mb': cold ? '321' : '' }, body: cutout })
+      return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'image/png', 'x-model': model, 'x-inference-ms': '123', 'x-load-ms': '456', 'x-peak-rss-mb': '789', 'x-rss-mb': '700', 'x-provider': 'CPUExecutionProvider', 'x-input-size': '60x40', 'x-cold': cold ? '1' : '0', 'x-input-sha256': createHash('sha256').update(req.postDataBuffer() ?? Buffer.alloc(0)).digest('hex'), 'x-output-sha256': createHash('sha256').update(cutout).digest('hex'), 'x-output-size': '60x40', 'x-checkpoint-sha256': 'ab'.repeat(32), 'x-load-delta-mb': cold ? '321' : '', 'x-inference-index': String(inferences.get(model)), 'x-inference-rss-delta-mb': '17' }, body: cutout })
     }
     return route.fulfill({ status: 404, headers: cors, body: '{}' })
   })
   await page.getByRole('button', { name: 'check again' }).click(); await t.settle(600)
   text = await body()
-  t.ck('[mock] connected adapter: 4 models selectable, the rest still blocked', await page.getByRole('checkbox', { name: /^Select / }).evaluateAll(els => els.filter(e => !e.disabled).length) === 4)
+  t.eq('[mock] connected adapter: 4 built-in models and the admitted custom checkpoint are selectable, the rest still blocked', await page.getByRole('checkbox', { name: /^Select / }).evaluateAll(els => els.filter(e => !e.disabled).length), 5)
   t.ck('[mock] a model the adapter does not admit stays blocked', await page.getByRole('checkbox', { name: 'Select BRIA RMBG 2.0' }).isDisabled())
+  // IR-044 / readiness: registered custom checkpoints appear in the live catalogue with their facts and reason; dependency gaps name the module
+  t.eq('[mock] the registered custom checkpoints are listed next to the 23 sessions', await page.getByRole('listitem').filter({ has: page.getByRole('checkbox', { name: /^Select / }) }).count(), CATALOGUE.models.length + 2)
+  const alphaCard = page.getByRole('listitem', { name: /^Custom: alpha/ }), betaCard = page.getByRole('listitem', { name: /^Custom: beta/ })
+  const alphaText = await alphaCard.innerText(), betaText = await betaCard.innerText()
+  t.ck('[mock] an admitted custom checkpoint shows session type, SHA-256, size, registered time and state, and can be selected', /u2net_custom/.test(alphaText) && alphaText.includes('cd'.repeat(32)) && /5\.0 MB/.test(alphaText) && /2026-11-28T10:00:00/.test(alphaText) && /Admitted for this checkpoint hash and session type/.test(alphaText) && await alphaCard.getByRole('checkbox').isEnabled(), alphaText)
+  t.ck('[mock] a blocked custom checkpoint shows why (hash admitted for another session type) and cannot be selected', /dis_custom/.test(betaText) && /admitted only as u2net_custom, not as dis_custom/.test(betaText) && /Blocked/.test(betaText) && await betaCard.getByRole('checkbox').isDisabled(), betaText)
+  const fp16Text = await page.getByRole('listitem', { name: /^BiRefNet general \(float16\)/ }).innerText()
+  t.ck('[mock] an admitted model whose Python module is missing is not selectable and names the module', /onnx, onnxconverter_common/.test(fp16Text) && /Cannot run: A Python module this model imports is missing/.test(fp16Text) && await page.getByRole('checkbox', { name: 'Select BiRefNet general (float16)' }).isDisabled(), fp16Text)
   await page.locator('input[type=file]').first().setInputFiles(photoPath); await t.settle(500)
   t.ck('photo added with its dimensions', /shirt\.png/.test(await body()) && /60×40/.test(await body()))
   // image validation (BGR-FIX-03): bad files are refused with a reason and never added
@@ -127,10 +147,20 @@ await suite('lab', { width: 1440, height: 900 }, async (page, t) => {
   // export
   const jsonDownload = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export JSON' }).click()
   const exported = JSON.parse(readFileSync(await (await jsonDownload).path(), 'utf8'))
+  // IR-045: separated measurements under unambiguous names, additive to the earlier columns
+  const first = exported.rows[0]
+  t.ck('[mock] export: cold load, first inference after load and memory fields are separate and labelled', first.coldLoadSeconds === 0.456 && first.firstInferenceAfterLoadSeconds === 0.123 && first.warmInferenceSeconds === null && first.inferenceIndexSinceLoad === 1 && first.approxModelMemoryMb === 321 && first.perInferenceRssDeltaMb === 17 && first.cumulativeProcessPeakMb === 789 && /cumulative over every model run/.test(first.cumulativePeakScope) && first.customSessionType === null, first)
+  t.ck('[mock] export: the earlier columns keep their names and meaning (import-compatible)', first.coldMs === 579 && first.loadMs === 456 && first.inferenceMs === 123 && first.modelLoadDeltaMb === 321 && first.processPeakMemoryMb === 789 && first.rssAfterRunMb === 700, first)
+  t.ck('[mock] export notes say the peak is cumulative and that no quality score is computed', exported.notes.some(n => /cumulativeProcessPeakMb is the adapter process high-water mark/.test(n)) && exported.notes.some(n => /No quality score is ever computed/.test(n)))
+  t.ck('[mock] export: nothing named quality or score is computed by the code (only the founder\'s manual ratings)', exported.rows.every(r => !Object.keys(r).some(k => /^(quality|qualityScore|score|autoScore)$/i.test(k))))
   t.ck('JSON export records model, checkpoint, settings, hash, metrics and scores', exported.rows.length === 2 && exported.rows.every(r => r.inputSha256?.length === 64 && r.model && r.checkpoint && r.settings.alphaMatting === true && r.inferenceMs === 123 && r.processPeakMemoryMb === 789) && exported.rows.some(r => r.overall === 4), exported.rows[0])
   const csvDownload = page.waitForEvent('download'); await page.getByRole('button', { name: 'Export CSV' }).click()
   const csv = readFileSync(await (await csvDownload).path(), 'utf8').split('\n')
   t.ck('CSV has a header and one line per run', csv.length === 3 && /inputSha256/.test(csv[0]) && /inferenceMs/.test(csv[0]), csv.length)
+  const header = csv[0].split(',')
+  t.ck('[mock] CSV: the new columns are present and every earlier column is still there, in order, before them', ['coldMs', 'warmInferenceMs', 'loadMs', 'inferenceMs', 'cold', 'modelLoadDeltaMb', 'processPeakMemoryMb', 'rssAfterRunMb'].every((c, i, all) => header.indexOf(c) >= 0 && (i === 0 || header.indexOf(c) > header.indexOf(all[i - 1]))) && ['coldLoadSeconds', 'firstInferenceAfterLoadSeconds', 'warmInferenceSeconds', 'inferenceIndexSinceLoad', 'approxModelMemoryMb', 'perInferenceRssDeltaMb', 'cumulativeProcessPeakMb', 'cumulativePeakScope'].every(c => header.includes(c)) && header.indexOf('processPeakMemoryMb') < header.indexOf('coldLoadSeconds'), header.join(' '))
+  const cells = csv[1].split(','); const col = name => cells[header.indexOf(name)]
+  t.ck('[mock] CSV values: cold load seconds, approximate model memory and cumulative peak sit in their own columns', col('coldLoadSeconds') === '0.456' && col('approxModelMemoryMb') === '321' && col('cumulativeProcessPeakMb') === '789' && col('perInferenceRssDeltaMb') === '17', cells.slice(0, 30).join('|'))
   // BGR-FIX-02: the export carries input/output hashes, checkpoint hash, dimensions, provider, effective settings and honest memory labels
   const row0 = exported.rows[0]
   t.ck('[mock] export: input and output SHA-256, dimensions, checkpoint hash and provider', row0.inputSha256.length === 64 && row0.outputSha256.length === 64 && row0.inputDimensions === '60x40' && row0.outputDimensions === '60x40' && row0.checkpointSha256 === 'ab'.repeat(32) && row0.provider === 'CPUExecutionProvider', row0)
@@ -192,4 +222,11 @@ await suite('lab', { width: 1440, height: 900 }, async (page, t) => {
   t.eq('cloth model cannot run without a region', await page.getByRole('button', { name: /^Run/ }).isDisabled(), true)
   await page.getByLabel('Clothing region').selectOption('upper')
   t.eq('choosing a region enables the run', await page.getByRole('button', { name: /^Run/ }).isDisabled(), false)
+
+  // a registered custom checkpoint runs only because the adapter says it is admitted and installed; the request names it, with no path
+  await page.getByRole('checkbox', { name: /^Select U²-Net cloth segmentation/ }).uncheck()
+  await page.getByRole('checkbox', { name: /^Select Custom: alpha/ }).check()
+  state.calls.length = 0
+  await page.getByRole('button', { name: /^Run/ }).click(); await t.settle(1500)
+  t.ck('[mock] the admitted custom checkpoint is run by id and its row says so', state.calls.length >= 1 && /model=custom%3Aalpha/.test(state.calls[0]) && !/path|file/.test(state.calls[0]) && /Custom: alpha/.test(await body()), state.calls)
 })

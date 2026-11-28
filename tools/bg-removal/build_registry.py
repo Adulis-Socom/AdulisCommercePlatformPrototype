@@ -2,10 +2,15 @@
 rembg v0.0.0 release (GitHub API metadata; nothing is downloaded). models.json is the ONLY source of the model catalogue: the
 adapter reads it and src/lab/model-catalogue.json is generated from it (export_catalogue.py).
 
-Admission is fail-closed. A model may run only when its status is exactly "admitted". Nothing is admitted today: that needs
-a reviewed commit recording evidence for the EXACT checkpoint file. Editing this table never admits anything by itself.
+Admission is fail-closed. A model may run only when its status is exactly "admitted" AND (schema 3) every executable asset has a
+`pinnedSha256` AND the entry has an `admission` object {scope: "internal-evaluation", decision: "admitted", decidedBy, date, evidence[],
+checkpointRole, limitations} with at least one evidence reference; the adapter demotes anything else at load. Nothing is admitted today: that
+needs a reviewed commit recording evidence for the EXACT checkpoint file. Editing this table never admits anything by itself, and regenerating
+keeps the `admission`, `installPermitted` and `pinnedSha256` values already recorded in models.json.
 
-Usage: python build_registry.py <release_v0.0.0.json> [models.json]
+Usage: python build_registry.py <release_v0.0.0.json | -> [models.json]
+  "-" reuses the asset sizes and publisher digests already recorded in models.json (no GitHub metadata needed; the output is then identical
+  to the existing file when nothing in this table changed, which test_registry checks).
 Update rules: never delete history; append to `history` and keep earlier records.
 """
 import json
@@ -80,9 +85,13 @@ PUBLISHER = {
 
 
 def main() -> None:
-    release = {a["name"]: a for a in json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["assets"]}
-    inspected = {s["id"]: s for s in json.loads((HERE / "rembg_sessions_2.0.88.json").read_text(encoding="utf-8"))["sessions"]} if (HERE / "rembg_sessions_2.0.88.json").exists() else {}
     previous = json.loads((HERE / "models.json").read_text(encoding="utf-8")) if (HERE / "models.json").exists() else {}
+    if sys.argv[1] == "-":  # sizes and digests recorded earlier, in the shape of the GitHub release metadata
+        release = {a["file"]: {"size": a["bytes"], "digest": "sha256:" + a["publisherSha256"] if a.get("publisherSha256") else None}
+                   for e in previous["models"].values() for a in e["assets"]}
+    else:
+        release = {a["name"]: a for a in json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["assets"]}
+    inspected = {s["id"]: s for s in json.loads((HERE / "rembg_sessions_2.0.88.json").read_text(encoding="utf-8"))["sessions"]} if (HERE / "rembg_sessions_2.0.88.json").exists() else {}
     old = {k: v.get("earlierRecord", v) for k, v in previous.get("models", {}).items()}  # idempotent: the first record stays the earlier record
     history = previous.get("history", [])
     for h in history:  # the first recorded state of a model is the authority for its earlier fields
@@ -105,8 +114,11 @@ def main() -> None:
             "providers": ["CPUExecutionProvider"] if kind == LOCAL else [], "gpu": "not used (no CUDA/ROCm installed; none will be installed without approval)",
             "inputSize": inspected.get(key, {}).get("input_size"),
             "settings": ({"alphaMatting": True, "postProcessMask": True, "onlyMask": True, "decontaminate": True} if kind == LOCAL else {}),
-            "install": "not-installed", "installPermitted": False,
+            "install": "not-installed", "installPermitted": previous.get("models", {}).get(key, {}).get("installPermitted", False),
+            "admission": previous.get("models", {}).get(key, {}).get("admission"),
         }
+        if key == "birefnet-general-fp16":
+            entry["derivedFrom"] = "birefnet-general"  # runs the float32 birefnet-general checkpoint, converted once by rembg
         if key == "sam":
             entry["settings"] |= {"samPoints": True}
             entry["modes"] = ["interactive point prompt (label 1 foreground, 0 background); not automatic segmentation"]
@@ -129,9 +141,10 @@ def main() -> None:
         if key in PUBLISHER:
             entry["officialPublisher"] = PUBLISHER[key]
         entry["assets"] = []
+        pinned = {a["file"]: a.get("pinnedSha256") for a in previous.get("models", {}).get(key, {}).get("assets", [])}
         for name in assets:
             asset = release.get(name, {})
-            entry["assets"].append({"file": name, "url": RELEASE + name, "bytes": asset.get("size"), "publisherSha256": (asset.get("digest") or "").removeprefix("sha256:") or None, "rembgChecksum": next(iter(inspected.get(key, {}).get("checksums", [])), None) if len(assets) == 1 else None, "actualSha256": None})
+            entry["assets"].append({"file": name, "url": RELEASE + name, "bytes": asset.get("size"), "publisherSha256": (asset.get("digest") or "").removeprefix("sha256:") or None, "rembgChecksum": next(iter(inspected.get(key, {}).get("checksums", [])), None) if len(assets) == 1 else None, "actualSha256": None, "pinnedSha256": pinned.get(name)})
         if entry["assets"]:
             disk = sum(a["bytes"] or 0 for a in entry["assets"])
             entry["resources"] = {"diskMb": round(disk / 1048576), "ramMbEstimate": round(disk / 1048576 * 2.5), "basis": "estimate: 2.5x the weight files; measured values replace this once a model runs"}
@@ -144,12 +157,12 @@ def main() -> None:
                 entry["assets"][0]["actualSha256"] = old[key].get("sha256")
         models[key] = entry
     out = {
-        "comment": "Single model registry (schema 2). A checkpoint may be loaded or executed ONLY when its status is exactly \"admitted\"; any other value, or a missing status, is refused (fail closed). There is no environment-variable or flag bypass. A model becomes \"admitted\" only through a reviewed commit that records evidence for the exact checkpoint file. Experiment only: not an approved production model policy. Generated by build_registry.py; history is append-only.",
-        "schema": 2, "rembg": {"version": "2.0.88", "licence": "MIT", "release": "https://github.com/danielgatis/rembg/releases/tag/v0.0.0", "sessionCount": len(models)},
+        "comment": "Single model registry (schema 3). A checkpoint may be loaded or executed ONLY when its status is exactly \"admitted\", every executable asset has a pinnedSha256 and the entry has a complete admission record (scope internal-evaluation, decision, decidedBy, date, evidence[], checkpointRole, limitations); anything else is demoted at load and refused (fail closed). actualSha256 is an informational observation, never an authority. There is no environment-variable or flag bypass. A model becomes \"admitted\" only through a reviewed commit that records evidence for the exact checkpoint file. Experiment only: not an approved production model policy. Generated by build_registry.py; history is append-only.",
+        "schema": 3, "rembg": {"version": "2.0.88", "licence": "MIT", "release": "https://github.com/danielgatis/rembg/releases/tag/v0.0.0", "sessionCount": len(models)},
         "licenceFamilies": FAMILIES,
-        "notRegisteredReleaseAssets": sorted(set(release) - {a["file"] for e in models.values() for a in e["assets"]}),
+        "notRegisteredReleaseAssets": previous["notRegisteredReleaseAssets"] if sys.argv[1] == "-" else sorted(set(release) - {a["file"] for e in models.values() for a in e["assets"]}),
         "models": models, "history": history,
-        "customAdmissions": previous.get("customAdmissions", []),  # entries need {sha256, licenceEvidence}; empty: no custom checkpoint may run
+        "customAdmissions": previous.get("customAdmissions", []),  # entries need {sha256, sessionType, scope: "internal-evaluation", evidence[]}: hash AND session type are bound; empty: no custom checkpoint may run
     }
     target = Path(sys.argv[2]) if len(sys.argv) > 2 else HERE / "models.json"
     target.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

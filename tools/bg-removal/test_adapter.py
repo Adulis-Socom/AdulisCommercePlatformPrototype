@@ -5,6 +5,7 @@ These hit a real adapter process over HTTP. No test runs a model unless a checkp
 before any inference (no model is loaded for them).
 """
 import http.client
+import importlib.util
 import io
 import json
 import os
@@ -186,6 +187,21 @@ class AdapterTest(unittest.TestCase):
             entry.update(original)
         self.assertNotIn("rembg", sys.modules)  # the refusals above never reached the library
 
+    def test_catalogue_and_health_report_readiness_and_missing_modules_per_model(self):
+        status, data, _ = self.get("/catalogue")
+        self.assertEqual(status, 200)
+        catalogue = json.loads(data)
+        self.assertEqual(catalogue["runtime"]["coreModulesMissing"], [m for m in ("numpy", "PIL", "onnxruntime", "pymatting", "numba", "scipy", "skimage", "pooch", "jsonschema")
+                                                                       if importlib.util.find_spec(m) is None])
+        for entry in catalogue["models"]:
+            self.assertFalse(entry["ready"], entry["id"])  # nothing is admitted
+            self.assertIn("missing", entry["dependencies"], entry["id"])
+            self.assertIn("not admitted", entry["readinessReasons"], entry["id"])
+        fp16 = next(m for m in catalogue["models"] if m["id"] == "birefnet-general-fp16")
+        self.assertEqual(fp16["dependencies"]["missing"], [m for m in ("onnx", "onnxconverter_common") if importlib.util.find_spec(m) is None])
+        status, data, _ = self.get("/health")
+        self.assertTrue(all("missingModules" in m for m in json.loads(data)["models"]))
+
     def test_manifest_keeps_the_research_fields_for_unresolved_u2netp(self):
         import adapter
         entry = adapter.MANIFEST["u2netp"]
@@ -194,17 +210,22 @@ class AdapterTest(unittest.TestCase):
             self.assertTrue(entry.get(field), field)
 
     def test_corrupt_checkpoint_is_not_loaded(self):
-        # Admission is simulated in memory only, with a wrong hash, so this can never reach the library or run a model.
+        # Admission is simulated in memory only (pinned hash that the temporary file does not match), so this can never reach the library or run a model.
+        import tempfile
+        from unittest import mock
         import adapter
+        from bgfixtures import admit_for_test
         entry = adapter.MANIFEST["u2netp"]
-        original = dict(entry)
+        original = {k: (list(v) if isinstance(v, list) else v) for k, v in entry.items()}
         adapter._sessions.pop("u2netp", None)
-        entry.update(status="admitted", sha256="0" * 64)
         try:
-            with self.assertRaises(adapter.Refused) as caught:
-                adapter.load_session("u2netp")
-            self.assertEqual(caught.exception.status, 500)
-            self.assertIn("SHA-256", caught.exception.message)
+            with tempfile.TemporaryDirectory() as tmp, mock.patch.object(adapter, "MODEL_ROOT", Path(tmp)):
+                admit_for_test(adapter, "u2netp", tmp)
+                entry["assets"][0]["pinnedSha256"] = "0" * 64
+                with self.assertRaises(adapter.Refused) as caught:
+                    adapter.load_session("u2netp")
+                self.assertEqual(caught.exception.status, 500)
+                self.assertIn("SHA-256", caught.exception.message)
         finally:
             entry.clear()
             entry.update(original)

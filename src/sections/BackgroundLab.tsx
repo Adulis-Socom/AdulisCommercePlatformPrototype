@@ -23,6 +23,7 @@ type Row = {
 const tone = (status: string) => (status === 'admitted' ? 'bg-success-bg text-success' : status === 'external-inactive' || status === 'custom-unregistered' ? 'bg-surface-raised text-text-muted' : 'bg-warning-bg text-warning')
 const mb = (bytes: number | null) => (bytes ? `${Math.round(bytes / 1048576)} MB` : 'size unknown')
 const download = (name: string, blob: Blob) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
+const seconds = (ms: number) => Math.round(ms) / 1000
 const safe = (text: string) => text.replace(/[^a-z0-9._-]+/gi, '_')
 
 export default function BackgroundLab({ onClose }: { onClose: () => void }) {
@@ -61,9 +62,11 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
   const refresh = useCallback(async () => { setLive({ state: 'checking' }); setLive(await fetchLive()) }, [])
   useEffect(() => { void refresh() }, [refresh])
 
-  const states = useMemo(() => Object.fromEntries(CATALOGUE.models.map(m => [m.id, runState(m, live)])), [live])
-  const runnable = CATALOGUE.models.filter(m => states[m.id].runnable)
-  const chosen = CATALOGUE.models.filter(m => selected.includes(m.id) && states[m.id].runnable)
+  // The shipped catalogue plus the custom checkpoints registered on the adapter machine (only the live adapter knows them).
+  const models = useMemo(() => [...CATALOGUE.models, ...(live.state === 'online' ? live.custom : [])], [live])
+  const states = useMemo(() => Object.fromEntries(models.map(m => [m.id, runState(m, live)])), [models, live])
+  const runnable = models.filter(m => states[m.id].runnable)
+  const chosen = models.filter(m => selected.includes(m.id) && states[m.id].runnable)
   const interactive = chosen.some(m => m.settings.samPoints)
   const cloth = chosen.find(m => m.settings.clothRegion)
   const problems = chosen.map(m => ({ m, text: settingsProblem(m, settings) })).filter(p => p.text)
@@ -114,7 +117,7 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
     cancel.current = false; setRunning(true)
     for (const row of queue) {
       if (cancel.current) { setRows(list => list.map(r => (r.status === 'queued' || r.key === row.key ? { ...r, status: r.status === 'done' ? 'done' : 'cancelled' } : r))); break }
-      const model = CATALOGUE.models.find(m => m.id === row.model)!
+      const model = models.find(m => m.id === row.model)!
       const source = photos.find(p => p.id === row.photo)
       if (!source) continue
       const ctl = new AbortController(); controller.current = ctl
@@ -155,7 +158,7 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
     setRows(list => [...list, ...queue]); void execute(queue)
   }
   const retry = (row: Row) => {
-    const fresh: Row = { ...row, key: `${row.photo}:${row.model}:${next.current++}`, status: 'queued', error: undefined, blob: undefined, url: undefined, maskUrl: undefined, meta: undefined, score: emptyScore(), settings: effectiveSettings(CATALOGUE.models.find(m => m.id === row.model)!, settings) }
+    const fresh: Row = { ...row, key: `${row.photo}:${row.model}:${next.current++}`, status: 'queued', error: undefined, blob: undefined, url: undefined, maskUrl: undefined, meta: undefined, score: emptyScore(), settings: effectiveSettings(models.find(m => m.id === row.model)!, settings) }
     release(row.url); release(row.maskUrl)
     setRows(list => list.map(r => (r.key === row.key ? fresh : r))); void execute([fresh])
   }
@@ -182,7 +185,7 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
   // ---- export ----
   const exportRows = async () => Promise.all(rows.filter(r => r.status !== 'queued').map(async r => {
     const p = photos.find(x => x.id === r.photo)!
-    const m = CATALOGUE.models.find(x => x.id === r.model)!
+    const m = models.find(x => x.id === r.model)!
     const o = overall(r.score)
     return {
       photo: p.name, inputSha256: r.extra?.inputHash ?? await sha256Hex(p.blob), inputDimensions: `${p.width}x${p.height}`, outputSha256: r.extra?.outputHash ?? null, outputDimensions: r.extra?.outputDims || r.meta?.outputSize || null,
@@ -191,17 +194,27 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
       settings: r.settings, provider: r.meta?.provider ?? null,
       coldMs: r.extra?.coldMs ?? null, warmInferenceMs: r.extra?.warmMs ?? null, loadMs: r.meta?.loadMs ?? null, inferenceMs: r.meta?.inferenceMs ?? null, cold: r.meta?.cold ?? null,
       modelLoadDeltaMb: r.meta?.loadDeltaMb ?? null, processPeakMemoryMb: r.meta?.peakMb ?? null, rssAfterRunMb: r.meta?.rssMb ?? null,
+      // IR-045: the same measurements under unambiguous names (additive; the columns above keep their meaning for existing imports)
+      coldLoadSeconds: r.meta?.cold ? seconds(r.meta.loadMs) : null,
+      firstInferenceAfterLoadSeconds: r.meta?.inferenceIndex === 1 ? seconds(r.meta.inferenceMs) : null,
+      warmInferenceSeconds: r.meta && r.meta.inferenceIndex !== null && r.meta.inferenceIndex > 1 ? seconds(r.meta.inferenceMs) : r.extra?.warmMs != null && r.meta?.cold ? seconds(r.extra.warmMs) : null,
+      inferenceIndexSinceLoad: r.meta?.inferenceIndex ?? null,
+      approxModelMemoryMb: r.meta?.loadDeltaMb ?? null, perInferenceRssDeltaMb: r.meta?.inferenceRssDeltaMb ?? null,
+      cumulativeProcessPeakMb: r.meta?.peakMb ?? null, cumulativePeakScope: r.meta ? 'adapter process since it started, cumulative over every model run: not this model alone' : null,
+      customSessionType: m.customSession ?? null,
       outputBytes: r.meta?.bytes ?? null, error: r.error ?? null,
       ratings: r.score.ratings, overall: o.value, decision: r.score.decision, criticalMisrepresentation: r.score.critical, rejected: o.rejected,
       registryStatus: m.status, evaluationPermission: m.evaluationPermission, commercialUse: m.commercialUse,
     }
   }))
   const exportJson = async () => download('background-removal-benchmark.json', new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), rembg: CATALOGUE.rembg, runtime: live.state === 'online' ? live.runtime : null,
-    notes: ['modelLoadDeltaMb is the growth in resident memory when this model was loaded cold (approximate footprint); processPeakMemoryMb is the adapter process high-water mark since it started, cumulative over every model run so far, not one model.', 'coldMs is load plus inference for the first run; warmInferenceMs is a repeat of the same request (only when "time a warm run" was on, otherwise null unless the model was already loaded).', 'Nothing is estimated: empty fields were not measured.'],
+    notes: ['modelLoadDeltaMb is the growth in resident memory when this model was loaded cold (approximate footprint); processPeakMemoryMb is the adapter process high-water mark since it started, cumulative over every model run so far, not one model.', 'coldMs is load plus inference for the first run; warmInferenceMs is a repeat of the same request (only when "time a warm run" was on, otherwise null unless the model was already loaded).',
+      "coldLoadSeconds, firstInferenceAfterLoadSeconds, warmInferenceSeconds, approxModelMemoryMb, perInferenceRssDeltaMb and cumulativeProcessPeakMb carry the same measurements under unambiguous names. cumulativeProcessPeakMb is the adapter process high-water mark (cumulative, never one model's); for a peak that belongs to one model alone use tools/bg-removal/bench.py, which runs each model in its own process.",
+      'No quality score is ever computed: the ratings, overall mean and decision come only from the manual scoring done in this Lab. Nothing is estimated: empty fields were not measured.'],
     rows: await exportRows() }, null, 2)], { type: 'application/json' }))
   const exportCsv = async () => {
     const data = await exportRows()
-    const cols = ['photo', 'inputSha256', 'inputDimensions', 'outputSha256', 'outputDimensions', 'adapterAgreesOnInput', 'model', 'checkpoint', 'checkpointSha256', 'status', 'provider', 'coldMs', 'warmInferenceMs', 'loadMs', 'inferenceMs', 'cold', 'modelLoadDeltaMb', 'processPeakMemoryMb', 'rssAfterRunMb', 'outputBytes', 'error', 'overall', 'decision', 'criticalMisrepresentation', 'rejected', 'registryStatus', 'evaluationPermission', 'commercialUse'] as const
+    const cols = ['photo', 'inputSha256', 'inputDimensions', 'outputSha256', 'outputDimensions', 'adapterAgreesOnInput', 'model', 'checkpoint', 'checkpointSha256', 'status', 'provider', 'coldMs', 'warmInferenceMs', 'loadMs', 'inferenceMs', 'cold', 'modelLoadDeltaMb', 'processPeakMemoryMb', 'rssAfterRunMb', 'coldLoadSeconds', 'firstInferenceAfterLoadSeconds', 'warmInferenceSeconds', 'inferenceIndexSinceLoad', 'approxModelMemoryMb', 'perInferenceRssDeltaMb', 'cumulativeProcessPeakMb', 'cumulativePeakScope', 'customSessionType', 'outputBytes', 'error', 'overall', 'decision', 'criticalMisrepresentation', 'rejected', 'registryStatus', 'evaluationPermission', 'commercialUse'] as const
     const cell = (v: unknown) => { const t = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t }
     const head = [...cols, 'settings', ...CRITERIA.map(c => `rating ${c}`)]
     const lines = data.map(r => [...cols.map(c => cell(r[c])), cell(JSON.stringify(r.settings)), ...CRITERIA.map(c => cell(r.ratings[c]))].join(','))
@@ -210,7 +223,7 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
 
   const backdropCss = BACKDROPS.find(b => b.id === backdrop)!.css
   const photoName = (id: number) => photos.find(p => p.id === id)?.name ?? 'removed photo'
-  const modelLabel = (id: string) => CATALOGUE.models.find(m => m.id === id)?.label ?? id
+  const modelLabel = (id: string) => models.find(m => m.id === id)?.label ?? id
 
   return (
     <div className="mx-auto max-w-6xl p-6 text-text-primary" aria-label="Background Removal Lab">
@@ -253,9 +266,9 @@ export default function BackgroundLab({ onClose }: { onClose: () => void }) {
 
       <section aria-label="Model catalogue" className="mb-4 rounded-xl border border-border bg-surface p-4">
         <h2 className="font-display text-lg font-semibold">2. Models</h2>
-        <p className="mb-3 text-xs text-text-muted">{CATALOGUE.models.length} registered sessions (rembg {CATALOGUE.rembg.version}). A model can be selected only when the registry clears it, it is installed and this computer has the memory. Everything else is shown with its reason and cannot run.</p>
+        <p className="mb-3 text-xs text-text-muted">{CATALOGUE.models.length} registered sessions (rembg {CATALOGUE.rembg.version}){models.length > CATALOGUE.models.length ? ` and ${models.length - CATALOGUE.models.length} registered custom checkpoint${models.length - CATALOGUE.models.length === 1 ? '' : 's'}` : ''}. A model can be selected only when the registry clears it, it is installed and this computer has the memory. Everything else is shown with its reason and cannot run.</p>
         {GROUPS.map(group => {
-          const members = CATALOGUE.models.filter(m => m.scope === group.scope)
+          const members = models.filter(m => m.scope === group.scope)
           if (!members.length) return null
           return (
             <div key={group.scope} className="mb-4">
@@ -353,7 +366,13 @@ function ModelCard({ model, state, live, checked, disabled, onToggle }: { model:
       <p className="mt-1 text-xs text-text-secondary">{model.purpose}</p>
       {!state.runnable && <p className="mt-1 text-xs font-semibold text-warning">Cannot run: {state.reason}</p>}
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px]">
-        <dt className="text-text-muted">Checkpoint</dt><dd>{model.assets.length ? model.assets.map(a => a.file).join(', ') : model.kind === 'remote' ? 'hosted service (no file)' : model.id === 'birefnet-general-fp16' ? 'converted from birefnet-general on first use' : 'none registered'}</dd>
+        <dt className="text-text-muted">Checkpoint</dt><dd>{model.custom ? `${model.name} (registered locally)` : model.assets.length ? model.assets.map(a => a.file).join(', ') : model.kind === 'remote' ? 'hosted service (no file)' : model.id === 'birefnet-general-fp16' ? 'converted from birefnet-general on first use' : 'none registered'}</dd>
+        {model.custom && <><dt className="text-text-muted">Session type</dt><dd>{model.customSession}</dd>
+          <dt className="text-text-muted">SHA-256</dt><dd className="break-all font-mono text-[10px]">{model.sha256}</dd>
+          <dt className="text-text-muted">Size</dt><dd>{model.bytes !== undefined ? `${(model.bytes / 1048576).toFixed(1)} MB` : 'unknown'}</dd>
+          <dt className="text-text-muted">Registered</dt><dd>{model.registeredAt ?? 'time not recorded'}</dd>
+          <dt className="text-text-muted">State</dt><dd>{model.customState === 'admitted' ? 'Admitted for this checkpoint hash and session type' : `Blocked${model.blocker ? `: ${model.blocker.replace(/^Not admitted: /, '')}` : ''}`}</dd></>}
+        <dt className="text-text-muted">Python modules</dt><dd>{!entry?.dependencies ? (model.kind === 'remote' ? 'not applicable' : 'unknown (adapter offline)') : entry.dependencies.ok ? 'all importable' : `missing: ${entry.dependencies.missing.join(', ')}`}</dd>
         <dt className="text-text-muted">Evaluation</dt><dd>{model.evaluationPermission}</dd>
         <dt className="text-text-muted">Commercial use</dt><dd>{model.commercialUse}</dd>
         <dt className="text-text-muted">Installed</dt><dd>{model.kind !== 'local' ? 'not applicable' : entry ? (entry.installed ? 'yes' : 'no') : 'unknown (adapter offline)'}</dd>

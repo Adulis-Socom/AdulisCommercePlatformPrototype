@@ -12,7 +12,7 @@ export const ACCEPT = ['image/jpeg', 'image/png', 'image/webp']
 export const MAX_BYTES = 10 * 1024 * 1024
 export const REQUEST_LIMIT_MS = 70_000
 
-export interface ModelAsset { file: string; bytes: number | null; rembgChecksum?: string | null; actualSha256?: string | null }
+export interface ModelAsset { file: string; bytes: number | null; rembgChecksum?: string | null; actualSha256?: string | null; pinnedSha256?: string | null }
 export interface ModelSettings { alphaMatting?: boolean; postProcessMask?: boolean; onlyMask?: boolean; decontaminate?: boolean; samPoints?: boolean; clothRegion?: string[] }
 /** Verified against the installed rembg source (BGR-FIX-01); see tools/bg-removal/models.json. */
 export interface ModelRuntime { inputHandling?: string; dynamicResolution?: boolean; precision?: string; verifiedIn?: string; note?: string }
@@ -24,6 +24,9 @@ export interface ModelEntry {
   modes?: string[]; requirements?: string[]; inputSize?: number[] | null; implementation: string
   runtime?: ModelRuntime
   officialPublisher?: { repo: string; files: string[]; licence: string; hash: string; onnxOfficial: boolean }
+  derivedFrom?: string
+  /** Only on a registered custom checkpoint (`custom:<name>`), which exists only in the live adapter catalogue, never in the shipped one. */
+  custom?: boolean; name?: string; customSession?: string; sha256?: string; bytes?: number; registeredAt?: string | null; customState?: 'blocked' | 'admitted'
 }
 export interface LicenceFamily { classification: string; code: string; weights: string; data: string; note: string }
 export const CATALOGUE = catalogueJson as unknown as { rembg: { version: string; licence: string; release: string; sessionCount: number }; licenceFamilies: Record<string, LicenceFamily>; models: ModelEntry[]; notRegisteredReleaseAssets: string[] }
@@ -34,12 +37,13 @@ export const GROUPS: { scope: string; label: string; help: string }[] = [
   { scope: 'high-detail', label: 'High detail', help: 'Heavier models for fine edges such as hair or lace.' },
   { scope: 'specialised', label: 'Specialised', help: 'Built for one kind of subject, such as people or garments.' },
   { scope: 'interactive', label: 'Interactive', help: 'You point at the subject; it does not find it on its own.' },
-  { scope: 'custom', label: 'Custom checkpoint', help: 'Your own checkpoint. None is registered.' },
+  { scope: 'custom', label: 'Custom checkpoint', help: 'Your own checkpoints, registered on the adapter machine. Each runs only when its hash and session type are admitted.' },
   { scope: 'external', label: 'External service', help: 'Hosted and paid. Inactive: no photo is ever sent.' },
 ]
 
 export const STATUS_LABEL: Record<string, string> = {
   admitted: 'Cleared to run', candidate: 'Blocked: evidence incomplete', unresolved: 'Blocked: permission unresolved', restricted: 'Blocked: licence restricted',
+  registered: 'Blocked: not admitted', 'invalid-admission': 'Blocked: admission record incomplete',
   'custom-unregistered': 'No checkpoint registered', 'external-inactive': 'External: inactive',
 }
 
@@ -55,10 +59,13 @@ export const BACKDROPS: { id: Backdrop; label: string; css: string }[] = [
 export const readToken = () => { try { return sessionStorage.getItem(TOKEN_KEY) ?? '' } catch { return '' } }
 export const storeToken = (value: string) => { try { sessionStorage.setItem(TOKEN_KEY, value) } catch { /* the token is just not remembered */ } }
 
-export interface LiveEntry { status: string; admitted: boolean; installed: boolean; loaded: boolean; ready: boolean; preflight: { ok: boolean; freeRamMb: number; needRamMb: number } | null }
+/** What a model imports and whether each module can be imported on the adapter machine (the adapter reads this from rembg's own sources). */
+export interface Dependencies { ok: boolean; required: string[]; missing: string[]; missingPackages: string[]; features: Record<string, { ok: boolean; missing: string[] }> }
+export interface LiveEntry { status: string; admitted: boolean; installed: boolean; loaded: boolean; ready: boolean; preflight: { ok: boolean; freeRamMb: number; needRamMb: number } | null; dependencies?: Dependencies; readinessReasons?: string[] }
 /** What the adapter machine really runs, read from its installed packages (GET /catalogue). */
-export interface Runtime { python: string; platform: string; machine: string; cpuCount: number; freeRamMb: number; ompNumThreads: string | null; packages: Record<string, string | null>; onnxruntimeProviders: string[]; adapterProviders: string[]; decontaminateSupported: boolean; missingRequirements: Record<string, string[]> }
-export type Live = { state: 'checking' } | { state: 'offline' } | { state: 'online'; byId: Record<string, LiveEntry>; maxSessions: number; runtime: Runtime | null }
+export interface Runtime { python: string; platform: string; machine: string; cpuCount: number; freeRamMb: number; ompNumThreads: string | null; packages: Record<string, string | null>; onnxruntimeProviders: string[]; adapterProviders: string[]; decontaminateSupported: boolean; missingRequirements: Record<string, string[]>; coreModulesMissing?: string[]; importError?: string }
+/** `custom` lists the checkpoints registered locally with `adapter.py register-custom` (shown in the Lab; runnable only when admitted, installed and ready). */
+export type Live = { state: 'checking' } | { state: 'offline' } | { state: 'online'; byId: Record<string, LiveEntry>; maxSessions: number; runtime: Runtime | null; custom: ModelEntry[] }
 
 /** The adapter's live view of every model. The adapter, not this UI, decides admission. */
 export async function fetchLive(signal?: AbortSignal): Promise<Live> {
@@ -66,7 +73,8 @@ export async function fetchLive(signal?: AbortSignal): Promise<Live> {
     const response = await fetch(`${ADAPTER}/catalogue`, { signal: signal ?? AbortSignal.timeout(3000) })
     if (!response.ok) return { state: 'offline' }
     const body = (await response.json()) as { maxSessions: number; runtime?: Runtime; models: (LiveEntry & { id: string })[] }
-    return { state: 'online', maxSessions: body.maxSessions, runtime: body.runtime ?? null, byId: Object.fromEntries(body.models.map(entry => [entry.id, entry])) }
+    const custom = body.models.filter(entry => entry.id.startsWith('custom:')) as unknown as ModelEntry[]
+    return { state: 'online', maxSessions: body.maxSessions, runtime: body.runtime ?? null, byId: Object.fromEntries(body.models.map(entry => [entry.id, entry])), custom }
   } catch { return { state: 'offline' } }
 }
 
@@ -80,6 +88,7 @@ export function runState(model: ModelEntry, live: Live): { runnable: boolean; re
   const entry = live.byId[model.id]
   if (!entry?.admitted) return { runnable: false, reason: entry ? model.blocker : 'The adapter does not know this model.' }
   if (!entry.installed) return { runnable: false, reason: 'Not installed yet.' }
+  if (entry.dependencies && !entry.dependencies.ok) return { runnable: false, reason: `A Python module this model imports is missing on the adapter machine: ${entry.dependencies.missing.join(', ')} (install ${entry.dependencies.missingPackages.join(', ')}).` }
   if (entry.preflight && !entry.preflight.ok) return { runnable: false, reason: `Not enough free memory (${entry.preflight.freeRamMb} MB free, about ${entry.preflight.needRamMb} MB needed).` }
   return { runnable: true, reason: '' }
 }
@@ -140,8 +149,12 @@ export function effectiveSettings(model: ModelEntry, s: RunSettings) {
   }
 }
 
-/** `peakMb` is the adapter PROCESS's high-water mark since it started (cumulative over every model run so far); `loadDeltaMb` is the RSS growth of this cold load (approximate model footprint, null when warm). */
-export interface RunMeta { model: string; inferenceMs: number; loadMs: number; peakMb: number; rssMb: number; loadDeltaMb: number | null; cold: boolean; provider: string; size: string; outputSize: string; bytes: number; inputSha256: string; outputSha256: string; checkpointSha256: string[] }
+/**
+ * Measurements stay separate (IR-045): `loadMs` is the cold load; `inferenceIndex` 1 is the first inference after a load and 2+ are warm;
+ * `loadDeltaMb` is the RSS growth of a cold load (approximate model memory, null when warm); `inferenceRssDeltaMb` is the RSS growth during
+ * this one inference; `peakMb` is the adapter PROCESS's high-water mark since it started, cumulative over every model run so far and never one model's.
+ */
+export interface RunMeta { model: string; inferenceMs: number; loadMs: number; peakMb: number; rssMb: number; loadDeltaMb: number | null; inferenceIndex: number | null; inferenceRssDeltaMb: number | null; cold: boolean; provider: string; size: string; outputSize: string; bytes: number; inputSha256: string; outputSha256: string; checkpointSha256: string[] }
 
 export async function runModel(args: { model: ModelEntry; blob: Blob; settings: RunSettings; token: string; signal: AbortSignal }): Promise<{ blob: Blob; meta: RunMeta }> {
   const { model, blob, settings, token, signal } = args
@@ -152,7 +165,7 @@ export async function runModel(args: { model: ModelEntry; blob: Blob; settings: 
   }
   const out = await response.blob()
   const h = (name: string) => response.headers.get(name) ?? ''
-  return { blob: out, meta: { model: h('X-Model'), inferenceMs: Number(h('X-Inference-Ms')), loadMs: Number(h('X-Load-Ms')), peakMb: Number(h('X-Peak-Rss-Mb')), rssMb: Number(h('X-Rss-Mb')), loadDeltaMb: h('X-Load-Delta-Mb') === '' ? null : Number(h('X-Load-Delta-Mb')), cold: h('X-Cold') === '1', provider: h('X-Provider'), size: h('X-Input-Size'), outputSize: h('X-Output-Size'), bytes: out.size, inputSha256: h('X-Input-Sha256'), outputSha256: h('X-Output-Sha256'), checkpointSha256: h('X-Checkpoint-Sha256').split(',').filter(Boolean) } }
+  return { blob: out, meta: { model: h('X-Model'), inferenceMs: Number(h('X-Inference-Ms')), loadMs: Number(h('X-Load-Ms')), peakMb: Number(h('X-Peak-Rss-Mb')), rssMb: Number(h('X-Rss-Mb')), loadDeltaMb: h('X-Load-Delta-Mb') === '' ? null : Number(h('X-Load-Delta-Mb')), inferenceIndex: h('X-Inference-Index') === '' ? null : Number(h('X-Inference-Index')), inferenceRssDeltaMb: h('X-Inference-Rss-Delta-Mb') === '' ? null : Number(h('X-Inference-Rss-Delta-Mb')), cold: h('X-Cold') === '1', provider: h('X-Provider'), size: h('X-Input-Size'), outputSize: h('X-Output-Size'), bytes: out.size, inputSha256: h('X-Input-Sha256'), outputSha256: h('X-Output-Sha256'), checkpointSha256: h('X-Checkpoint-Sha256').split(',').filter(Boolean) } }
 }
 
 export async function unloadModels(token: string): Promise<boolean> {

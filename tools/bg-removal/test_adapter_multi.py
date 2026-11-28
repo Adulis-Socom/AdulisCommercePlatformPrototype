@@ -1,6 +1,6 @@
 """BGR-014/015/016 tests: registry integrity, settings validation, and the multi-model session logic.
 
-IMPORTANT: no model is admitted, so no real inference can run. The session-logic tests below use a MOCKED `rembg` module
+IMPORTANT: no model is admitted in models.json, so no real inference can run. The session-logic tests below use a MOCKED `rembg` module
 (a fake new_session/remove that returns a flat image) and temporary checkpoint files; they prove the adapter's own behaviour
 (lazy load, bounded cache, unload, preflight, verification, failure isolation, settings), NOT any model's quality.
 Run: .venv\\Scripts\\python -m unittest test_adapter_multi -v
@@ -18,6 +18,7 @@ from unittest import mock
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import adapter  # noqa: E402  (does not import rembg)
+from bgfixtures import admit_for_test, sha  # noqa: E402
 
 REGISTRY = json.loads((HERE / "models.json").read_text(encoding="utf-8"))
 INSPECTED = json.loads((HERE / "rembg_sessions_2.0.88.json").read_text(encoding="utf-8"))["sessions"]
@@ -160,11 +161,7 @@ class SessionLogicTest(unittest.TestCase):
         adapter._sessions.clear()
         adapter._runs.clear()
         for model in ("birefnet-general-lite", "silueta"):
-            data = f"checkpoint {model}".encode()
-            asset = dict(adapter.MANIFEST[model]["assets"][0], actualSha256=hashlib.sha256(data).hexdigest())
-            (self.root / model).mkdir()
-            (self.root / model / asset["file"]).write_bytes(data)
-            adapter.MANIFEST[model].update(status="admitted", assets=[asset])
+            admit_for_test(adapter, model, self.root)  # synthetic file, pinned hash and admission record (see bgfixtures.py)
 
     def tearDown(self):
         for key, value in self.saved.items():
@@ -208,10 +205,10 @@ class SessionLogicTest(unittest.TestCase):
         with self.assertRaises(adapter.Refused) as caught:
             self.run_model("silueta")
         self.assertEqual(caught.exception.status, 500)
-        asset["actualSha256"] = None
+        asset["pinnedSha256"] = None  # a model that says "admitted" without a pinned hash is not loadable at run time either
         with self.assertRaises(adapter.Refused) as caught:
             self.run_model("silueta")
-        self.assertEqual(caught.exception.status, 503)
+        self.assertEqual(caught.exception.status, 403)
         self.assertEqual(self.fake.created, [])
 
     def test_missing_checkpoint_is_reported_not_downloaded(self):
@@ -247,15 +244,7 @@ class SessionLogicTest(unittest.TestCase):
         self.assertEqual(Image.open(io.BytesIO(result["png"])).mode, "RGBA")
 
     def test_sam_points_and_cloth_regions_are_passed_through_and_bounds_checked(self):
-        adapter.MANIFEST["sam"]["status"] = "admitted"
-        file = self.root / "sam"
-        file.mkdir()
-        assets = []
-        for asset in adapter.MANIFEST["sam"]["assets"]:
-            data = asset["file"].encode()
-            (file / asset["file"]).write_bytes(data)
-            assets.append(dict(asset, actualSha256=hashlib.sha256(data).hexdigest()))
-        adapter.MANIFEST["sam"]["assets"] = assets
+        admit_for_test(adapter, "sam", self.root)
         self.run_model("sam", points="10,10,1;20,5,0")
         self.assertEqual(self.fake.calls[-1][1]["sam_prompt"], [{"type": "point", "label": 1, "data": [10, 10]}, {"type": "point", "label": 0, "data": [20, 5]}])
         with self.assertRaises(adapter.Refused) as caught:
@@ -282,15 +271,24 @@ class InstallTest(unittest.TestCase):
     def test_an_admitted_and_permitted_install_downloads_only_registry_urls_and_reports_the_hash(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(adapter, "MODEL_ROOT", Path(tmp)):
             entry = adapter.MANIFEST["silueta"]
-            saved = dict(entry)
+            saved = {k: (list(v) if isinstance(v, list) else v) for k, v in entry.items()}
             data = b"downloaded checkpoint"
-            entry.update(status="admitted", installPermitted=True)
+            admit_for_test(adapter, "silueta", tmp)
+            (Path(tmp) / "silueta" / entry["assets"][0]["file"]).unlink()  # not installed yet
+            entry.update(installPermitted=True)
+            entry["assets"][0]["pinnedSha256"] = sha(data)
             try:
                 with mock.patch("urllib.request.urlopen", return_value=io.BytesIO(data)) as opened, mock.patch.object(adapter, "preflight", lambda e, s="run": {"ok": True}):
                     result = adapter.install("silueta")
                 self.assertTrue(opened.call_args[0][0].startswith("https://github.com/danielgatis/rembg/releases/download/"))
                 self.assertEqual(result["files"][0]["sha256"], hashlib.sha256(data).hexdigest())
-                self.assertFalse(result["files"][0]["recordedInRegistry"])  # a human must record it before the model can load
+                self.assertTrue(result["files"][0]["recordedInRegistry"])  # an admitted model always has its hash pinned
+                entry["assets"][0]["pinnedSha256"] = sha(b"a different file")
+                with mock.patch("urllib.request.urlopen", return_value=io.BytesIO(data)), mock.patch.object(adapter, "preflight", lambda e, s="run": {"ok": True}):
+                    with self.assertRaises(adapter.Refused) as caught:
+                        adapter.install("silueta")  # the download does not match the pinned hash: refused and deleted
+                self.assertEqual(caught.exception.status, 500)
+                entry["assets"][0]["pinnedSha256"] = sha(data)
                 entry["assets"][0]["url"] = "https://evil.example/x.onnx"
                 with mock.patch.object(adapter, "preflight", lambda e, s="run": {"ok": True}):
                     with self.assertRaises(adapter.Refused):

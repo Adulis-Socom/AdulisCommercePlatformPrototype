@@ -40,13 +40,17 @@ await suite('media-editor', { width: 1440, height: 900 }, async (page, t) => {
   await page.getByRole('button', { name: 'Create Product' }).first().click(); await t.settle()
   await page.locator('input[type=file]').first().setInputFiles(photoA); await t.settle(700)
   await page.getByRole('button', { name: /^Edit photo 1/ }).click(); await t.settle(500)
-  const state = { calls: [], delay: 0 }
+  const state = { calls: [], delay: 0, depsMissing: false }
+  const base = CATALOGUE.models.find(m => m.id === 'u2net_custom')
+  // a registered custom checkpoint the adapter has admitted: the Media Editor never offers it (custom checkpoints belong to the Lab)
+  const custom = { ...base, id: 'custom:alpha', label: 'Custom: alpha', custom: true, name: 'alpha', customSession: 'u2net_custom', status: 'admitted', admitted: true, installed: true, ready: true, loaded: false, preflight: null, assets: [], customState: 'admitted', blocker: '' }
   const cors = { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Model, X-Inference-Ms, X-Load-Ms, X-Peak-Rss-Mb, X-Rss-Mb, X-Provider, X-Input-Size, X-Cold', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST' }
   await page.route('http://127.0.0.1:8765/**', async route => {
     const req = route.request(); const url = new URL(req.url())
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
     if (url.pathname === '/catalogue') {
-      const models = CATALOGUE.models.map(m => ({ ...m, status: m.id === 'silueta' ? 'admitted' : m.status, admitted: m.id === 'silueta', installed: m.id === 'silueta', loaded: false, ready: m.id === 'silueta', preflight: m.kind === 'local' ? { ok: true, freeRamMb: 9000, needRamMb: 1000 } : null }))
+      const deps = id => (id === 'silueta' && state.depsMissing ? { ok: false, required: ['skimage'], missing: ['skimage'], missingPackages: ['scikit-image'], features: {} } : { ok: true, required: [], missing: [], missingPackages: [], features: {} })
+      const models = [...CATALOGUE.models.map(m => ({ ...m, status: m.id === 'silueta' ? 'admitted' : m.status, admitted: m.id === 'silueta', installed: m.id === 'silueta', loaded: false, ready: m.id === 'silueta' && !state.depsMissing, dependencies: deps(m.id), preflight: m.kind === 'local' ? { ok: true, freeRamMb: 9000, needRamMb: 1000 } : null })), custom]
       return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ maxSessions: 1, models }) })
     }
     if (url.pathname === '/remove') {
@@ -58,6 +62,7 @@ await suite('media-editor', { width: 1440, height: 900 }, async (page, t) => {
   })
   const again = page.getByRole('button', { name: 'check again' }); if (await again.count()) { await again.click(); await t.settle(500) }
   await page.getByLabel('Model').selectOption('silueta'); await t.settle(700)
+  t.eq('[mock] a registered custom checkpoint is not offered in the Media Editor selector', await page.getByLabel('Model').locator('option').evaluateAll(opts => opts.filter(o => /custom/i.test(o.value) && o.value.startsWith('custom:')).length), 0)
   t.ck('[mock] the adapter clears the model: the editor offers to run it', await page.getByRole('button', { name: 'Remove background' }).count() === 1 && /Local adapter connected/.test(await content()))
   await page.getByPlaceholder('Paste the token the adapter printed').fill('test-token')
   await page.getByLabel('Alpha matting').check()
@@ -83,4 +88,11 @@ await suite('media-editor', { width: 1440, height: 900 }, async (page, t) => {
   await page.locator('input[type=file]').first().setInputFiles(photoB); await t.settle(4200)
   t.eq('a late result never lands on a replaced photo', await page.getByRole('img', { name: /^Background removed:/ }).count(), 0)
   t.ck('the draft still shows the photo that was chosen', await page.getByRole('img', { name: /^Original:/ }).count() === 1)
+
+  // readiness: a model that is admitted and installed but cannot import a module is unavailable, with the module named
+  state.depsMissing = true
+  await page.getByLabel('Model').selectOption('silueta'); await page.getByLabel('Model').selectOption('birefnet-general-lite'); await page.getByLabel('Model').selectOption('silueta'); await t.settle(900)
+  const missingText = await content()
+  t.ck('[mock] a missing Python module makes the model unavailable and says which', /This model is unavailable/.test(missingText) && /skimage/.test(missingText) && /scikit-image/.test(missingText), missingText.slice(0, 300))
+  t.eq('[mock] Remove background is not offered while the module is missing', (await page.getByRole('button', { name: 'Remove background' }).count()) === 0 || await page.getByRole('button', { name: 'Remove background' }).isDisabled(), true)
 })

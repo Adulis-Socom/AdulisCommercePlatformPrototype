@@ -146,6 +146,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "assets": [
     {
      "file": "u2net.onnx",
@@ -153,7 +154,8 @@
      "bytes": 175997641,
      "publisherSha256": null,
      "rembgChecksum": "md5:60024c5c889badc19c04ad937298a77b",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -198,6 +200,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "assets": [
     {
      "file": "u2netp.onnx",
@@ -205,7 +208,8 @@
      "bytes": 4574861,
      "publisherSha256": null,
      "rembgChecksum": "md5:8e83ca70e441ab06c318d82300c84806",
-     "actualSha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8"
+     "actualSha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -255,6 +259,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "assets": [
     {
      "file": "u2net_human_seg.onnx",
@@ -262,7 +267,8 @@
      "bytes": 175997641,
      "publisherSha256": null,
      "rembgChecksum": "md5:c09ddc2e0104f800e3e1bb4652583d1f",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -307,6 +313,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "assets": [
     {
      "file": "silueta.onnx",
@@ -314,7 +321,8 @@
      "bytes": 44173029,
      "publisherSha256": null,
      "rembgChecksum": "md5:55e59e0d8062d2f5d013f4725ee84782",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -364,6 +372,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "assets": [
     {
      "file": "u2net_cloth_seg.onnx",
@@ -371,7 +380,8 @@
      "bytes": 176194565,
      "publisherSha256": null,
      "rembgChecksum": "md5:2434d1f3cb744e0e49386c906e5a08bb",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -416,6 +426,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "assets": [
     {
      "file": "isnet-general-use.onnx",
@@ -423,7 +434,8 @@
      "bytes": 178648008,
      "publisherSha256": null,
      "rembgChecksum": "md5:fc16ebd8b0c10d971d3513d564d01e29",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -468,6 +480,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "assets": [
     {
      "file": "isnet-anime.onnx",
@@ -475,7 +488,8 @@
      "bytes": 176069933,
      "publisherSha256": null,
      "rembgChecksum": "md5:6f184e756bb3bd901c8849220a83e38e",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -520,6 +534,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
     "dynamicResolution": false,
@@ -546,7 +561,8 @@
      "bytes": 972666916,
      "publisherSha256": null,
      "rembgChecksum": "md5:7a35a0141cbbc80de11d9c9a28f52697",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -588,6 +604,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
     "dynamicResolution": false,
@@ -614,7 +631,8 @@
      "bytes": 224005088,
      "publisherSha256": null,
      "rembgChecksum": "md5:4fab47adc4ff364be1713e97b7e66334",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -656,6 +674,8 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
+   "derivedFrom": "birefnet-general",
    "runtime": {
     "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
     "dynamicResolution": false,
@@ -702,6 +722,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
     "dynamicResolution": false,
@@ -715,7 +736,8 @@
      "bytes": 972666916,
      "publisherSha256": null,
      "rembgChecksum": "md5:c3a64a6abf20250d090cd055f12a3b67",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -757,6 +779,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
     "dynamicResolution": false,
@@ -770,7 +793,8 @@
      "bytes": 972666916,
      "publisherSha256": null,
      "rembgChecksum": "md5:2d4d44102b446f33a4ebb2e56c051f2b",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -812,6 +836,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
     "dynamicResolution": false,
@@ -825,7 +850,8 @@
      "bytes": 972666916,
      "publisherSha256": null,
      "rembgChecksum": "md5:c017ade5de8a50ff0fd74d790d268dda",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -867,6 +893,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
     "dynamicResolution": false,
@@ -880,7 +907,8 @@
      "bytes": 972666916,
      "publisherSha256": null,
      "rembgChecksum": "md5:f6d0d21ca89d287f17e7afe9f5fd3b45",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -922,6 +950,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
     "dynamicResolution": false,
@@ -935,7 +964,8 @@
      "bytes": 972666916,
      "publisherSha256": null,
      "rembgChecksum": "md5:33e726a2136a3d59eb0fdf613e31e3e9",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -977,6 +1007,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "fixed 1024x1024 (rembg resizes; no dynamic resolution)",
     "dynamicResolution": false,
@@ -991,7 +1022,8 @@
      "bytes": 972495971,
      "publisherSha256": "aa3c17882a27f079fafa7655cf50e83b9e6e067d6c6fa4cbc3524ae441da0bd7",
      "rembgChecksum": "md5:4f9c4b2d2e16fe1788f98184e7f43d2b",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -1036,6 +1068,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "assets": [
     {
      "file": "bria-rmbg-2.0.onnx",
@@ -1043,7 +1076,8 @@
      "bytes": 1024331469,
      "publisherSha256": null,
      "rembgChecksum": "sha256:5b486f08200f513f460da46dd701db5fbb47d79b4be4b708a19444bcd4e79958",
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -1086,6 +1120,7 @@
    },
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "modes": [
     "interactive point prompt (label 1 foreground, 0 background); not automatic segmentation"
    ],
@@ -1116,7 +1151,8 @@
      "bytes": 359217310,
      "publisherSha256": null,
      "rembgChecksum": null,
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     },
     {
      "file": "sam_vit_b_01ec64.decoder.onnx",
@@ -1124,7 +1160,8 @@
      "bytes": 16500570,
      "publisherSha256": null,
      "rembgChecksum": null,
-     "actualSha256": null
+     "actualSha256": null,
+     "pinnedSha256": null
     }
    ],
    "resources": {
@@ -1162,6 +1199,7 @@
    "settings": {},
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "as the base session class",
     "modelPath": "explicit model_path, resolved by the adapter from a locally registered file inside models/models/custom (rembg also checks it lies under its home)",
@@ -1198,6 +1236,7 @@
    "settings": {},
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "as the base session class",
     "modelPath": "explicit model_path, resolved by the adapter from a locally registered file inside models/models/custom (rembg also checks it lies under its home)",
@@ -1234,6 +1273,7 @@
    "settings": {},
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "runtime": {
     "inputHandling": "as the base session class",
     "modelPath": "explicit model_path, resolved by the adapter from a locally registered file inside models/models/custom (rembg also checks it lies under its home)",
@@ -1267,6 +1307,7 @@
    "settings": {},
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "assets": [],
    "id": "withoutbg",
    "admitted": false
@@ -1295,6 +1336,7 @@
    "settings": {},
    "install": "not-installed",
    "installPermitted": false,
+   "admission": null,
    "assets": [],
    "id": "atlascloud",
    "admitted": false
