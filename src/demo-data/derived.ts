@@ -181,7 +181,7 @@ export function hasAvailableProductAt(products: readonly ProductId[], at: Moment
 
 /** At least one tagged Product exists and isn't out of stock (rule 1.8). */
 export function hasAvailableTagAt(post: ShoppablePostId, at: Moment = DEFAULT_SNAPSHOT): boolean {
-  return hasAvailableProductAt(SHOPPABLE_POSTS[post].tags, at)
+  return hasAvailableProductAt(LIVE_POSTS[post].tags, at)
 }
 
 /** For You eligibility (rules 1.7–1.8, 2.1): published, not restricted, with at least one available tagged Product. */
@@ -202,7 +202,7 @@ export function sceneAvailabilityState(tags: readonly ProductId[], available: (p
 
 /** Whether the Scene is Private at `at` because none of its tagged Products is available (the rule above). */
 export function isPrivateByAvailabilityAt(post: ShoppablePostId, at: Moment = DEFAULT_SNAPSHOT): boolean {
-  return sceneAvailabilityState(SHOPPABLE_POSTS[post].tags, product => hasAvailableProductAt([product], at)) === 'private'
+  return sceneAvailabilityState(LIVE_POSTS[post].tags, product => hasAvailableProductAt([product], at)) === 'private'
 }
 
 /**
@@ -219,7 +219,7 @@ export function isBuyerVisiblePostAt(post: ShoppablePostId, at: Moment = DEFAULT
  * available. A restricted or removed post is a moderation problem, listed only under Moderation issues.
  */
 export function postsNeedingAttentionAt(seller: SellerId, at: Moment = DEFAULT_SNAPSHOT): ShoppablePostId[] {
-  return sellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at) && SHOPPABLE_POSTS[id].tags.length > 0 && !hasAvailableTagAt(id, at))
+  return sellerPostsAt(seller, at).filter(id => isPubliclyEligibleAt(id, at) && LIVE_POSTS[id].tags.length > 0 && !hasAvailableTagAt(id, at))
 }
 
 /** Seller Console Home › Moderation issues (specification §29): the Seller's posts restricted by a moderation action. */

@@ -20,10 +20,10 @@ import {
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
-  ACCESS_AREAS, BUYERS, CAPABILITIES, CHATBOTS, CLAIMS, CLAIM_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, DEFAULT_SNAPSHOT,
+  ACCESS_AREAS, BUYERS, CAPABILITIES, CHATBOTS, CLAIMS, CLAIM_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, DEFAULT_SNAPSHOT,
   GENERAL_CONTEXT, HANDOFF_REVIEWS, INSIGHTS_7D, MARKET, NO_ROLE_CAN, ORDERS, ORDER_TIMELINES, POST_NEEDS_ATTENTION, PRODUCTS, PRODUCT_PERFORMANCE_7D, REVIEWS, SELLERS,
   SELLER_ROLES, SELLER_SESSIONS, SELLER_SETTINGS, SHOPPABLE_POSTS, STAFF, SURFACE_DEFAULTS, TEAM_ROLES, VOLT_HOUSE_PREPUBLICATION,
-  activeDiscount, areaAccess, awaitingSellerReplyAt, byMessageTime, capabilitiesOf, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt, contextGroupOf, contextKey,
+  activeDiscount, areaAccess, awaitingSellerReplyAt, byMessageTime, capabilitiesOf, claimStateAt, claimSubmitted, claimsForOrder, contextChoicesAt,
   contextSubject, courierCardAt, courierCompensationAt, courierHistoryAt, courierListOrder, courierRelationship, currentPrice, deliveryOfferAt, effectiveMessagesAt, firstName, formatAge, formatCalendarDate, formatClock, formatDate, formatMonthShortYear,
   formatDayMonth, formatEtb, formatLongDate, formatPin, formatWeekday, fulfilmentOptionsAt, happenedBefore, hasAvailableProductAt, isForYouEligibleAt, lineOptions, memberRoles, messagesAt,
   moderationIssuesAt, onAdulisSince, orderCourierCompensation, orderStateAt, orderTotals, ordersAt, ordersRequiringPreparationAt, paidAt,
@@ -35,12 +35,14 @@ import {
 } from '../demo-data'
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
+import { chargeText, effectiveCoverage, sellerMethods } from '../fulfilment'
 import { isLegacy } from '../marketplace/registry'
 import { SellerOrders, useSellerActions } from '../simulation/surfaces'
 import { SellerCouriers } from '../simulation/feedback-ui'
 import { SellerReviews } from '../simulation/reviews-ui'
 import { Notice } from './console/kit'
 import { LiveInbox, LiveThreadControls } from './console/LiveInbox'
+import { ContextPicker } from './console/ContextPicker'
 import { liveAsRecords, keyFor } from '../chatbot/thread'
 import { replyInThread } from '../chatbot/session'
 
@@ -753,7 +755,6 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
   const { state: ws, dispatch: wsDispatch } = useWorkspace()
   const staff = sessionStaffOn(sellerId, 'Seller Console')
   const sentFor = (id: ConversationId) => liveAsRecords(ws.chats[keyFor(id)], staff ?? ('STF-AA-01' as never), at)
-  const selectId = useId()
   // A chatbot escalation is the Buyer's unmatched question to the Seller's chatbot, still awaiting the Seller's reply.
   const escalationOf = (id?: ConversationId) => { const last = id && visible(messagesAt(id, at)).pop(); return last && last.from === 'buyer' && last.escalatedFromChatbot ? last : undefined }
   const [escalated, setEscalated] = useState(!!escalationOf(selected))
@@ -802,16 +803,7 @@ function InboxPanel({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
           {/* DEMO_DATA defines no preparation lead time, so no quick reply quotes one. */}
           <div className="mb-3 flex gap-2 overflow-x-auto"><span className="text-xs font-semibold text-text-muted">Quick Replies</span>{(simulation ? ['Courier assigned', 'Please check your Order'] : ['Thank you for your message', 'I will check and reply soon']).map(value => <button key={value} onClick={() => setReply(value)} className="rounded-full bg-surface-raised px-3 py-1 text-xs text-text-secondary">{value}</button>)}</div>
           {/* The reply's context: exactly this conversation's choices at the story moment (rules 12.5–12.6). */}
-          <div className="mb-3 flex items-center gap-3">
-            <label htmlFor={selectId} className="text-xs font-semibold text-text-secondary">Talking about</label>
-            <select id={selectId} value={contextKey(context)} onChange={event => setContext(choices.find(choice => contextKey(choice) === event.target.value) ?? GENERAL_CONTEXT)} className="h-11 min-w-0 max-w-md flex-1 rounded-lg border border-border bg-surface px-3 text-sm font-normal text-text-primary">
-              {CONTEXT_GROUPS.map(group => {
-                const options = choices.filter(choice => contextGroupOf(choice) === group.kind).map(choice => <option key={contextKey(choice)} value={contextKey(choice)}>{contextSubject(choice)}</option>)
-                if (!options.length) return null
-                return 'label' in group ? <optgroup key={group.kind} label={group.label}>{options}</optgroup> : options
-              })}
-            </select>
-          </div>
+          <div className="mb-3"><ContextPicker choices={choices} value={context} onChange={setContext} /></div>
           <div className="flex gap-2"><div className="flex-1"><TextInput aria-label="Reply" value={reply} onChange={event => setReply(event.target.value)} placeholder={'general' in context ? `Reply as ${SELLERS[sellerId].name}` : `Reply as ${SELLERS[sellerId].name} about ${contextSubject(context)}`} /></div><Button onClick={send}>Send Reply</Button></div>
           <div className="mt-2 text-[10px] text-text-muted">Human Seller reply · Chat does not establish payment, fulfilment, handoff, or claim truth.</div>
         </div>
@@ -1107,7 +1099,10 @@ function StorePanel({ sellerId, at, onOpenCouriers }: { sellerId: SellerId; at: 
   const seller = SELLERS[sellerId]
   const [available, setAvailable] = useState(!!seller.storeOpen)
   const [saved, setSaved] = useState(false)
-  const options = fulfilmentOptionsAt(sellerId, at)
+  // FR-003: the effective methods (the Store setup once saved, else the Seller record), the same the Buyer reads; MVP never shows Courier compensation as a charge.
+  const { state: workspace } = useWorkspace()
+  const { simulation } = usePrototypeMode()
+  const options = sellerMethods(workspace, sellerId, at, simulation, null).methods
   const option = (mode: string) => options.find(o => o.mode === mode)
   const collection = option('Buyer Collection'), delivery = option('Seller Delivery'), courier = option('Courier Delivery')
   return (
@@ -1125,9 +1120,9 @@ function StorePanel({ sellerId, at, onOpenCouriers }: { sellerId: SellerId; at: 
       )}
       {tab === 'fulfilment' && (
         <div className="grid grid-cols-2 gap-5">
-          <DetailCard title="Buyer Collection"><FulfilmentSetting label="Buyer Collection" title={collection ? 'Enabled' : 'Disabled'} detail={collection ? `${collection.place} · ${collection.hours}` : '—'} checked={!!collection} /></DetailCard>
-          <DetailCard title="Seller Delivery"><FulfilmentSetting label="Seller Delivery" title={delivery ? 'Enabled' : 'Disabled'} detail={delivery ? [formatEtb(delivery.charge), delivery.coverage].filter(Boolean).join(' · ') : '—'} checked={!!delivery} /></DetailCard>
-          <DetailCard title="Courier Delivery"><FulfilmentSetting label="Courier Delivery" title={courier ? 'Enabled' : 'Disabled'} detail={courier ? `${formatEtb(courier.charge)} · Approved Seller Courier Pool · price shown before payment` : '—'} checked={!!courier} /><Button variant="tertiary" onClick={onOpenCouriers} style={{ marginTop: 16 }}>Manage Couriers</Button></DetailCard>
+          <DetailCard title="Buyer Collection"><FulfilmentSetting label="Buyer Collection" title={collection ? 'Enabled' : 'Disabled'} detail={collection ? [collection.place, collection.hours].filter(Boolean).join(' · ') || '—' : '—'} checked={!!collection} /></DetailCard>
+          <DetailCard title="Seller Delivery"><FulfilmentSetting label="Seller Delivery" title={delivery ? 'Enabled' : 'Disabled'} detail={delivery ? [chargeText(delivery), delivery.coverage].filter(Boolean).join(' · ') : '—'} checked={!!delivery} /></DetailCard>
+          <DetailCard title="Courier Delivery"><FulfilmentSetting label="Courier Delivery" title={courier ? 'Enabled' : 'Disabled'} detail={courier ? `${chargeText(courier)} · Approved Seller Courier Pool${simulation ? ' · price shown before payment' : ''}` : '—'} checked={!!courier} /><Button variant="tertiary" onClick={onOpenCouriers} style={{ marginTop: 16 }}>Manage Couriers</Button></DetailCard>
           <DetailCard title="Preparation settings"><InfoGrid rows={[['Default lead time', '—'], ['Made-to-order lead time', '—'], ['Ready reminder', '—']]} /></DetailCard>
         </div>
       )}
@@ -1350,18 +1345,22 @@ function teamWith(sellerId: SellerId, changes: TeamChanges): TeamMember[] {
 function SettingsPanel({ sellerId, at, team, onTeamChange, onNavigate }: { sellerId: SellerId; at: Moment; onNavigate: (key: NavKey) => void; team: readonly TeamMember[]; onTeamChange: (staff: StaffId, change: TeamChanges[StaffId]) => void }) {
   const { simulation } = usePrototypeMode()
   const [tab, setTab] = useState('team')
+  // FR-003: at narrow widths (index.css, up to 900 px) the list and the chosen setting are two screens: choosing one reveals it, with a Back control.
+  const [view, setView] = useState<'list' | 'detail'>('list')
+  const choose = (key: string) => { setTab(key); setView('detail') }
   // FE-001 / SC-007: the payment-provider status belongs to the simulation; the MVP adds store, Courier and subscription pages (read-only).
   const tabs = [['team', 'Team'], ['roles', 'Roles & Permissions'], ['store', 'Store profile'], ['courier-links', 'Courier relationships'], ['subscription', 'Subscription'], ['sessions', 'Sessions'], ['security', 'Security'], ['ownership', 'Ownership'], ['lifecycle', 'Account lifecycle'], ['notifications', 'Notifications'], ...(simulation ? [['provider', 'Provider status']] : [])]
   return (
     <div className="mx-auto max-w-7xl p-8">
       <ModuleHeader title="Settings" description="People, access, security and account administration." />
-      <div className="grid grid-cols-[240px_1fr] gap-5">
-        <div className="h-fit rounded-2xl border border-border bg-surface p-2">{tabs.map(([key, label]) => <button key={key} onClick={() => setTab(key)} aria-current={tab === key ? 'page' : undefined} className={`w-full rounded-lg px-3 py-2.5 text-left text-xs font-semibold ${tab === key ? 'bg-brand-muted text-brand-dark' : 'text-text-secondary'}`}>{label}</button>)}</div>
-        <div className="min-w-0">
+      <div className="settings-split grid grid-cols-[240px_1fr] gap-5" data-settings-view={view}>
+        <nav aria-label="Settings sections" className="settings-master h-fit rounded-2xl border border-border bg-surface p-2">{tabs.map(([key, label]) => <button key={key} onClick={() => choose(key)} aria-current={tab === key ? 'page' : undefined} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-semibold ${tab === key ? 'bg-brand-muted text-brand-dark shadow-[inset_3px_0_0_var(--color-brand)]' : 'text-text-secondary'}`}>{label}<span aria-hidden="true" className="settings-chevron text-text-muted">›</span></button>)}</nav>
+        <div className="settings-detail min-w-0">
+          <button type="button" onClick={() => setView('list')} aria-label="Back to Settings" className="settings-back mb-3 items-center gap-1 rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-text-secondary">← Settings</button>
           {!simulation && (tab === 'team' || tab === 'roles') && <div className="mb-4"><Notice tone="info" title="Order and Claim permissions have no effect in Release 1">Roles keep their Order, payment-status and Claim capabilities for when ordering opens. Release 1 has no Orders or Claims, so those areas are not in use.</Notice></div>}
-          {tab === 'team' && <TeamSettings sellerId={sellerId} team={team} onChange={onTeamChange} onOpenRoles={() => setTab('roles')} />}
+          {tab === 'team' && <TeamSettings sellerId={sellerId} team={team} onChange={onTeamChange} onOpenRoles={() => choose('roles')} />}
           {tab === 'roles' && <RolesSettings />}
-          {tab === 'store' && <StoreSettingsSummary sellerId={sellerId} onNavigate={onNavigate} />}
+          {tab === 'store' && <StoreSettingsSummary sellerId={sellerId} at={at} onNavigate={onNavigate} />}
           {tab === 'courier-links' && <CourierLinksSettings onNavigate={onNavigate} />}
           {tab === 'subscription' && <SubscriptionSettings />}
           {tab === 'sessions' && <SessionsSettings sellerId={sellerId} />}
@@ -1786,10 +1785,21 @@ function ContentHub({ sellerId, at }: { sellerId: SellerId; at: Moment; demoTarg
 }
 
 /** SC-007: a read-only summary of the store profile and coverage; editing happens in Store setup. */
-function StoreSettingsSummary({ sellerId, onNavigate }: { sellerId: SellerId; onNavigate: (key: NavKey) => void }) {
+function StoreSettingsSummary({ sellerId, at, onNavigate }: { sellerId: SellerId; at: Moment; onNavigate: (key: NavKey) => void }) {
   const { state } = useWorkspace()
+  const { simulation } = usePrototypeMode()
   const setup = state.setup[sellerId] ?? defaultSetup(sellerId)
-  const rows: [string, string][] = [['Store name', setup.storeName || '—'], ['Handle', setup.handle || '—'], ['Market', 'Ethiopia'], ['Areas you serve', setup.coverage.join(', ') || 'None chosen'], ['Fulfilment', [setup.collection.on && 'Buyer Collection', setup.sellerDelivery.on && 'Seller Delivery', setup.courier && 'Courier Delivery'].filter(Boolean).join(', ') || 'None turned on']]
+  // FR-003: the fulfilment lines read the SAME effective methods the Buyer, the Cart and the chatbot read (src/fulfilment.ts), never literals of this screen.
+  const { methods } = sellerMethods(state, sellerId, at, simulation, null)
+  const method = (mode: string) => methods.find(m => m.mode === mode)
+  const collection = method('Buyer Collection'), delivery = method('Seller Delivery'), courier = method('Courier Delivery')
+  const rows: [string, string][] = [
+    ['Store name', setup.storeName || '—'], ['Handle', setup.handle || '—'], ['Market', 'Ethiopia'], ['Areas you serve', effectiveCoverage(state, sellerId)],
+    ['Fulfilment', methods.map(m => m.mode).join(', ') || 'None turned on'],
+    ['Buyer Collection', collection ? [collection.place || 'Place not set', collection.hours].filter(Boolean).join(' · ') : 'Not offered'],
+    ['Seller Delivery', delivery ? `${chargeText(delivery)}${delivery.coverage ? ` · ${delivery.coverage}` : ''}` : 'Not offered'],
+    ['Courier Delivery', courier ? chargeText(courier) : 'Not offered'],
+  ]
   return <DetailCard title="Store profile" trailing={<Button size="sm" onClick={() => onNavigate('setup')}>Edit in Store setup</Button>}><InfoGrid rows={rows} /><p className="mt-3 text-xs text-text-muted">Country-wide activation does not promise courier service to every address: coverage is yours to set.</p></DetailCard>
 }
 

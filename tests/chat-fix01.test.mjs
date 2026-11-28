@@ -1,6 +1,7 @@
 // CHAT-FIX-01 (IR-053..055): chips act on the response that offered them, Scene reopening validates the Product, out-of-stock Scene tags are
 // labelled, a named Variant stays with its response, and a Seller reply can name a Product and a Scene together. REAL app and engine.
 import { suite } from './harness.mjs'
+import { ctxOptions, ctxPick } from './ctx-helpers.mjs'
 import { mkdirSync } from 'node:fs'
 
 const OUT = process.env.TEST_EVIDENCE || 'tests/results/evidence/chat-fix01'
@@ -103,12 +104,12 @@ await suite('chat-fix01-reply', { width: 1440, height: 900 }, async (page, t) =>
   await t.open(); await t.section('Seller Console')
   await page.locator('.seller-console-sidebar nav button').filter({ has: page.locator('text="Inbox"') }).first().click(); await t.settle(500)
   await page.getByRole('button', { name: /Maya T\./ }).first().click(); await t.settle(400)
-  const opts = await page.getByLabel('Talking about').locator('option').allInnerTexts()
+  const { texts: opts, groups: groupList } = await ctxOptions(page)
   const combined = opts.find(o => /Test Kettle in Kettle corner Scene Post/.test(o))
   t.ck('the reply’s "Talking about" offers a Product as shown in a Scene (both, explicit)', !!combined, opts)
-  const groups = await page.getByLabel('Talking about').locator('optgroup').evaluateAll(gs => gs.map(g => [g.label, [...g.querySelectorAll('option')].map(o => o.textContent)]))
+  const groups = groupList
   t.ck('it is listed with the Scene Posts, once', groups.find(([l]) => l === 'Scene Posts')?.[1].filter(o => /Test Kettle in Kettle corner/.test(o)).length === 1 && !groups.find(([l]) => l === 'Product Posts')?.[1].some(o => / in .* Scene Post/.test(o)), groups)
-  await page.getByLabel('Talking about').selectOption({ label: combined })
+  await ctxPick(page, combined)
   await page.getByLabel('Reply', { exact: true }).fill('Both are on the shelf now.'); await page.getByRole('button', { name: 'Send Reply' }).click(); await t.settle(400)
   t.ck('the reply is sent with both named', /Both are on the shelf now\./.test(await page.locator('.seller-console-content').innerText()) && /Test Kettle in Kettle corner Scene Post/.test(await page.locator('.seller-console-content').innerText()))
   await page.screenshot({ path: `${OUT}/seller-reply-1440.png` })

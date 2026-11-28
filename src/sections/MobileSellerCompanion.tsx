@@ -7,9 +7,9 @@ import {
 } from './ShellHelpers'
 import { useStory, useStoryMoment } from '../StoryClock'
 import {
-  BUYERS, CLAIMS, CLAIM_IDS, CONTEXT_GROUPS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, GENERAL_CONTEXT, MARKET, ORDERS, ORDER_TIMELINES,
+  BUYERS, CLAIMS, CLAIM_IDS, CONVERSATIONS, CONVERSATION_IDS, COURIERS, COURIER_RELATIONSHIPS, GENERAL_CONTEXT, MARKET, ORDERS, ORDER_TIMELINES,
   STAFF, SURFACE_DEFAULTS,
-  awaitingSellerReplyAt, byMessageTime, claimStateAt, contextChoicesAt, contextGroupOf, contextKey, contextSubject, courierAvailabilityAt, courierCardAt, courierListOrder,
+  awaitingSellerReplyAt, byMessageTime, claimStateAt, contextChoicesAt, contextSubject, courierAvailabilityAt, courierCardAt, courierListOrder,
   effectiveMessagesAt, finalHandoffAt, formatAge, formatClock, formatClockShort, formatDayMonth, formatEtb, formatMonthShortYear, happenedBefore, initials,
   lineOptions, messagesAt, notificationTime, notificationsAt, orderCourierCompensation, ordersAt, orderStateAt, orderTotals, paidAt, preparationAt, readyStateFor,
   sameContext, sellerProductsAt, sellerReplyDueAt, sessionStaffOn, shortName, showcaseSellers, stateTime,
@@ -23,6 +23,7 @@ import { replyInThread } from '../chatbot/session'
 import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS } from '../demo-data/live'
 
 import { SimulationGate, usePrototypeMode } from '../prototype-mode'
+import { ContextListbox } from './console/ContextPicker'
 import { CatalogueTab } from './companion-catalogue'
 import { isLegacy } from '../marketplace/registry'
 import { CompanionOrderAlerts, CompanionOrders, useSellerActions } from '../simulation/surfaces'
@@ -802,27 +803,14 @@ function ContextSheet({ choices, selected, onSelect, onClose }: { choices: reado
     onClose()
     if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus()
   }
+  // FR-002: the same listbox as the Seller Console's selector (search once the list is long, Arrow / Home / End / Enter, check mark on the chosen one).
   return (
     <div role="dialog" aria-modal="true" aria-label="Talking about" className="absolute inset-0 z-30 flex flex-col justify-end bg-black/40" onKeyDown={event => { if (event.key === 'Escape') dismiss() }}>
       <button aria-label="Close" className="flex-1" onClick={dismiss} />
       <div className="max-h-[85%] overflow-y-auto rounded-t-3xl bg-surface px-4 pb-8 pt-3">
         <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-border-strong" />
         <div className="mb-2 font-display text-lg font-semibold">Talking about</div>
-        {CONTEXT_GROUPS.map(group => {
-          const options = choices.filter(choice => contextGroupOf(choice) === group.kind).map(choice => {
-            const current = sameContext(choice, selected)
-            return (
-              <button key={contextKey(choice)} autoFocus={current} aria-current={current ? 'true' : undefined} onClick={() => { onSelect(choice); dismiss() }} className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm ${current ? 'bg-brand-muted font-semibold text-brand-dark' : 'text-text-primary'}`}>
-                {contextSubject(choice)}
-                {current && <span className="text-xs font-semibold text-brand-text">Current</span>}
-              </button>
-            )
-          })
-          if (!options.length) return null
-          return 'label' in group
-            ? <div key={group.kind} role="group" aria-labelledby={`reply-context-${group.kind}`} className="mt-4"><div id={`reply-context-${group.kind}`} className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-text-muted">{group.label}</div>{options}</div>
-            : <div key={group.kind}>{options}</div>
-        })}
+        <ContextListbox choices={choices} selected={selected} maxHeight={360} onSelect={choice => { onSelect(choice); dismiss() }} onClose={dismiss} />
       </div>
     </div>
   )

@@ -1,5 +1,6 @@
 // BOT-006: the Buyer's conversation, the shared engine, handoff, human takeover and Seller Inbox continuity. REAL app, no mocks.
 import { suite } from './harness.mjs'
+import { ctxOptions, ctxPick } from './ctx-helpers.mjs'
 import { mkdirSync } from 'node:fs'
 
 const OUT = process.env.TEST_EVIDENCE || 'tests/results/evidence/bot006'
@@ -114,10 +115,9 @@ await suite('bot006', { width: 1440, height: 900 }, async (page, t) => {
   text = await consoleText()
   t.ck('the thread keeps the seeded history, then the Buyer\u2019s messages, the Assistant\u2019s answers and the handed-over question, each with its subject', /Is the bag big enough for a 13-inch laptop\?/.test(text) && /Talking about: Test Kettle/.test(text) && /Automated assistant/.test(text) && /Selam, price sent new\?/.test(text) && /That detail is not listed for this item/.test(text), text.slice(0, 900))
   t.ck('the assistant state and takeover controls sit in the same thread', /Waiting for you/.test(text) && await page.getByRole('button', { name: 'Take over' }).count() === 1)
-  await page.getByLabel('Talking about').selectOption({ label: 'Test Kettle Product Post' }).catch(async () => { await page.getByLabel('Talking about').selectOption({ index: 1 }) })
-  const opts = await page.getByLabel('Talking about').locator('option').allInnerTexts()
+  const opts = (await ctxOptions(page)).texts
   t.ck('a Seller reply can name an authored Product or Scene as its explicit context', opts.some(o => /Test Kettle/.test(o)) && opts.some(o => /Kettle corner|Autumn Layers/.test(o)), opts)
-  await page.getByLabel('Talking about').selectOption({ label: opts.find(o => /Test Kettle/.test(o)) })
+  await ctxPick(page, opts.find(o => /Test Kettle/.test(o)))
   await page.getByLabel('Reply', { exact: true }).fill('Hello Maya, this is the studio. The kettle is steel.')
   await page.getByRole('button', { name: 'Send Reply' }).click(); await t.settle(300)
   text = await consoleText()

@@ -2,9 +2,10 @@
 // A Seller's methods come from its CURRENT Store setup (the Seller Console) when it has one, else from the seeded record; a Product may
 // narrow them further. Nothing here invents a commercial policy: where the Seller set no delivery charge the charge is `null` ("not set"),
 // and the historical Courier compensation (a payout to a Courier, DEMO_DATA) is never shown as an MVP delivery charge.
-import { activeGeo, fulfilmentOptionsAt, formatEtb, type Geo, type Moment, type SellerId } from './demo-data'
+import { activeGeo, fulfilmentOptionsAt, formatEtb, SELLERS, type Geo, type Moment, type SellerId } from './demo-data'
 import { COVERAGE_AREAS, parseMoney, type Fulfilment, type WorkspaceState } from './seller-workspace'
 import { isLegacy } from './marketplace/registry'
+import { CATALOGUE } from './marketplace/import'
 import { deliveryTo, type Reach } from './marketplace/geography'
 
 export interface Method { mode: Fulfilment; charge: number | null; place?: string; hours?: string; coverage?: string }
@@ -100,3 +101,18 @@ export function cartFulfilment(state: WorkspaceState, seller: SellerId, products
 /** 'Buyer Collection (free) · Seller Delivery ETB 120 · Courier Delivery (fee not set)': one line for a Seller's or Product's methods. */
 export const describeMethods = (methods: readonly Method[]): string =>
   methods.length ? methods.map(m => (m.charge === null ? `${m.mode} (fee not set)` : m.charge ? `${m.mode} ${formatEtb(m.charge as never)}` : `${m.mode} (free)`)).join(' · ') : 'No fulfilment method is currently offered'
+
+/** 'Fee not set', 'Free' or 'ETB 120': a method's delivery charge as Settings states it (never a Courier's compensation). */
+export const chargeText = (m: Method): string => (m.charge === null ? 'Fee not set' : m.charge === 0 ? 'Free' : formatEtb(m.charge as never))
+
+/**
+ * FR-003: the areas a Seller serves, as the Buyer-side rules read them: the Store setup's own list once saved, else the Seller record's
+ * statement (the dataset's coverage text, or the legacy Seller Delivery coverage, or the Seller's area). Never a literal of the screen's own.
+ */
+export function effectiveCoverage(state: WorkspaceState, seller: SellerId): string {
+  const setup = state.setup[seller]
+  if (setup && !setup.blank) return setup.coverage.join(', ') || 'None chosen'
+  const record = SELLERS[seller]
+  const stated = isLegacy ? record.sellerDelivery?.coverage : CATALOGUE.sellers.find(s => s.seller_id === seller)?.coverage
+  return stated && !/^not configured$/i.test(stated.trim()) ? stated : 'Not stated'
+}

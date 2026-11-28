@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react'
-import { DEFAULT_SNAPSHOT, MARKET, PRODUCTS, SELLERS, SURFACE_DEFAULTS, buyerVisibleSellers, sellerProductsAt, type Moment, type ProductId, type Santim, type SellerId } from './demo-data'
+import { migrateTags, tagNumber, tagsFromProducts, type Tag, type TagState } from './scene-tags'
+import { DEFAULT_SNAPSHOT, MARKET, PRODUCTS, SELLERS, SHOPPABLE_POSTS, SURFACE_DEFAULTS, buyerVisibleSellers, sellerProductsAt, type Moment, type ProductId, type Santim, type SellerId } from './demo-data'
 import { setLiveOverlay, type AuthoredLive, type AuthoredProductLive, type AuthoredSceneLive, type ProductOverlay, type SellerOverlay } from './demo-data/live'
 import { findTaxonomy } from './demo-data/taxonomy'
 import { DATASET, datasetKey, isLegacy } from './marketplace/registry'
@@ -29,17 +30,26 @@ export interface WsProduct {
   options: { name: string; values: string[] }[]; variants: WsVariant[]
   price: string; stock: string; photos: string[]; fulfilment: Fulfilment[]; locallyMade: boolean; updated: number
 }
-/** `n` is the hotspot's number: assigned once and never reused, so removing or losing a tag never renumbers the others. */
-export interface WsHotspot { product: string; x: number; y: number; n?: number }
+/** FR-001: `id` is the tag's immutable identity (never reused); the number shown is its place in the composition (src/scene-tags.ts). */
+export interface WsHotspot extends Tag { x: number; y: number }
 export interface WsScene {
   id: string; seller: SellerId; status: 'draft' | 'published' | 'archived'; caption: string; image: string | null; alt: string; tags: WsHotspot[]; updated: number
-  /** Next hotspot number to hand out. */
-  nextN?: number
+  /** Next tag id number to hand out (only grows). */
+  nextTag?: number
   /** Set by Operator moderation (simulated). Only the Operator lifts it; stock changes never do. */
   restricted?: { reason: string } | null
 }
-/** The number shown on a hotspot. */
-export const hotspotNumber = (scene: Pick<WsScene, 'tags'>, index: number) => scene.tags[index].n ?? index + 1
+/** The number shown on a hotspot: its place in the Scene's composition, so deleting a tag compacts the rest and stock never moves one. */
+export const hotspotNumber = (_scene: Pick<WsScene, 'tags'>, index: number) => tagNumber(index)
+/** A Scene saved before tag ids existed (tags carried a number `n`, the counter was `nextN`) gets ids on load; an already migrated one is returned as is. */
+function migrateScene(scene: WsScene & { nextN?: number }): WsScene {
+  if (scene.nextTag !== undefined && scene.tags.every(t => typeof t.id === 'string')) return scene
+  const { nextN, ...rest } = scene
+  const migrated = migrateTags<WsHotspot>(scene.tags as never, scene.nextTag ?? nextN)
+  return { ...rest, tags: migrated.tags, nextTag: migrated.next }
+}
+/** The tag composition of a seeded (dataset) Scene: the Seller's edits once made, else the dataset's tagged Products as unpositioned tags T1..Tn. */
+export const seededSceneTags = (state: Pick<WorkspaceState, 'sceneTags'>, sceneId: string): TagState => state.sceneTags?.[sceneId] ?? tagsFromProducts(SHOPPABLE_POSTS[sceneId as keyof typeof SHOPPABLE_POSTS]?.tags ?? [])
 export interface WsStory { id: string; seller: SellerId; image: string | null; alt: string; text: string; link: { kind: 'product' | 'scene'; id: string } | null; status: 'draft' | 'published' | 'withdrawn' | 'expired'; publishedAt: number | null }
 export interface WsSetup {
   storeName: string; handle: string; about: string; contactPhone: string; ownerName: string
@@ -74,6 +84,8 @@ export function sessionOf(state: WorkspaceState, key: string): BuyerSession {
 }
 export interface WorkspaceState {
   products: Record<string, WsProduct>; scenes: Record<string, WsScene>; stories: Record<string, WsStory>
+  /** FR-001: the Seller's tag edits on a SEEDED (dataset) Scene, by Scene id; an absent id means the dataset's own tags. Tags here are unpositioned. */
+  sceneTags: Record<string, TagState>
   setup: Partial<Record<SellerId, WsSetup>>
   /** The Seller's approved chatbot answers once edited; absent means the DEMO_DATA answers. */
   knowledge: Partial<Record<SellerId, Knowledge[]>>
@@ -97,6 +109,7 @@ export interface WorkspaceState {
 type Action =
   | { type: 'product'; item: WsProduct } | { type: 'scene'; item: WsScene } | { type: 'story'; item: WsStory }
   | { type: 'remove'; collection: 'products' | 'scenes' | 'stories'; id: string }
+  | { type: 'scene-tags'; scene: string; tags: TagState }
   | { type: 'restrict'; scene: string; reason: string | null }
   | { type: 'bot'; seller: SellerId; config: BotConfig }
   | { type: 'buyer'; key: string; update: (current: BuyerSession) => Partial<BuyerSession> }
@@ -108,13 +121,14 @@ type Action =
   | { type: 'setup'; seller: SellerId; setup: WsSetup } | { type: 'knowledge'; seller: SellerId; entries: Knowledge[] } | { type: 'clock'; hours: number } | { type: 'reset' }
 
 const KEY = datasetKey('adulis.seller-workspace.v1') // legacy keeps its key; the marketplace dataset has its own session
-const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, botFeedback: [], buyerCart: null, buyerSaved: null, buyerCollections: null, buyers: {}, clockHours: 0 }
+const EMPTY: WorkspaceState = { products: {}, scenes: {}, stories: {}, sceneTags: {}, setup: {}, knowledge: {}, bot: {}, chats: {}, botFeedback: [], buyerCart: null, buyerSaved: null, buyerCollections: null, buyers: {}, clockHours: 0 }
 
 function reducer(state: WorkspaceState, action: Action): WorkspaceState {
   switch (action.type) {
     case 'product': return { ...state, products: { ...state.products, [action.item.id]: action.item } }
     case 'scene': return { ...state, scenes: { ...state.scenes, [action.item.id]: action.item } }
     case 'story': return { ...state, stories: { ...state.stories, [action.item.id]: action.item } }
+    case 'scene-tags': return { ...state, sceneTags: { ...state.sceneTags, [action.scene]: action.tags } }
     case 'remove': { const next = { ...state[action.collection] }; delete next[action.id]; return { ...state, [action.collection]: next } }
     case 'setup': return { ...state, setup: { ...state.setup, [action.seller]: action.setup } }
     case 'buyer': { const current = sessionOf(state, action.key); return { ...state, buyers: { ...state.buyers, [action.key]: { ...current, ...action.update(current) } } } }
@@ -154,7 +168,12 @@ function moveClock(state: WorkspaceState, delta: number): WorkspaceState {
   return { ...state, clockHours, stories }
 }
 
-const load = (): WorkspaceState => { try { return { ...EMPTY, ...JSON.parse(sessionStorage.getItem(KEY) ?? 'null') } } catch { return EMPTY } }
+const load = (): WorkspaceState => {
+  try {
+    const saved = { ...EMPTY, ...JSON.parse(sessionStorage.getItem(KEY) ?? 'null') } as WorkspaceState
+    return { ...saved, scenes: Object.fromEntries(Object.entries(saved.scenes).map(([id, scene]) => [id, migrateScene(scene)])) } // FR-001: old Scenes get tag ids
+  } catch { return EMPTY }
+}
 
 const Ctx = createContext<{ state: WorkspaceState; dispatch: Dispatch<Action>; next: (kind: 'product' | 'scene' | 'story') => string }>({ state: EMPTY, dispatch: () => {}, next: () => '' })
 
@@ -215,14 +234,16 @@ export function effectiveOverlay(state: WorkspaceState): { products: Record<stri
   const authoredScenes: Record<string, AuthoredSceneLive> = {}
   for (const scene of Object.values(state.scenes)) {
     if (scene.status !== 'published' || sceneVisibility(scene, state, DEFAULT_SNAPSHOT) !== 'public') continue
-    const spots = scene.tags.map((t, i) => ({ product: t.product, x: t.x, y: t.y, n: t.n ?? i + 1 })).filter(t => t.product in PRODUCTS || t.product in authoredProducts).sort((a, b) => a.n - b.n)
+    // The number is the tag's place in the composition, taken before any filtering, so it matches the Seller's editor exactly.
+    const spots = scene.tags.map((t, i) => ({ product: t.product, x: t.x, y: t.y, n: tagNumber(i) })).filter(t => t.product in PRODUCTS || t.product in authoredProducts)
     const ids = spots.map(t => t.product).filter((id, i, all) => all.indexOf(id) === i)
     authoredScenes[scene.id] = {
       record: { seller: scene.seller, title: scene.caption.trim() || 'Scene', tags: ids as ProductId[], hotspots: spots.length, publication: 'Published', caption: scene.caption },
       image: scene.image, alt: scene.alt, spots, revision: scene.updated,
     }
   }
-  return { products, sellers, authored: { products: authoredProducts, scenes: authoredScenes } }
+  const sceneTags = Object.fromEntries(Object.entries(state.sceneTags).map(([id, s]) => [id, s.tags.map(t => t.product)]))
+  return { products, sellers, authored: { products: authoredProducts, scenes: authoredScenes, sceneTags } }
 }
 
 /** The exact Variants a Seller listed (labels are "S / Black" in option order); null when the Product has no options or no listed rows. */
@@ -381,7 +402,9 @@ export function defaultSetup(seller: SellerId): WsSetup {
   const s = SELLERS[seller]
   // Marketplace dataset: the cities the Seller's source coverage states plainly ("by arrangement" is not coverage); otherwise its own area.
   const cities = isLegacy ? [] : (s.sellerDelivery?.coverage ?? '').split(/[;,]/).map(c => c.trim()).filter(c => (COVERAGE_AREAS as readonly string[]).includes(c))
-  return { storeName: s.name, handle: s.handle, about: '', contactPhone: '', ownerName: '', coverage: cities.length ? cities : s.area ? [s.area] : [], collection: { on: true, place: s.area ?? '' }, sellerDelivery: { on: false, fee: '' }, courier: false, blank: false }
+  return { storeName: s.name, handle: s.handle, about: '', contactPhone: '', ownerName: '', coverage: cities.length ? cities : s.area ? [s.area] : [],
+    // FR-003: the marketplace form starts from the Seller's EFFECTIVE methods (what the Buyer is offered), not from literals. The legacy default is unchanged.
+    collection: { on: isLegacy || !!s.buyerCollection, place: s.buyerCollection?.place ?? s.area ?? '' }, sellerDelivery: { on: !isLegacy && !!s.sellerDelivery, fee: '' }, courier: false, blank: false }
 }
 export const blankSetup = (): WsSetup => ({ storeName: '', handle: '', about: '', contactPhone: '', ownerName: '', coverage: [], collection: { on: false, place: '' }, sellerDelivery: { on: false, fee: '' }, courier: false, blank: true })
 export interface ReadinessItem { key: 'profile' | 'seller' | 'coverage' | 'fulfilment' | 'catalogue'; title: string; done: boolean; problems: string[]; action: string }

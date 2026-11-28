@@ -1,6 +1,6 @@
 // The engine's view of the shared EFFECTIVE data (BOT-003, FIX-001): seeded DEMO_DATA with the Seller's overrides applied, authored Products
 // and Scenes, the Seller's Store setup and the chatbot configuration. Nothing is copied or re-entered; every call reads current state.
-import { LIVE_PRODUCTS, LIVE_SELLERS, liveProductDetails } from '../demo-data/live'
+import { LIVE_POSTS, LIVE_PRODUCTS, LIVE_SELLERS, liveProductDetails } from '../demo-data/live'
 import {
   CHATBOTS, DEFAULT_SNAPSHOT, MARKET, PRODUCTS, SHOPPABLE_POSTS, buyerVisibleProductsAt, currentPrice, isBuyerVisiblePostAt,
   sellerPostsAt, type Moment, type ProductId, type SellerId, type ShoppablePostId,
@@ -78,14 +78,14 @@ export function publicScenes(state: WorkspaceState, at: Moment, sellerId: string
   if (isSeededSeller(sellerId)) {
     for (const id of sellerPostsAt(sellerId, at)) {
       if (!isBuyerVisiblePostAt(id, at)) continue
-      const post = SHOPPABLE_POSTS[id as ShoppablePostId]
+      const post = LIVE_POSTS[id as ShoppablePostId]
       out.push({ id, revision: 1, viewable: true, summary: config.scenes[id] ?? '', products: dedupe([...post.tags]).filter(viewable).map(t => ({ id: t, name: LIVE_PRODUCTS[t as ProductId].name, available: LIVE_PRODUCTS[t as ProductId].stock > 0 })) })
     }
   }
   for (const scene of Object.values(state.scenes)) {
     if (scene.seller !== sellerId) continue
     if (sceneVisibility(scene, state, at) !== 'public') continue
-    const ordered = scene.tags.map((t, i) => ({ id: t.product, n: t.n ?? i + 1 })).sort((a, b) => a.n - b.n).map(t => t.id)
+    const ordered = scene.tags.map(t => t.product) // composition order (FR-001)
     out.push({ id: scene.id, revision: scene.updated, viewable: true, summary: config.scenes[scene.id] ?? '', products: dedupe(ordered).filter(viewable).map(id => { const f = productFacts(state, null, at, sellerId, id)!; return { id, name: f.name, available: f.stock > 0 } }) })
   }
   return out

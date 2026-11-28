@@ -31,7 +31,8 @@ export interface AuthoredProductLive {
   details: readonly { label: string; value: string }[]
 }
 export interface AuthoredSceneLive { record: ShoppablePostRecord; image: string | null; alt: string; spots: readonly { product: string; x: number; y: number; n: number }[]; revision: number }
-export interface AuthoredLive { products: Readonly<Record<string, AuthoredProductLive>>; scenes: Readonly<Record<string, AuthoredSceneLive>> }
+/** `sceneTags`: FR-001, the Seller's edited tag list (Product ids, in composition order) on a SEEDED Scene; it replaces the seeded `tags` everywhere the Scene is read. */
+export interface AuthoredLive { products: Readonly<Record<string, AuthoredProductLive>>; scenes: Readonly<Record<string, AuthoredSceneLive>>; sceneTags?: Readonly<Record<string, readonly string[]>> }
 const NONE: AuthoredLive = { products: {}, scenes: {} }
 let authored: AuthoredLive = NONE
 /** Live id lists: seeded ids, then authored ones. Mutated in place so existing readers of the exported arrays always see current ids. */
@@ -51,7 +52,7 @@ const sellerCache = new Map<string, SellerRecord>()
 /** Called by the workspace provider whenever its state changes. */
 export function setLiveOverlay(p: Readonly<Record<string, ProductOverlay>>, s: Readonly<Record<string, SellerOverlay>>, a: AuthoredLive = NONE) {
   if (p === products && s === sellers && a === authored) return
-  products = p; sellers = s; authored = a; productCache.clear(); sellerCache.clear()
+  products = p; sellers = s; authored = a; productCache.clear(); sellerCache.clear(); postCache.clear()
   LIVE_PRODUCT_IDS.length = 0; LIVE_PRODUCT_IDS.push(...PRODUCT_IDS, ...(Object.keys(a.products) as ProductId[]))
   LIVE_POST_IDS.length = 0; LIVE_POST_IDS.push(...SHOPPABLE_POST_IDS, ...(Object.keys(a.scenes) as ShoppablePostId[]))
 }
@@ -98,7 +99,17 @@ const proxy = <K extends string, V extends object>(seed: Readonly<Record<K, V>>,
   }) as Readonly<Record<K, V>>
 
 export const LIVE_PRODUCTS = proxy<ProductId, ProductRecord>(PRODUCTS, liveProduct, id => id in authored.products)
-export const LIVE_POSTS = proxy<ShoppablePostId, ShoppablePostRecord>(SHOPPABLE_POSTS, id => authored.scenes[id]?.record ?? SHOPPABLE_POSTS[id], id => id in authored.scenes)
+const postCache = new Map<string, ShoppablePostRecord>()
+function livePost(id: ShoppablePostId): ShoppablePostRecord {
+  const own = authored.scenes[id]
+  if (own) return own.record
+  const edited = authored.sceneTags?.[id]
+  if (!edited) return SHOPPABLE_POSTS[id]
+  let rec = postCache.get(id)
+  if (!rec) { rec = { ...SHOPPABLE_POSTS[id], tags: edited as ProductId[] }; postCache.set(id, rec) }
+  return rec
+}
+export const LIVE_POSTS = proxy<ShoppablePostId, ShoppablePostRecord>(SHOPPABLE_POSTS, livePost, id => id in authored.scenes)
 export const LIVE_SELLERS = proxy<SellerId, SellerRecord>(SELLERS, liveSeller)
 /** The first photo the Seller added to a seeded Product, if any. */
 export const livePhoto = (id: ProductId) => authored.products[id]?.photos[0] ?? products[id]?.photos[0]

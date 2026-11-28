@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
 import { run, EVIDENCE } from './legacy.mjs'
+import { ctxOptions } from './ctx-helpers.mjs'
 const require = createRequire(import.meta.url)
 const path = require('path');
 const OUT = path.join(EVIDENCE, '.');
@@ -10,7 +11,7 @@ run({ width: 1440, height: 900 }, async (page, h) => {
   let t = await c();
   h.ck('MVP inbox: no Order context anywhere', !/Order ADU|Courier assigned|Please check your Order/.test(t), t.slice(0, 500));
   h.ck('MVP inbox: a conversation is selected with Product/Scene messages', /Linen Overshirt|Autumn Layers|13-inch/i.test(t));
-  const opts = await page.getByLabel('Talking about').locator('option').allInnerTexts();
+  const opts = (await ctxOptions(page)).texts;
   h.ck('MVP inbox: context choices exclude Orders', !opts.some(o => /ADU-/.test(o)) && opts.some(o => /General/i.test(o)), opts);
   h.ck('MVP inbox: neutral quick replies', await page.getByRole('button', { name: 'Thank you for your message' }).count() === 1);
   await page.getByRole('button', { name: 'Thank you for your message' }).click();
@@ -20,5 +21,5 @@ run({ width: 1440, height: 900 }, async (page, h) => {
   // simulation still shows Orders
   await page.getByRole('button', { name: /Internal simulation/ }).click(); await h.settle(400);
   t = await c();
-  h.ck('simulation inbox still shows Order context', /Order ADU-24091/.test(t) || (await page.getByLabel('Talking about').locator('option').allInnerTexts()).some(o => /ADU-/.test(o)));
+  h.ck('simulation inbox still shows Order context', /Order ADU-24091/.test(t) || (await ctxOptions(page)).texts.some(o => /ADU-/.test(o)));
 });

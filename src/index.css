@@ -568,6 +568,7 @@ textarea {
 }
 
 /* Phone-only console controls (WO-007): hidden until the phone block below shows them. */
+.settings-back,
 .console-menu-button,
 .console-drawer-close,
 .console-drawer-backdrop,
@@ -1346,4 +1347,33 @@ textarea {
    the bottom navigation (BUYER-010, at every width). */
 .app-main[data-simulation] .phone-stage {
   padding-bottom: 56px !important;
+}
+
+/* Seller Console Settings (FR-003): up to 900 px the master list and the chosen setting are two screens. Choosing a setting reveals it with a Back
+   control, and the list returns on Back; above 900 px both columns show and the chosen setting is highlighted in the list. */
+@media (max-width: 900px) {
+  .settings-split {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .settings-split[data-settings-view="list"] .settings-detail,
+  .settings-split[data-settings-view="detail"] .settings-master {
+    display: none;
+  }
+
+  .settings-split .settings-back {
+    display: inline-flex;
+    min-height: 44px;
+  }
+
+  .settings-split .settings-master > button {
+    min-height: 48px;
+    font-size: 0.875rem;
+  }
+}
+
+@media (min-width: 901px) {
+  .settings-chevron {
+    display: none;
+  }
 }

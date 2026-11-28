@@ -9,13 +9,13 @@ import { useSim } from '../simulation/store'
 import { REPUTATION } from '../demo-data/reputation'
 import { priceLabel, taxonomyOf } from './buyer-authored'
 import {
-  BUYERS, MARKET, ORDERS, REVIEWS, SHOPPABLE_POSTS, SURFACE_DEFAULTS,
+  BUYERS, MARKET, ORDERS, REVIEWS, SURFACE_DEFAULTS,
   activeDiscount, currentPrice, describeFulfilment, formatClockShort, formatCompactCount, formatDate, formatEtb, formatMonthShortYear, formatMonthYear,
   fulfilmentOptionsAt, initials, isBuyerVisiblePostAt, onAdulisSince, productQualityAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt,
   sellerProductsAt, sellerServiceAt, shortName, buyerVisibleSellers, trustAt, trustLabel,
   type Availability, type ProductId, type SellerId, type ShoppablePostId,
 } from '../demo-data'
-import { LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, isUnpublishedSeeded } from '../demo-data/live'
+import { LIVE_POSTS as SHOPPABLE_POSTS, LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, isUnpublishedSeeded } from '../demo-data/live'
 
 /* ─────────────────────────────────────
    DATA — read from the canonical demo data (src/demo-data) at the story moment

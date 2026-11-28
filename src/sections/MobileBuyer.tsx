@@ -2417,6 +2417,8 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
   const markers = media ? media.spots.filter(sp => post.tags.includes(sp.product as ProductId)).map(sp => ({ product: sp.product as ProductId, n: sp.n, style: { left: `${sp.x}%`, top: `${sp.y}%`, transform: 'translate(-50%, -50%)' } as const }))
     : post.tags.slice(0, post.hotspots).map((product, i) => ({ product, n: i + 1, style: EXPANDED_SPOTS[i] as CSSProperties }))
   const current = selected && post.tags.includes(selected) ? selected : null
+  // FR-001: a Product's number is its place in the Scene's composition. A positioned Scene shows it on the hotspot; an unpositioned dataset Scene (no coordinates, none invented) shows it in the list only.
+  const shown = (id: ProductId, i: number) => markers.find(m => m.product === id)?.n ?? (post.positioned === false ? i + 1 : undefined)
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-surface">
       {/* One row: on a phone every button here is 44 px, so the Seller is an avatar button beside the title, not a line. */}
@@ -2471,7 +2473,7 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
                     >
                       <span className="relative flex-shrink-0">
                         <Placeholder label={PRODUCTS[id].name} photo={livePhoto(id)} className="h-10 w-10 rounded-lg text-[10px]" />
-                        {markers.some(m => m.product === id) && <span aria-hidden="true" className="absolute -left-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-on-brand">{markers.find(m => m.product === id)!.n}</span>}
+                        {shown(id, i) !== undefined && <span aria-hidden="true" data-scene-number={shown(id, i)} className="absolute -left-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-on-brand">{shown(id, i)}</span>}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold text-text-primary">{PRODUCTS[id].name}</span>
