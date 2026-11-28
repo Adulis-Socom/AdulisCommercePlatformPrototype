@@ -9,12 +9,15 @@ import { getSelectedSeller, setSelectedSeller } from '../selected-seller'
 import { useSim } from '../simulation/store'
 import { REPUTATION } from '../demo-data/reputation'
 import { priceLabel, taxonomyOf } from './buyer-authored'
+import { SceneExplorer } from './MobileBuyer'
+import { InstallPrompt, PublicSearch, PublicShareSheet, SellersView, UnavailableView } from './storefront-public'
+import { installMessage, publicUrl, type PublicLink } from '../public-web'
 import {
   BUYERS, MARKET, ORDERS, REVIEWS, SURFACE_DEFAULTS,
   activeDiscount, currentPrice, describeFulfilment, formatClockShort, formatCompactCount, formatDate, formatEtb, formatMonthShortYear, formatMonthYear,
   fulfilmentOptionsAt, initials, isBuyerVisiblePostAt, onAdulisSince, productQualityAt, reviewsAt, sellerCompletedOrdersAt, sellerPostsAt,
   sellerProductsAt, sellerServiceAt, shortName, buyerVisibleSellers, trustAt, trustLabel,
-  type Availability, type ProductId, type SellerId, type ShoppablePostId,
+  type Availability, type Moment, type ProductId, type SellerId, type ShoppablePostId,
 } from '../demo-data'
 import { LIVE_POSTS as SHOPPABLE_POSTS, LIVE_PRODUCTS as PRODUCTS, LIVE_SELLERS as SELLERS, isUnpublishedSeeded } from '../demo-data/live'
 
@@ -62,6 +65,8 @@ interface ShoppablePost {
   taggedProducts: ProductId[]
   hasHotspot: boolean
   zeroProduct: boolean
+  /** No photograph yet (the marketplace dataset has none): the tile says so. */
+  pending: boolean
 }
 
 interface Review {
@@ -106,12 +111,12 @@ function useStorefront() {
   const live = new Set(linkableProducts(workspace, sellerId, at).map(p => p.id))
   const authoredPosts: ShoppablePost[] = Object.values(workspace.scenes).filter(scene => scene.seller === sellerId && sceneVisibility(scene, workspace, at) === 'public').sort((a, b) => b.updated - a.updated).map((scene, index) => ({
     id: scene.id as ShoppablePostId, imgBg: cover(scene.image ?? undefined, POST_BACKGROUNDS[index % POST_BACKGROUNDS.length]), title: scene.caption, caption: scene.caption,
-    taggedProducts: scene.tags.map(tag => tag.product as ProductId).filter(id => live.has(id)), hasHotspot: scene.tags.length > 0, zeroProduct: false,
+    taggedProducts: scene.tags.map(tag => tag.product as ProductId).filter(id => live.has(id)), hasHotspot: scene.tags.length > 0, zeroProduct: false, pending: !scene.image,
   }))
   // Its public Scenes: a Scene whose tagged Products are all unavailable is Private and not shown (isBuyerVisiblePostAt).
   const seededPosts: ShoppablePost[] = sellerPostsAt(sellerId, at).filter(id => isBuyerVisiblePostAt(id, at)).map((id, index) => {
     const post = SHOPPABLE_POSTS[id]
-    return { id, imgBg: POST_BACKGROUNDS[index % POST_BACKGROUNDS.length], title: post.title, caption: post.caption, taggedProducts: [...post.tags], hasHotspot: post.hotspots > 0, zeroProduct: post.tags.length === 0 }
+    return { id, imgBg: POST_BACKGROUNDS[index % POST_BACKGROUNDS.length], title: post.title, caption: post.caption, taggedProducts: [...post.tags], hasHotspot: post.hotspots > 0, zeroProduct: post.tags.length === 0, pending: !isLegacy && post.positioned === false }
   })
   const posts: ShoppablePost[] = [...authoredPosts, ...seededPosts]
   // SIM-003: on the marketplace dataset the Seller's reviews are the simulation's visible ones (none in the current MVP, where the feed is not published).
@@ -157,14 +162,24 @@ const TABS: { key: TabKey; label: string }[] = [
 type EntryMode = 'bio-link' | 'product-link' | 'shoppable-link'
 type Screen =
   | { type: 'storefront'; tab: TabKey }
-  | { type: 'product-detail'; productId: ProductId }
-  | { type: 'post-detail'; postId: ShoppablePostId }
+  /** `from`: the Scene a Product was opened from, so Back returns to it. */
+  | { type: 'product-detail'; productId: ProductId; from?: ShoppablePostId }
+  /** `product`: the Product selected in the Scene (Explore the Scene). */
+  | { type: 'post-detail'; postId: ShoppablePostId; product?: ProductId | null }
   | { type: 'search' }
+  | { type: 'sellers' }
+  | { type: 'unavailable' }
+/** Where a Seller's Storefront opens: a shared link's Scene and Product, or a link that names nothing public. */
+type Landing = { scene?: string; product?: string; bad?: boolean }
 
 /* ─────────────────────────────────────
    MAIN COMPONENT
 ───────────────────────────────────── */
-export default function SellerStorefront({ demoTarget }: { demoTarget?: string }) {
+/** The Seller a record belongs to, when it exists at all (its being public is decided separately). */
+const own = (record: object, id: string) => Object.prototype.hasOwnProperty.call(record, id)
+const ownerOf = (link: PublicLink): string | undefined => (link.scene && own(SHOPPABLE_POSTS, link.scene) ? SHOPPABLE_POSTS[link.scene as ShoppablePostId].seller : link.product && own(PRODUCTS, link.product) ? PRODUCTS[link.product as ProductId].seller : undefined)
+
+export default function SellerStorefront({ demoTarget, link, onHome }: { demoTarget?: string; link?: PublicLink; onHome?: () => void }) {
   // The prototype toolbar chooses the social entry and the public Storefront shown: the step's Seller first (the
   // default Seller otherwise), then any primary showcase Seller. The phone reads the chosen Seller from the story.
   const story = useStory()
@@ -174,10 +189,22 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
   const [entryCount, setEntryCount] = useState(0)
   // COMP-003: the Seller chosen on another surface, when it has a public Storefront (a draft or suspended store has none) and no guided step names one.
   const picked = getSelectedSeller() as SellerId | undefined
-  const [sellerId, setSellerId] = useState<SellerId>(story.seller ?? (picked && buyerVisibleSellers().includes(picked) ? picked : SURFACE_DEFAULTS.seller))
-  const chooseSeller = (id: SellerId) => { setSelectedSeller(id); setSellerId(id) }
+  // WEB-002: a shared public link. Its Seller must be a public one (Active); Scene and Product are checked against that Storefront's own public lists, so a crafted link
+  // reaches nothing hidden (Draft or Suspended Seller, Draft Product, Private or Archived Scene) and says only "not available".
+  const [entry] = useState(() => {
+    if (!link || link.surface !== 'storefront') return undefined
+    const named = link.seller ?? ownerOf(link)
+    const bad = !!link.bad || (!!(link.seller || link.scene || link.product) && !(named && buyerVisibleSellers().includes(named as SellerId)))
+    return { seller: bad ? undefined : (named as SellerId | undefined), landing: { scene: link.scene, product: link.product, bad } satisfies Landing }
+  })
+  const [landing, setLanding] = useState<Landing | undefined>(entry?.landing)
+  const [sellerId, setSellerId] = useState<SellerId>(story.seller ?? entry?.seller ?? (picked && buyerVisibleSellers().includes(picked) ? picked : SURFACE_DEFAULTS.seller))
+  const chooseSeller = (id: SellerId) => { setSelectedSeller(id); setSellerId(id); setLanding(undefined) }
+  // From a Search result or the Sellers directory: another public Storefront, opened on that Scene or Product.
+  const openSeller = (id: SellerId, to?: Landing) => { chooseSeller(id); setLanding(to); setEntryMode('bio-link'); setEntryCount(count => count + 1) }
   const handleEntryChange = (mode: EntryMode) => {
     setEntryMode(mode)
+    setLanding(undefined)
     setEntryCount(count => count + 1)
   }
   const pillStyle = (active: boolean) => ({
@@ -210,7 +237,7 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
       </div>
       <div className="storefront-toolbar" style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.08em' }}>PROTOTYPE · STOREFRONT SELLER</span>
-        <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
+        <div className="storefront-seller-pills" style={{ display: 'flex', gap: 6, marginLeft: 8, flexWrap: 'wrap', minWidth: 0 }}>
           {buyerVisibleSellers().map(id => (
             <button key={id} onClick={() => chooseSeller(id)} aria-pressed={sellerId === id} style={pillStyle(sellerId === id)}>
               {SELLERS[id].name}
@@ -221,7 +248,7 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
 
       {/* Keyed by Seller and entry: the phone opens the chosen Storefront from the chosen entry's first screen. */}
       <StoryProvider stage={{ ...story, seller: sellerId }}>
-        <StorefrontStage key={`${sellerId}:${entryMode}:${entryCount}`} entryMode={entryMode} />
+        <StorefrontStage key={`${sellerId}:${entryMode}:${entryCount}`} entryMode={entryMode} landing={landing} onOpenSeller={openSeller} onHome={onHome} />
       </StoryProvider>
     </div>
   )
@@ -230,25 +257,41 @@ export default function SellerStorefront({ demoTarget }: { demoTarget?: string }
 /* ─────────────────────────────────────
    STOREFRONT STAGE — the 390px phone, for the chosen Seller
 ───────────────────────────────────── */
-function StorefrontStage({ entryMode }: { entryMode: EntryMode }) {
-  const { story, seller, products, posts } = useStorefront()
+function StorefrontStage({ entryMode, landing, onOpenSeller, onHome }: { entryMode: EntryMode; landing?: Landing; onOpenSeller: (id: SellerId, to?: Landing) => void; onHome?: () => void }) {
+  const { story, seller, sellerId, products, posts } = useStorefront()
   // The step's Product and post when they belong to this Seller's Storefront (the surface defaults otherwise),
   // else the Seller's first Product and first published post.
   const linkedProduct = [story.focus?.product, SURFACE_DEFAULTS.product].find(id => products.some(p => p.id === id)) ?? products[0]?.id
   const linkedPost = [story.focus?.post, SURFACE_DEFAULTS.post].find(id => posts.some(p => p.id === id)) ?? posts[0]?.id
-  const initialScreen: Screen = entryMode === 'product-link' && linkedProduct ? { type: 'product-detail', productId: linkedProduct } : entryMode === 'shoppable-link' && linkedPost ? { type: 'post-detail', postId: linkedPost } : { type: 'storefront', tab: 'scenes' }
+  // A shared link's Scene and Product, checked against what this Storefront shows publicly: anything else is "not available".
+  const fromLanding = (to: Landing): Screen => {
+    const unavailable: Screen = { type: 'unavailable' }
+    if (to.bad) return unavailable
+    const post = to.scene ? posts.find(p => p.id === to.scene) : undefined
+    const product = to.product ? products.find(p => p.id === to.product) : undefined
+    if ((to.scene && !post) || (to.product && !product)) return unavailable
+    if (post) return product && !post.taggedProducts.includes(product.id) ? unavailable : { type: 'post-detail', postId: post.id, product: product?.id ?? null }
+    if (product) return { type: 'product-detail', productId: product.id }
+    return { type: 'storefront', tab: 'scenes' }
+  }
+  const initialScreen: Screen = landing ? fromLanding(landing) : entryMode === 'product-link' && linkedProduct ? { type: 'product-detail', productId: linkedProduct } : entryMode === 'shoppable-link' && linkedPost ? { type: 'post-detail', postId: linkedPost } : { type: 'storefront', tab: 'scenes' }
   const [screen, setScreen] = useState<Screen>(initialScreen)
-  // The Open in Adulis sheet, with its line for what's being opened; null while it's closed.
-  const [openInAdulisNote, setOpenInAdulisNote] = useState<string | null>(null)
-  const openInAdulis = (note = 'Browse Scenes and Products and message the Seller in the app. Ordering is not available yet.') => setOpenInAdulisNote(note)
+  // WEB-002: the Install prompt's headline (null while closed) and the share sheet. Neither touches any account or Buyer state.
+  const [prompt, setPrompt] = useState<string | null>(null)
+  const [sharing, setSharing] = useState(false)
+  const openInAdulis = (note = 'Open this in the Adulis app') => setPrompt(note)
+  const shareLink = { surface: 'storefront' as const, seller: sellerId, ...(screen.type === 'post-detail' ? { scene: screen.postId, ...(screen.product ? { product: screen.product } : {}) } : screen.type === 'product-detail' ? { product: screen.productId } : {}) }
+  const shareTitle = screen.type === 'post-detail' ? (posts.find(p => p.id === screen.postId)?.title ?? seller.name) : screen.type === 'product-detail' ? (products.find(p => p.id === screen.productId)?.name ?? seller.name) : seller.name
 
   const navigate = (s: Screen) => setScreen(s)
+  const toStorefront = (tab: TabKey = 'scenes') => setScreen({ type: 'storefront', tab })
   const goBack = () => {
-    const cur = screen.type
-    if (cur === 'product-detail' || cur === 'post-detail' || cur === 'search') {
-      setScreen({ type: 'storefront', tab: cur === 'post-detail' ? 'scenes' : 'products' })
-    }
+    if (screen.type === 'product-detail') setScreen(screen.from ? { type: 'post-detail', postId: screen.from, product: screen.productId } : { type: 'storefront', tab: 'products' })
+    else if (screen.type !== 'storefront') toStorefront(screen.type === 'post-detail' ? 'scenes' : screen.type === 'search' || screen.type === 'sellers' ? 'scenes' : 'products')
   }
+  // The same Storefront's own record opens in place; another Seller's opens that Storefront on it.
+  const product = screen.type === 'product-detail' ? products.find(p => p.id === screen.productId) : undefined
+  const post = screen.type === 'post-detail' ? posts.find(p => p.id === screen.postId) : undefined
 
   return (
     <>
@@ -270,32 +313,59 @@ function StorefrontStage({ entryMode }: { entryMode: EntryMode }) {
                   setTab={t => setScreen({ type: 'storefront', tab: t })}
                   navigate={navigate}
                   onOpenAdulisApp={openInAdulis}
+                  onHome={onHome}
+                  onSellers={() => setScreen({ type: 'sellers' })}
+                  onShare={() => setSharing(true)}
                 />
               )}
-              {screen.type === 'product-detail' && (
+              {screen.type === 'product-detail' && product && (
                 <ProductDetailView
-                  product={products.find(p => p.id === screen.productId) ?? products[0]}
+                  product={product}
                   onBack={goBack}
-                  onOpenAdulisApp={() => openInAdulis()}
+                  onOpenAdulisApp={openInAdulis}
+                  onSeller={() => toStorefront()}
+                  onShare={() => setSharing(true)}
                 />
               )}
-              {screen.type === 'post-detail' && (
-                <PostDetailView
-                  post={posts.find(p => p.id === screen.postId) ?? posts[0]}
-                  onBack={goBack}
-                  navigate={navigate}
-                  onOpenAdulisApp={() => openInAdulis()}
-                />
+              {screen.type === 'post-detail' && post && (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  {/* WEB-003: Explore the Scene is the Buyer's own explorer, read-only here (no Reviews, no More): same numbers, availability and selection. */}
+                  <SceneExplorer
+                    postId={post.id}
+                    at={story.moment}
+                    selected={screen.product ?? null}
+                    linkSeller
+                    onSelect={id => setScreen({ type: 'post-detail', postId: post.id, product: id })}
+                    onBack={goBack}
+                    onSeller={() => toStorefront()}
+                    onShare={() => setSharing(true)}
+                    onView={id => setScreen({ type: 'product-detail', productId: id, from: post.id })}
+                  />
+                  <div data-scene-actions style={{ display: 'flex', gap: 8, padding: '8px 12px 10px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface)', flexShrink: 0 }}>
+                    {([['like', 'Like', 'this Scene'], ['save', 'Save', 'this Scene'], ['chat', 'Chat', seller.name]] as const).map(([action, label, what]) => (
+                      <button key={action} onClick={() => openInAdulis(installMessage(action, what))} aria-label={action === 'chat' ? `Chat with ${seller.name}` : `${label} this Scene`} style={{ flex: 1, padding: '9px 0', borderRadius: 999, border: '1px solid var(--color-border)', background: 'var(--color-surface-raised)', color: 'var(--color-text-primary)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{label}</button>
+                    ))}
+                  </div>
+                </div>
               )}
               {screen.type === 'search' && (
-                <SearchView onBack={goBack} navigate={navigate} />
+                <PublicSearch
+                  at={story.moment}
+                  onBack={goBack}
+                  onProduct={(owner, id) => (owner === sellerId ? setScreen({ type: 'product-detail', productId: id }) : onOpenSeller(owner, { product: id }))}
+                  onScene={(owner, id) => (owner === sellerId ? setScreen({ type: 'post-detail', postId: id, product: null }) : onOpenSeller(owner, { scene: id }))}
+                  onSeller={id => (id === sellerId ? toStorefront() : onOpenSeller(id))}
+                />
+              )}
+              {screen.type === 'sellers' && <SellersView current={sellerId} onBack={goBack} onOpen={id => (id === sellerId ? toStorefront() : onOpenSeller(id))} />}
+              {(screen.type === 'unavailable' || (screen.type === 'product-detail' && !product) || (screen.type === 'post-detail' && !post)) && (
+                <UnavailableView onHome={() => (onHome ? onHome() : toStorefront())} onSellers={() => setScreen({ type: 'sellers' })} />
               )}
             </div>
 
-            {/* Open in Adulis overlay */}
-            {openInAdulisNote !== null && (
-              <OpenInAdulisSheet note={openInAdulisNote} onClose={() => setOpenInAdulisNote(null)} />
-            )}
+            {/* The Install prompt and the share sheet, over the phone. */}
+            {prompt !== null && <InstallPrompt message={prompt} onClose={() => setPrompt(null)} />}
+            {sharing && <PublicShareSheet title={shareTitle} url={publicUrl(shareLink, location)} onClose={() => setSharing(false)} />}
           </div>
         </div>
       </div>
@@ -322,16 +392,19 @@ function StatusBar({ clock }: { clock: string }) {
 /* ─────────────────────────────────────
    STOREFRONT VIEW
 ───────────────────────────────────── */
-function StorefrontView({ tab, setTab, navigate, onOpenAdulisApp }: {
+function StorefrontView({ tab, setTab, navigate, onOpenAdulisApp, onHome, onSellers, onShare }: {
   tab: TabKey
   setTab: (t: TabKey) => void
   navigate: (s: Screen) => void
   onOpenAdulisApp: (note?: string) => void
+  onHome?: () => void
+  onSellers: () => void
+  onShare: () => void
 }) {
   const { seller } = useStorefront()
   return (
     <>
-      <StorefrontHeader onSearch={() => navigate({ type: 'search' })} onOpenAdulisApp={onOpenAdulisApp} />
+      <StorefrontHeader onSearch={() => navigate({ type: 'search' })} onOpenAdulisApp={onOpenAdulisApp} onHome={onHome} onSellers={onSellers} onShare={onShare} />
       <div role="tablist" aria-label={`${seller.name} Storefront`} style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)', flexShrink: 0 }}>
         {TABS.map(t => (
           <button
@@ -360,11 +433,18 @@ function StorefrontView({ tab, setTab, navigate, onOpenAdulisApp }: {
   )
 }
 
-function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void; onOpenAdulisApp: (note?: string) => void }) {
-  const [shareShown, setShareShown] = useState(false)
+function StorefrontHeader({ onSearch, onOpenAdulisApp, onHome, onSellers, onShare }: { onSearch: () => void; onOpenAdulisApp: (note?: string) => void; onHome?: () => void; onSellers: () => void; onShare: () => void }) {
   const { seller, trust, products, posts, service } = useStorefront()
   return (
     <div style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)', padding: '14px 18px 12px', flexShrink: 0 }}>
+      {/* WEB-002: the Adulis logo opens the public Adulis Home (a link on the real web; here the shell's section switch). Nothing private goes with it. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <button onClick={onHome} disabled={!onHome} aria-label="Adulis Home" data-adulis-home style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', padding: 0, cursor: onHome ? 'pointer' : 'default', color: 'var(--color-text-primary)' }}>
+          <AdulisLogo size={22} />
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14 }}>Adulis</span>
+        </button>
+        <button onClick={onSellers} data-open-sellers style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-brand-text)', fontSize: 12, fontWeight: 700 }}>Sellers</button>
+      </div>
       {/* top row: identity + actions */}
       <div className="storefront-identity-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
         <div className="storefront-identity" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -386,7 +466,7 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
             <IcoSearch />
           </CircleBtn>
           {/* Share */}
-          <CircleBtn label="Share" onClick={() => setShareShown(s => !s)}>
+          <CircleBtn label="Share" onClick={onShare}>
             <IcoShare />
           </CircleBtn>
           {/* Open Adulis */}
@@ -401,12 +481,6 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
         </div>
       </div>
 
-      {/* share tooltip */}
-      {/* Storefront share links use the handle only (no Storefront domain is approved). */}
-      {shareShown && (
-        <ShareSheet onClose={() => setShareShown(false)} url={seller.handle} />
-      )}
-
       {/* bio */}
       <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '10px 0 0', lineHeight: 1.55 }}>
         {seller.bio ?? '—'}
@@ -414,11 +488,11 @@ function StorefrontHeader({ onSearch, onOpenAdulisApp }: { onSearch: () => void;
 
       {/* Follow and Message happen in the Adulis app: on this public page they open it. */}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <button onClick={() => onOpenAdulisApp(`Follow ${seller.name} in the Adulis app.`)} style={{ flex: 1, padding: '8px 0', borderRadius: 999, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+        <button onClick={() => onOpenAdulisApp(installMessage('follow', seller.name))} style={{ flex: 1, padding: '8px 0', borderRadius: 999, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
           Follow
         </button>
-        <button onClick={() => onOpenAdulisApp(`Message ${seller.name} in the Adulis app.`)} style={{ flex: 1, padding: '8px 0', borderRadius: 999, background: 'var(--color-surface)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-strong)', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
-          Message
+        <button onClick={() => onOpenAdulisApp(installMessage('chat', seller.name))} style={{ flex: 1, padding: '8px 0', borderRadius: 999, background: 'var(--color-surface)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-strong)', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+          Chat
         </button>
       </div>
 
@@ -472,6 +546,7 @@ function SceneCard({ post, height, withCaption, onOpen }: { post: ShoppablePost;
       <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', background: post.zeroProduct ? 'rgba(0,0,0,0.45)' : 'var(--color-brand)', color: post.zeroProduct ? '#fff' : 'var(--color-on-brand)', padding: '3px 8px', borderRadius: 999, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
         {post.zeroProduct ? 'Scene' : `${tagged} product${tagged === 1 ? '' : 's'} tagged`}
       </span>
+      {post.pending && <span style={{ position: 'absolute', top: '45%', left: 0, right: 0, textAlign: 'center', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.8)' }}>Photo pending</span>}
       {post.hasHotspot && (
         <span aria-hidden="true" style={{ position: 'absolute', top: '38%', right: '25%', width: 22, height: 22, background: 'rgba(255,255,255,0.9)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
           <span style={{ width: 8, height: 8, background: 'var(--color-brand)', borderRadius: '50%' }} />
@@ -652,13 +727,14 @@ function AboutTab({ onOpenAdulisApp }: { onOpenAdulisApp: () => void }) {
 /* ─────────────────────────────────────
    PRODUCT DETAIL VIEW
 ───────────────────────────────────── */
-function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
+function ProductDetailView({ product, onBack, onOpenAdulisApp, onSeller, onShare }: {
   product: Product
   onBack: () => void
-  onOpenAdulisApp: () => void
+  onOpenAdulisApp: (note?: string) => void
+  onSeller: () => void
+  onShare: () => void
 }) {
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({})
-  const [shareShown, setShareShown] = useState(false)
   const { seller, trust, reviews, fulfilment } = useStorefront()
   // Reviews are matched to this Product by identifier.
   const productReviews = reviews.filter(review => review.products.some(p => p.id === product.id))
@@ -671,7 +747,7 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
           <IcoBack /> {seller.name}
         </button>
         <div style={{ flex: 1 }} />
-        <CircleBtn label="Share" onClick={() => setShareShown(true)}>
+        <CircleBtn label="Share" onClick={onShare}>
           <IcoShare />
         </CircleBtn>
       </div>
@@ -707,13 +783,19 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
           </div>
 
           {/* Seller trust row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, padding: '10px 12px', background: 'var(--color-surface-raised)', borderRadius: 10 }}>
+          <button onClick={onSeller} data-seller-link aria-label={`Seller: ${seller.name}, open Storefront`} style={{ width: '100%', border: 'none', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, padding: '10px 12px', background: 'var(--color-surface-raised)', borderRadius: 10 }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--color-brand-text)' }}>{initials(seller.name)}</div>
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{seller.name}</p>
               <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>{seller.handle}</p>
             </div>
             <TrustBadge level={trust} small />
+          </button>
+          {/* Like, Save and Chat need an account: on this public page each opens the Install prompt and changes nothing. */}
+          <div data-product-actions style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            {([['like', 'Like', 'this Product'], ['save', 'Save', 'this Product'], ['chat', 'Chat', seller.name]] as const).map(([action, label, what]) => (
+              <button key={action} onClick={() => onOpenAdulisApp(installMessage(action, what))} aria-label={action === 'chat' ? `Chat with ${seller.name}` : `${label} this Product`} style={{ flex: 1, padding: '9px 0', borderRadius: 999, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-primary)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{label}</button>
+            ))}
           </div>
         </div>
 
@@ -809,336 +891,17 @@ function ProductDetailView({ product, onBack, onOpenAdulisApp }: {
           </button>
         ) : (
           <button
-            onClick={onOpenAdulisApp}
+            onClick={() => onOpenAdulisApp(installMessage('cart', 'this Product'))}
             style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <AdulisLogo size={18} />
-            Open in Adulis
+            Add to Cart
           </button>
         )}
-        <p style={{ fontSize: 10, color: 'var(--color-text-muted)', textAlign: 'center', margin: '6px 0 0' }}>
+        <button onClick={() => onOpenAdulisApp()} style={{ display: 'block', width: '100%', background: 'transparent', border: 'none', color: 'var(--color-brand-text)', fontWeight: 700, fontSize: 13, cursor: 'pointer', marginTop: 6, padding: 6 }}>Open in Adulis</button>
+        <p style={{ fontSize: 10, color: 'var(--color-text-muted)', textAlign: 'center', margin: '2px 0 0' }}>
           No checkout on the web storefront · Ordering is not available yet; see the product in the Adulis app
         </p>
-      </div>
-      {/* DEMO_DATA approves no share link for a Product: the sheet omits the link row. */}
-      {shareShown && <ShareSheet onClose={() => setShareShown(false)} />}
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────
-   POST DETAIL VIEW
-───────────────────────────────────── */
-function PostDetailView({ post, onBack, navigate, onOpenAdulisApp }: {
-  post: ShoppablePost
-  onBack: () => void
-  navigate: (s: Screen) => void
-  onOpenAdulisApp: () => void
-}) {
-  const [hotspotActive, setHotspotActive] = useState<ProductId | null>(null)
-  const [shareShown, setShareShown] = useState(false)
-  const { seller, trust, products } = useStorefront()
-  const taggedProducts = products.filter(p => post.taggedProducts.includes(p.id))
-  const hotspotProduct = products.find(p => p.id === hotspotActive)
-
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)', flexShrink: 0 }}>
-        <button onClick={onBack} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary)', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600 }}>
-          <IcoBack /> Scenes
-        </button>
-        <div style={{ flex: 1 }} />
-        <CircleBtn label="Share" onClick={() => setShareShown(true)}>
-          <IcoShare />
-        </CircleBtn>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        {/* post image with optional hotspot */}
-        <div style={{ height: 300, background: post.imgBg, position: 'relative' }}>
-          {/* zero-product notice */}
-          {post.zeroProduct && (
-            <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.5)', borderRadius: 999, padding: '4px 10px' }}>
-              <span style={{ fontSize: 10, color: '#fff', fontFamily: 'var(--font-mono)', fontWeight: 600, letterSpacing: '0.06em' }}>SCENE</span>
-            </div>
-          )}
-          {!post.zeroProduct && (
-            <div style={{ position: 'absolute', top: 12, left: 12, background: 'var(--color-brand)', borderRadius: 999, padding: '4px 10px' }}>
-              <span style={{ fontSize: 10, color: '#fff', fontFamily: 'var(--font-mono)', fontWeight: 600, letterSpacing: '0.06em' }}>{post.taggedProducts.length} PRODUCTS</span>
-            </div>
-          )}
-          {/* hotspot */}
-          {post.hasHotspot && post.taggedProducts[0] && (
-            <button
-              onClick={() => setHotspotActive(hotspotActive ? null : post.taggedProducts[0])}
-              aria-label={hotspotActive ? 'Close product hotspot' : 'Open product hotspot'}
-              aria-expanded={Boolean(hotspotActive)}
-              style={{ position: 'absolute', top: '40%', right: '28%', width: 26, height: 26, background: hotspotActive ? 'var(--color-brand)' : 'rgba(255,255,255,0.92)', borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(0,0,0,0.3)', transition: 'all 0.15s' }}
-            >
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: hotspotActive ? 'var(--color-on-brand)' : 'var(--color-brand)' }} />
-            </button>
-          )}
-          {/* hotspot product card */}
-          {hotspotActive && (
-            <button
-              onClick={() => navigate({ type: 'product-detail', productId: hotspotActive })}
-              style={{ position: 'absolute', top: '28%', right: '5%', background: 'color-mix(in srgb, var(--color-surface) 97%, transparent)', borderRadius: 12, padding: '10px 12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, boxShadow: 'var(--shadow-md)', width: 160 }}
-            >
-              <div style={{ width: 36, height: 36, borderRadius: 8, background: hotspotProduct?.imgBg || 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{hotspotProduct?.imgLabel}</span>
-              </div>
-              <div style={{ textAlign: 'left', flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {hotspotProduct?.name}
-                </p>
-                <p style={{ fontSize: 10, color: 'var(--color-brand-text)', margin: '2px 0 0', fontFamily: 'var(--font-mono)' }}>
-                  {hotspotProduct?.price}
-                </p>
-              </div>
-            </button>
-          )}
-        </div>
-
-        {/* seller row */}
-        <div style={{ padding: '12px 16px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--color-brand-text)', flexShrink: 0 }}>{initials(seller.name)}</div>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>{seller.name}</p>
-            <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: 0 }}>{seller.handle}</p>
-          </div>
-          <TrustBadge level={trust} small />
-        </div>
-
-        {/* caption */}
-        <div style={{ padding: '10px 16px 0' }}>
-          <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--color-text-primary)', margin: 0 }}>{post.caption}</p>
-        </div>
-
-        {/* zero-product notice */}
-        {post.zeroProduct && (
-          <div style={{ margin: '14px 16px 0', padding: '12px 14px', background: 'var(--color-surface-raised)', borderRadius: 12 }}>
-            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.55, fontStyle: 'italic' }}>
-              This Scene has no tagged products. It is published on the seller's storefront but is not eligible for the For You feed.
-            </p>
-          </div>
-        )}
-
-        {/* tagged products */}
-        {!post.zeroProduct && taggedProducts.length > 0 && (
-          <div aria-label="Products tagged in this Scene" style={{ padding: '14px 16px 0' }}>
-            <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', margin: '0 0 10px' }}>
-              {taggedProducts.length} tagged product{taggedProducts.length !== 1 ? 's' : ''}
-            </p>
-            {taggedProducts.map(p => (
-              <button
-                key={p.id}
-                onClick={() => navigate({ type: 'product-detail', productId: p.id })}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--color-surface-raised)', borderRadius: 12, border: '1px solid var(--color-border)', cursor: 'pointer', marginBottom: 8, textAlign: 'left' }}
-              >
-                <div style={{ width: 44, height: 44, borderRadius: 10, background: p.imgBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.55)' }}>{p.imgLabel}</span>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-brand-text)', fontWeight: 600 }}>{p.price}</span>
-                    <AvailBadge avail={p.availability} />
-                  </div>
-                </div>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="var(--color-text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div style={{ height: 100 }} />
-      </div>
-
-      {/* sticky bottom */}
-      <div style={{ padding: '12px 16px', background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', flexShrink: 0 }}>
-        <button
-          onClick={onOpenAdulisApp}
-          style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-        >
-          <AdulisLogo size={18} />
-          Open in Adulis
-        </button>
-      </div>
-      {/* DEMO_DATA approves no share link for a Scene Post: the sheet omits the link row. */}
-      {shareShown && <ShareSheet onClose={() => setShareShown(false)} />}
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────
-   SEARCH VIEW
-───────────────────────────────────── */
-function SearchView({ onBack, navigate }: { onBack: () => void; navigate: (s: Screen) => void }) {
-  const [query, setQuery] = useState('')
-  const { seller, products } = useStorefront()
-  // The same name and category search as before; DEMO_DATA gives Products no category, so names alone match.
-  const categories: string[] = []
-  const results = query.length >= 2
-    ? products.filter(p => p.name.toLowerCase().includes(query.toLowerCase()))
-    : []
-
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* search bar */}
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button onClick={onBack} aria-label={`Back to ${seller.name}`} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary)', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-          <IcoBack />
-        </button>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--color-surface-raised)', borderRadius: 10, padding: '8px 12px' }}>
-          <IcoSearch />
-          <input
-            autoFocus
-            aria-label="Search this storefront"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder={`Search ${seller.name}…`}
-            style={{ border: 'none', borderRadius: 'var(--radius-sm)', background: 'transparent', fontSize: 13, color: 'var(--color-text-primary)', flex: 1 }}
-          />
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        {query.length === 0 && categories.length > 0 && (
-          <div style={{ padding: '20px 16px' }}>
-            <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', margin: '0 0 10px' }}>Categories</p>
-            {categories.map(c => (
-              <button
-                key={c}
-                onClick={() => setQuery(c)}
-                style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '10px 0', fontSize: 14, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        )}
-        {query.length >= 2 && results.length === 0 && (
-          <div style={{ padding: '40px 24px', textAlign: 'center' }}>
-            <p style={{ fontSize: 14, color: 'var(--color-text-muted)', margin: 0 }}>No products matching "{query}"</p>
-            <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '8px 0 0' }}>Try a different search within this store.</p>
-          </div>
-        )}
-        {results.length > 0 && (
-          <div style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {results.map(p => (
-              <button
-                key={p.id}
-                onClick={() => navigate({ type: 'product-detail', productId: p.id })}
-                style={{ background: 'var(--color-surface)', borderRadius: 14, border: '1px solid var(--color-border)', overflow: 'hidden', textAlign: 'left', cursor: 'pointer', padding: 0 }}
-              >
-                <div style={{ height: 110, background: p.imgBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>{p.imgLabel}</span>
-                </div>
-                <div style={{ padding: '8px 10px 10px' }}>
-                  <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 2px', lineHeight: 1.3 }}>{p.name}</p>
-                  <p style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-brand-text)', margin: 0 }}>{p.price}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────
-   OPEN IN ADULIS SHEET
-───────────────────────────────────── */
-function OpenInAdulisSheet({ note, onClose }: { note: string; onClose: () => void }) {
-  const [installed, setInstalled] = useState<'unknown' | 'open' | 'install'>('unknown')
-
-  return (
-    <div role="dialog" aria-modal="true" aria-label="Open in Adulis" style={{ position: 'absolute', inset: 0, background: 'color-mix(in srgb, var(--color-ink) 50%, transparent)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', zIndex: 50 }}>
-      <div style={{ background: 'var(--color-surface)', borderRadius: '24px 24px 0 0', padding: '24px 20px 40px' }}>
-        <div style={{ width: 36, height: 4, background: 'var(--color-border-strong)', borderRadius: 999, margin: '0 auto 20px' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-          <AdulisLogo size={44} />
-          <div>
-            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 3px' }}>Open in Adulis</h3>
-            <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0 }}>{note}</p>
-          </div>
-        </div>
-
-        {installed === 'unknown' && (
-          <>
-            <button
-              onClick={() => setInstalled('open')}
-              style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-brand)', color: 'var(--color-on-brand)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, marginBottom: 10 }}
-            >
-              Open Adulis App
-            </button>
-            <button
-              onClick={() => setInstalled('install')}
-              style={{ width: '100%', padding: '15px', borderRadius: 14, background: 'var(--color-surface-raised)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', cursor: 'pointer', fontWeight: 600, fontSize: 14, marginBottom: 10 }}
-            >
-              Get Adulis — Free
-            </button>
-          </>
-        )}
-
-        {installed === 'open' && (
-          <div style={{ background: 'var(--color-success-bg)', borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 10 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-success)', margin: '0 0 4px' }}>Opening Adulis…</p>
-            <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0 }}>If the app doesn't open, try installing it first.</p>
-          </div>
-        )}
-        {installed === 'install' && (
-          <div style={{ background: 'var(--color-brand-muted)', borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 10 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-brand-text)', margin: '0 0 4px' }}>Redirecting to App Store…</p>
-            <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0 }}>Search for "Adulis" to find us.</p>
-          </div>
-        )}
-
-        <p style={{ fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center', margin: '4px 0 0' }}>
-          Purchases are made in the Adulis app — not on this web page.
-        </p>
-
-        <button onClick={onClose} style={{ display: 'block', width: '100%', background: 'transparent', border: 'none', color: 'var(--color-text-muted)', fontSize: 13, cursor: 'pointer', marginTop: 16, padding: '8px' }}>
-          Continue browsing on web
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────
-   SHARE SHEET
-───────────────────────────────────── */
-function ShareSheet({ onClose, url }: { onClose: () => void; url?: string }) {
-  const [copied, setCopied] = useState(false)
-  const { seller } = useStorefront()
-  return (
-    <div role="dialog" aria-modal="true" aria-label="Share storefront" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, background: 'color-mix(in srgb, var(--color-ink) 40%, transparent)', zIndex: 40, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-      <div style={{ background: 'var(--color-surface)', borderRadius: '24px 24px 0 0', padding: '20px 18px 36px' }}>
-        <div style={{ width: 36, height: 4, background: 'var(--color-border-strong)', borderRadius: 999, margin: '0 auto 18px' }} />
-        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 14px' }}>Share {seller.name}</p>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {[{ icon: '💬', label: 'Message' }, { icon: '📸', label: 'Instagram' }, { icon: '🎵', label: 'TikTok' }, { icon: '📋', label: 'Copy Link' }].map(s => (
-            <button
-              key={s.label}
-              onClick={() => { if (s.label === 'Copy Link') { setCopied(true); setTimeout(() => setCopied(false), 2000) } }}
-              style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, background: 'var(--color-surface-raised)', border: 'none', borderRadius: 12, padding: '12px 6px', cursor: 'pointer' }}
-            >
-              <span style={{ fontSize: 22 }}>{s.icon}</span>
-              <span style={{ fontSize: 10, color: 'var(--color-text-secondary)', fontWeight: 600 }}>{s.label === 'Copy Link' && copied ? '✓ Copied' : s.label}</span>
-            </button>
-          ))}
-        </div>
-        {url && (
-          <div style={{ background: 'var(--color-surface-raised)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <span style={{ fontSize: 12, color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{url}</span>
-          </div>
-        )}
-        <button onClick={onClose} style={{ width: '100%', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 12, padding: '12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-          Close
-        </button>
       </div>
     </div>
   )

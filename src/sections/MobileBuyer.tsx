@@ -2405,9 +2405,11 @@ const SCENE_MEDIA = 'linear-gradient(160deg, #6B5444 0%, #2E2520 100%)'
  * bought. View Product opens its full Product and orders nothing. Reviews opens the Scene's Reviews on the selected
  * Product's tab, or on the first tagged Product's when none is selected (PR-005).
  */
-function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMore, onReviews, onView }: {
+export function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMore, onReviews, onView, onShare, linkSeller }: {
   postId: ShoppablePostId; at: Moment; selected: ProductId | null; onSelect: (id: ProductId) => void
-  onBack: () => void; onSeller: () => void; onMore: () => void; onReviews: () => void; onView: (id: ProductId) => void
+  onBack: () => void; onSeller: () => void; onView: (id: ProductId) => void
+  /** The Buyer app gives More and Reviews; the public Storefront (WEB-003) gives Share, shows the Seller as a link, and has no Buyer-only controls. */
+  onMore?: () => void; onReviews?: () => void; onShare?: () => void; linkSeller?: boolean
 }) {
   const post = SHOPPABLE_POSTS[postId]
   const seller = SELLERS[post.seller]
@@ -2426,10 +2428,13 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
         <IconButton label="Back" onClick={onBack}>‹</IconButton>
         <div className="min-w-0 flex-1">
           <h1 className="truncate font-display text-base font-semibold leading-tight text-text-primary">Explore the Scene</h1>
-          <p className="truncate text-text-muted">{post.title} · {seller.name}</p>
+          {linkSeller
+            ? <p className="flex min-w-0 items-center gap-1 text-text-muted"><span className="min-w-0 flex-shrink-[3] truncate">{post.title} ·</span><button onClick={onSeller} data-seller-link className="min-w-0 flex-shrink truncate text-left font-semibold text-brand-text underline">{seller.name} {seller.handle}</button></p>
+            : <p className="truncate text-text-muted">{post.title} · {seller.name}</p>}
         </div>
         <button onClick={onSeller} aria-label={`Seller: ${seller.name}`} className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand-muted text-[11px] font-bold text-brand-dark">{initials(seller.name)}</button>
-        <IconButton label="More options" onClick={onMore}>•••</IconButton>
+        {onShare && <IconButton label="Share" onClick={onShare}><ShareIcon /></IconButton>}
+        {onMore && <IconButton label="More options" onClick={onMore}>•••</IconButton>}
       </div>
       <div className="relative min-h-0 flex-[70]" style={{ background: SCENE_MEDIA }}>
         <Placeholder label={`${seller.name} Scene: ${post.title}`} initialsOf={post.title} dark photo={liveScenePhoto(postId)} className="absolute inset-0 h-full w-full text-6xl" />
@@ -2451,9 +2456,9 @@ function SceneExplorer({ postId, at, selected, onSelect, onBack, onSeller, onMor
           )
         })}
         {/* Reviews sits in the media's lower corner, clear of the hotspots, so the header keeps its title (PR-005). */}
-        <button onClick={onReviews} style={ON_PHOTO} className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-surface/90 px-3 py-2 text-xs font-semibold text-text-primary shadow-lg">
+        {onReviews && <button onClick={onReviews} style={ON_PHOTO} className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-surface/90 px-3 py-2 text-xs font-semibold text-text-primary shadow-lg">
           <StarIcon /> Reviews
-        </button>
+        </button>}
       </div>
       <div className="flex min-h-[156px] flex-[25] flex-col gap-2 border-t border-border px-3 pb-3 pt-2.5">
         {post.tags.length === 0 ? <p className="text-sm text-text-muted">No products are tagged in this Scene.</p> : (
@@ -3160,7 +3165,7 @@ function SellerAbout({ sellerId, at }: { sellerId: SellerId; at: Moment }) {
 }
 
 /** FIX-005: the documents Search ranks, built from the effective records: seeded and authored Products and Scenes, Sellers Buyers can see. */
-function searchIndex(at: Moment) {
+export function searchIndex(at: Moment) {
   const products: ProductDoc[] = buyerVisibleProductsAt(at).map(id => {
     const rec = PRODUCTS[id], own = liveProductDetails(id), tax = own?.category ? findTaxonomy(own.category)?.label : ''
     return { id, name: rec.name, description: rec.description ?? '', sellerId: rec.seller, sellerName: SELLERS[rec.seller].name, category: tax || SELLERS[rec.seller].category || '',

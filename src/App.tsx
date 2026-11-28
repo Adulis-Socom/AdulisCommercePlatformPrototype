@@ -18,6 +18,7 @@ import { PrototypeModeProvider, SimulationBadge } from './prototype-mode'
 import { SellerWorkspaceProvider } from './seller-workspace'
 import { SimulationProvider } from './simulation/store'
 import { DatasetNote } from './marketplace/DatasetNote'
+import { parsePublicLink, type PublicLink } from './public-web'
 
 export type SectionKey =
   | '00-guide'
@@ -48,13 +49,13 @@ const SECTIONS: { key: SectionKey; label: string; short: string }[] = [
   { key: '11-system-states',   label: '11 — System States',              short: '11' },
 ]
 
-function SectionContent({ active, onNavigate, demoTarget, onStartFlow }: { active: SectionKey; onNavigate: (s: string) => void; demoTarget?: string; onStartFlow: (id: FlowId) => void }) {
+function SectionContent({ active, onNavigate, demoTarget, onStartFlow, link, onHome }: { active: SectionKey; onNavigate: (s: string) => void; demoTarget?: string; onStartFlow: (id: FlowId) => void; link?: PublicLink; onHome: () => void }) {
   switch (active) {
     case '00-guide':            return <PrototypeGuide onNavigate={onNavigate} />
     case '01-foundations':      return <Foundations />
     case '02-components':       return <Components />
     case '03-website':          return <CompanyWebsite demoTarget={demoTarget} />
-    case '04-storefront':       return <SellerStorefront demoTarget={demoTarget} />
+    case '04-storefront':       return <SellerStorefront demoTarget={demoTarget} link={link} onHome={onHome} />
     case '05-buyer':            return <MobileBuyer demoTarget={demoTarget} />
     case '06-seller-companion': return <MobileSellerCompanion demoTarget={demoTarget} onNavigate={onNavigate} />
     case '07-courier':          return <MobileCourier demoTarget={demoTarget} />
@@ -125,7 +126,9 @@ function useThemeLabClearOfWebsiteHeader(slot: RefObject<HTMLDivElement | null>,
 }
 
 export default function App() {
-  const [active, setActive] = useState<SectionKey>('10-demo-flows')
+  // WEB-002: a shared public link (`?surface=storefront&seller=…`) opens that public surface, once; choosing any section from the sidebar drops it.
+  const [publicLink, setPublicLink] = useState(() => parsePublicLink(location.search))
+  const [active, setActive] = useState<SectionKey>(publicLink ? (publicLink.surface === 'home' ? '03-website' : '04-storefront') : '10-demo-flows')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [journey, setJourney] = useState<{ id: FlowId; stage: number } | null>(null)
   // FE-001: the ordinary prototype is the current MVP; the historical paid-commerce design is an explicit, labelled simulation.
@@ -194,7 +197,7 @@ export default function App() {
             return (
               <button
                 key={s.key}
-                onClick={() => { setJourney(null); setActive(s.key) }}
+                onClick={() => { setJourney(null); setPublicLink(undefined); setActive(s.key) }}
                 aria-current={isActive ? 'page' : undefined}
                 aria-label={`${s.short} ${s.label.replace(/^\d+ — /, '')}`}
                 className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors rounded-lg mx-1 mb-0.5"
@@ -257,7 +260,7 @@ export default function App() {
       {/* Main content. `data-section` lets index.css's responsive rules address a section without changing it. */}
       <main ref={mainArea} data-section={active} data-simulation={simulation ? 'on' : undefined} className={`app-main relative flex-1 overflow-y-auto ${active === '09-operator-console' ? 'operator-viewport' : ''}`}>
         <StoryProvider stage={stageFor(journey?.id, journey?.stage ?? 0)}>
-          <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} />
+          <SectionContent key={`${active}-${journey?.stage ?? 'standard'}`} active={active} onNavigate={(s) => { setJourney(null); setActive(s as SectionKey) }} demoTarget={flowStage?.target} onStartFlow={startFlow} link={publicLink} onHome={() => { setJourney(null); setPublicLink(undefined); setActive('03-website') }} />
         </StoryProvider>
         <SimulationBadge />
         <DatasetNote section={active} />

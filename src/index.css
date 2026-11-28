@@ -958,6 +958,18 @@ textarea {
     margin-left: 0 !important;
   }
 
+  /* The public Seller picker lists every public Seller (21): one scrolling row, so it never pushes the Storefront below the fold. */
+  .storefront-toolbar > .storefront-seller-pills {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    max-width: 100%;
+    padding-bottom: 4px;
+  }
+
+  .storefront-toolbar > .storefront-seller-pills button {
+    flex-shrink: 0;
+  }
+
   .storefront-toolbar button {
     min-height: 44px;
   }

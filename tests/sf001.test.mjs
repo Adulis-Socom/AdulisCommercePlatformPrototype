@@ -40,7 +40,7 @@ run({ width: 1440, height: 900 }, async (page, h) => {
   t = await body(page);
   h.ck('Scene detail lists the tagged authored Product', /Store Dress/.test(t));
   await h.shot(path.join(OUT, 'sf001-scene-1440.png'));
-  await page.getByRole('button', { name: 'Scenes' }).first().click(); await h.settle(300);
+  await page.getByRole('button', { name: 'Back', exact: true }).first().click(); await h.settle(300); // WEB-003 (intentional change): the Scene page is the Buyer's Explore the Scene, whose back control is named Back
   await page.getByRole('tab', { name: 'Products' }).click(); await h.settle(400);
   t = await body(page);
   h.ck('Products tab lists the authored Product with its price', /Store Dress/.test(t) && /ETB 1,500/.test(t));
@@ -48,7 +48,11 @@ run({ width: 1440, height: 900 }, async (page, h) => {
   await page.getByRole('button', { name: /Store Dress/ }).first().click(); await h.settle(400);
   t = await body(page);
   h.ck('Product detail shows description and Available', /A dress for the storefront test/.test(t) && /Available/.test(t));
-  h.ck('no web Cart, checkout or payment control; the page says ordering is not available', (await page.getByRole('button', { name: /^(Add to Cart|Buy now|Checkout|Place order|Pay)/i }).count()) === 0 && /Ordering is not available yet/.test(t));
+  // WEB-002 (intentional change): the Cart action now exists on the public page, but only as the Install prompt; checkout and payment stay absent.
+  h.ck('no checkout or payment control; the page says ordering is not available', (await page.getByRole('button', { name: /^(Buy now|Checkout|Place order|Pay)/i }).count()) === 0 && /Ordering is not available yet/.test(t));
+  await page.getByRole('button', { name: 'Add to Cart' }).click(); await h.settle(300);
+  h.ck('Add to Cart opens the Install prompt and nothing else', (await page.getByRole('dialog', { name: 'Install Adulis' }).count()) === 1 && /Install Adulis to add this Product to your Cart/.test(await body(page)));
+  await page.getByRole('button', { name: 'Not now' }).click(); await h.settle(300);
   h.ck('app handoff is offered', /Open in Adulis/i.test(t));
   await h.shot(path.join(OUT, 'sf001-product-1440.png'));
   // unavailable: stock 0 -> Product still listed as Out of Stock, Scene no longer shown
